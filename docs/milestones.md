@@ -9,7 +9,8 @@ Nothing is ported before it has been read and described.
 docs/                 analysis; one file per topic, citations to the original
 assets/manifest.json  hashed inventory of the original (metadata only)
 tools/
-  extract_assets/     Python: image tables, later frame/sequence/level parsers
+  extract_assets/     Python: image tables, Merlin data assembler, frame/sequence
+                      decoders; later level parser
   extract_audio/      Python: sound-effect simulator (later)
 modern-port/
   CMakeLists.txt
@@ -18,7 +19,9 @@ modern-port/
   src/platform/       SDL3 window, input, renderer
   tests/              C unit tests + replay fixtures
 tests/                pytest for the tools
-build/                generated, git-ignored (extracted art, data, binaries)
+build/                generated, git-ignored
+  extracted/          decoded images
+  data/               frames.json, sequences.json
 ```
 
 The original checkout stays outside this repository and is never written to.
@@ -28,8 +31,8 @@ The original checkout stays outside this repository and is never written to.
 | # | Deliverable | Test | Status |
 | --- | --- | --- | --- |
 | 1 | Verified inventory; image-table decoder; `manifest.json`; Phase 1 docs (first pass) | 14 pytest cases; contact sheet inspected | **done** |
-| 2 | Parser for `FRAMEDEF.S` and `SEQTABLE.S` (assembler text → JSON): frames, sequences, per-step dx/dy, taps | Round-trip checks: 114 entry points resolve; run cycle sums to 26; every referenced image exists | proposed next |
-| 3 | Run-cycle sheet: frames composed at their real offsets with foot marker, plus `docs/run-cycle-analysis.md` | Visual; anchors consistent across the cycle | |
+| 2 | `FRAMEDEF.S` and `SEQTABLE.S` assembled and decoded to JSON: frames, swords, sequences, per-tick dx/dy, traces; `docs/animation-data.md` | 51 pytest cases; 114 entry points resolve; all labels and branches aligned; run cycle sums to 26; every referenced image exists | **done** |
+| 3 | Run-cycle sheet: frames composed at their real offsets with foot marker, plus `docs/run-cycle-analysis.md` | Visual; anchors consistent across the cycle | proposed next |
 | 4 | First C17 routine: `animchar` sequence interpreter + `jumpseq` + `addcharx`, driven by the JSON from M2 | C unit tests reproducing the tick table in `architecture.md` §3, including 8-bit wraparound cases | |
 | 5 | Level blueprint parser and a static room render to PNG (needs `BGDATA.S`, `FRAMEADV.S` analysis) | Compare against trusted screenshots | |
 | 6 | Sound: cycle-counted `tone` simulator → WAV + JSON; `docs/audio-analysis.md` | Frequencies checked by hand for two effects | |

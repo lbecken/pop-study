@@ -51,16 +51,17 @@ lines high.
 - **Aspect ratio.** 280 × 192 dots on a 4:3 screen are not square; PNGs are
   1 dot = 1 pixel.
 - **Anchors.** The foot/base position of each frame lives in `FRAMEDEF.S`
-  (`Fcheck` bits 0–4, `Fdx`, `Fdy`), not in the image table. Joining the two is
-  milestone 2.
+  (`Fcheck` bits 0–4, `Fdx`, `Fdy`), not in the image table. The frame data is
+  now extracted (`docs/animation-data.md`); composing it with the images is
+  milestone 3.
 
 ## Other formats
 
 | Data | Status |
 | --- | --- |
 | Level blueprint (`LEVEL*`, 2304 bytes) | Layout documented by the author, `04 Support/MakeDisk/S/COMMENTS.S:237-338`; size **confirmed**; no parser written yet |
-| Frame definitions | 5 bytes per frame, `COMMENTS.S:346-400`; assembler source, parser not written yet |
-| Sequence table | Byte-code, see `docs/architecture.md` §3; parser not written yet |
+| Frame definitions | Decoded; see `docs/animation-data.md` |
+| Sequence table | Decoded; see `docs/animation-data.md` |
 | `PAC.*` packed pictures | **Not yet verified.** Candidate decoders: `SNGEXPAND` / `DBLEXPAND` in `UNPACK.S`, pack/unpack in `DRAZ.S` |
 | 8192-byte files | **Inferred** raw hi-res pages from size only |
 

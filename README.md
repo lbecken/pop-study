@@ -20,10 +20,11 @@ licensing position this policy is based on.
 | `docs/architecture.md` | Main loop, run-animation pipeline, draw path, with citations |
 | `docs/memory-map.md` | Memory layout taken from the original equate files |
 | `docs/graphics-formats.md` | Image-table format and the visual verification procedure |
+| `docs/animation-data.md` | Frame-definition and sequence formats, extraction checks, findings |
 | `docs/unknowns.md` | Open questions, each with the next inspection step |
 | `docs/milestones.md` | Milestone plan, directory layout, decisions awaiting input |
 | `assets/manifest.json` | Hashed inventory of all 582 original files (metadata only) |
-| `tools/extract_assets/` | Image-table decoder and manifest generator (Python 3, stdlib only) |
+| `tools/extract_assets/` | Image-table decoder, Merlin data assembler, frame/sequence extractor, manifest generator (Python 3, stdlib only) |
 | `tests/` | pytest suite |
 
 ## Quick start
@@ -37,6 +38,10 @@ python3 tools/extract_assets/extract_images.py --source ../pop-original --out bu
 ```
 
 ```bash
+python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out build/data
+```
+
+```bash
 python3 tools/extract_assets/make_manifest.py --source ../pop-original --out assets/manifest.json
 ```
 
@@ -44,13 +49,14 @@ python3 tools/extract_assets/make_manifest.py --source ../pop-original --out ass
 POP_SOURCE_DIR=../pop-original python3 -m pytest tests -q
 ```
 
-Without `POP_SOURCE_DIR` the two integration tests are skipped and only the
+Without `POP_SOURCE_DIR` the six integration tests are skipped and only the
 synthetic-data unit tests run. `build/` is git-ignored.
 
 ## Status
 
-Milestone 1 (inventory + image-table extraction proof of concept) is done.
-Nothing of the engine has been ported yet. See `docs/milestones.md`.
+Milestone 1 (inventory + image-table extraction) and milestone 2 (frame
+definitions and animation sequences extracted to JSON and cross-checked) are
+done. Nothing of the engine has been ported yet. See `docs/milestones.md`.
 
 ## Conventions
 

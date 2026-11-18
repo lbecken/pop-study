@@ -26,6 +26,8 @@ Items move to the relevant document once resolved.
 | G8 | Contents of trailing bytes in image-table files. | Dump and compare with neighbouring image data. |
 | G9 | Which opponent each `IMG.CHTAB4.*` set belongs to, by code rather than by file name. | Trace `ch4trk` / `CHset` selection (`MASTER.S:524-591`) back to the per-level table. |
 | G10 | Block width in game units (assumed 14). | Read `BlockEdge` data in `TABLES.S`. |
+| G11 | What uses `IMG.CHTAB6.B`. The altset2 frames reference chtable6 images up to 103, which only `IMG.CHTAB6.A` has (`docs/animation-data.md`). | Trace where `chtable6` is loaded (`MASTER.S` stage 2, side A vs side B) and which scenes run from each. |
+| G12 | How the `foot` field and `Fdx` combine into the on-screen anchor for left- and right-facing characters. | Milestone 3: compose run frames using `SETUPCHAR` (`CTRLSUBS.S:794-841`) and `MLAY`. |
 
 ## Audio
 
@@ -50,11 +52,13 @@ Items move to the relevant document once resolved.
 | E9 | Copy-protection hooks that alter game state (`yellowflag`, `purpleflag`, `timebomb`, `redherring`). `decodeim` ORs `timebomb` into the image number (`CTRLSUBS.S:1036`). | Catalogue them so the port can treat them as always-passing. |
 | E10 | Differences between the 3.5" and 5.25" builds (`*525.S`). | `diff` the pairs. |
 | E11 | How `$D000-$DFFF` is shared between language-card banks. | See `docs/memory-map.md`. |
+| E12 | Meaning of each `CharAction` value set by `act` (0–7 seen in the table). | Read the `CharAction` tests in `CTRL.S`, `COLL.S`, `CTRLSUBS.S`. |
+| E13 | Which code paths write `CharPosn` or `CharSeq` directly, bypassing the table (five `CharPosn` sites found so far, `docs/animation-data.md` finding 4). | Grep every `jumpseq` call and `CharSeq` write; list them per trigger. |
 
 ## Process
 
 | # | Question | Next step |
 | --- | --- | --- |
-| P1 | Whether the source assembles unmodified with a modern Merlin-compatible assembler. This would give a byte-exact reference binary and an oracle for unit tests. | Try Merlin32 on one self-contained module (`SEQTABLE.S`). |
+| P1 | Whether the source assembles unmodified with a modern Merlin-compatible assembler. This would give a byte-exact reference binary and an oracle for unit tests. The project's own data assembler handles `FRAMEDEF.S` and `SEQTABLE.S` and its output fits the declared memory areas, but has not been compared with an independent assembler or a disk image. | Try Merlin32 on `SEQTABLE.S` and compare bytes with `merlin_data.py`. |
 | P2 | Git history of the original repository was not examined (shallow clone). | `git fetch --depth=1000` and review. |
 | P3 | The author's 1989 technical document referenced in the README is not in the repository. | Read it at jordanmechner.com/library; cite, do not copy. |
