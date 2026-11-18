@@ -16,8 +16,8 @@ Items move to the relevant document once resolved.
 
 | # | Question | Next step |
 | --- | --- | --- |
-| G1 | How characters are masked against the background (no mask is stored with the image). | Read `LayMask`, `FASTMASK`, `MASKTAB` in `HIRES.S` / `HRTABLES.S`. |
-| G2 | Mirrored drawing for right-facing characters and its effect on x alignment and colour. | Read `MLAY` (`HIRES.S`) and `MIRROR` table. |
+| G1 | Masking for draw paths other than `LayMask`: `FASTMASK`, the "visible mask" opacity 5, and what floor pieces use. (`LayMask` itself is resolved: `docs/run-cycle-analysis.md`.) | Read `FASTMASK` and `LayGen` callers in `HIRES.S` / `FRAMEADV.S`. |
+| G2 | Effect of mirroring on colour: a mirrored byte swaps dot parity. (Geometry is resolved: exact mirror.) | Decide with G3. |
 | G3 | Colour: how dot parity and bit 7 map to the colours seen on screen, and what the game does to keep sprite colours stable when shifted. | Read `SHIFTn`/`CARRYn` generation and `LayXOR`; then pick a rendering model (decision D3). |
 | G4 | When and how image-table pointers are relocated from `$6000` to their load addresses. | Read `relocate` in `04 Support/MakeDisk/DRAZ/DRAZ.S:3081-3101`. |
 | G5 | `PAC.*` packed picture format. | Read `SNGEXPAND` in `UNPACK.S`; test against one `PAC.*` + its raw sibling (e.g. `SS/PAC.SS1` and `SS/SS1`). |
@@ -25,9 +25,10 @@ Items move to the relevant document once resolved.
 | G7 | Why `04 Support/DRAZ/IP/IMG.CHTABLE3` does not parse. | Hex-inspect; may be an older table layout. |
 | G8 | Contents of trailing bytes in image-table files. | Dump and compare with neighbouring image data. |
 | G9 | Which opponent each `IMG.CHTAB4.*` set belongs to, by code rather than by file name. | Trace `ch4trk` / `CHset` selection (`MASTER.S:524-591`) back to the per-level table. |
-| G10 | Block width in game units (assumed 14). | Read `BlockEdge` data in `TABLES.S`. |
 | G11 | What uses `IMG.CHTAB6.B`. The altset2 frames reference chtable6 images up to 103, which only `IMG.CHTAB6.A` has (`docs/animation-data.md`). | Trace where `chtable6` is loaded (`MASTER.S` stage 2, side A vs side B) and which scenes run from each. |
-| G12 | How the `foot` field and `Fdx` combine into the on-screen anchor for left- and right-facing characters. | Milestone 3: compose run frames using `SETUPCHAR` (`CTRLSUBS.S:794-841`) and `MLAY`. |
+| G13 | Cropping at screen edges and against foreground (`CROP`, `cropchar`, the `CU/CD/CL/CR` cut-offs). Not modelled; the blitter model refuses off-screen images. | Read `CROP` (`HIRES.S:375-507`) and `CROPCHAR` (`CTRLSUBS.S:1313`). |
+| G14 | The XOR draw mode used for the shadow and the one-dot shift used for guards (`DrawEored`, `DrawShifted`, `GAMEBG.S:442-458`). | Read `LayXOR` / `MLayXOR` in `HIRES.S`. |
+| G15 | Save-under ("peel") buffers: `LAYRSAVE`, `PEEL`, and the two-frame delay. | Read `HIRES.S:542-639`, `GRAFIX.S` `SNGPEEL`/`ADDPEEL`. |
 
 ## Audio
 
@@ -53,6 +54,7 @@ Items move to the relevant document once resolved.
 | E10 | Differences between the 3.5" and 5.25" builds (`*525.S`). | `diff` the pairs. |
 | E11 | How `$D000-$DFFF` is shared between language-card banks. | See `docs/memory-map.md`. |
 | E12 | Meaning of each `CharAction` value set by `act` (0–7 seen in the table). | Read the `CharAction` tests in `CTRL.S`, `COLL.S`, `CTRLSUBS.S`. |
+| E14 | How `DoRunjump` adjusts `CharX` before a running jump so the take-off lines up with a ledge (`CTRL.S:1752` on). | Read to the end of `DoRunjump`; add to the run-jump trace. |
 | E13 | Which code paths write `CharPosn` or `CharSeq` directly, bypassing the table (five `CharPosn` sites found so far, `docs/animation-data.md` finding 4). | Grep every `jumpseq` call and `CharSeq` write; list them per trigger. |
 
 ## Process

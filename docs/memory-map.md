@@ -26,7 +26,7 @@ Target machine: 128K Apple IIe / IIc / IIGS. The game uses main and auxiliary
 | `$A800` | `chtable5` | same |
 | `$D000` LC bank 1 | RW18 disk routines | `EQ.S:11`, `MASTER.S:178` |
 | `$D000`, `$D800` | `peelbuf1`, `peelbuf2` (save-under buffers) | `EQ.S:12-13` |
-| `$E000` | `hrtables` (row address, shift, carry, mirror, mask tables) | `EQ.S:14`, `HRPARAMS.S:4-40` |
+| `$E000-$E9AF` | `hrtables`: `YLO` `$E000`, `YHI` `$E0C0`, `SHIFT0-6` `$E180`, `CARRY0-6` `$E500`, `MIRROR` `$E880`, `MASKTAB` `$E900`, pointer and edge-mask tables `$E980` (addresses **confirmed** by assembling `HRTABLES.S`) | `EQ.S:14`, `HRPARAMS.S:4-40` |
 | `$EA00` | `unpack` | `EQ.S:15` |
 | `$EE00` | `hires` blitters | `EQ.S:16` |
 | `$F880` | `master` | `EQ.S:17` |
@@ -49,7 +49,7 @@ Which value is live is **not yet verified**.
 | `$03C0-$03EF` | `sortX`, `BELOW`, `SBELOW` | `EQ.S:451-455` |
 | `$03F0-$03F8` | `bluepTRK`, `level`, `BBundID`… (parameters shared with MASTER) | `EQ.S:457-467` |
 | `$0400` | `grafix` | `EQ.S:21` |
-| `$0E00` | `tables` (byte/offset/block/pixel conversion, `Mult7/10/30`, block edges) | `EQ.S:22, 243-256` |
+| `$0E00-$1288` | `tables` (byte/offset/block/pixel conversion, `Mult7/10/30`, block edges, floor lines); extent **confirmed** by assembling `TABLES.S` | `EQ.S:22, 243-256` |
 | `$1290` | `frameadv` | `EQ.S:23` |
 | `$2000` | `topctrl` | `GAMEEQ.S:20` |
 | `$2800` | Frame definitions (`Fdef` 1200 bytes, `altset1` 200, `altset2` 450, `swordtab` 192) | `GAMEEQ.S:21`, `FRAMEDEF.S:8-15` |

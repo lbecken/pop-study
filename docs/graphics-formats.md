@@ -44,16 +44,18 @@ lines high.
 - **Colour.** Apple II hi-res colour comes from dot position parity and bit 7,
   not from stored colour values. PNGs are literal: set dot = white. The
   vertical stripes visible inside the figures are that dot pattern.
-- **Transparency / masks.** Images carry no separate mask. How the game masks
-  characters (`LayMask`, `HIRES.S:833`; `MASKTAB`, `HRPARAMS.S:29`) is not yet
-  verified, so no alpha channel is produced.
-- **Mirroring** for right-facing characters (`MLAY`; `MIRROR` table).
+- **Transparency.** Images carry no separate mask, and `extract_images.py`
+  produces no alpha channel. The game derives the mask from the image while
+  drawing (each dot clears itself and its horizontal neighbours); this is now
+  modelled in `pop_hires.py` and described in `docs/run-cycle-analysis.md`.
+- **Mirroring** for right-facing characters is likewise modelled there, not in
+  the per-image PNGs.
 - **Aspect ratio.** 280 × 192 dots on a 4:3 screen are not square; PNGs are
   1 dot = 1 pixel.
 - **Anchors.** The foot/base position of each frame lives in `FRAMEDEF.S`
   (`Fcheck` bits 0–4, `Fdx`, `Fdy`), not in the image table. The frame data is
-  now extracted (`docs/animation-data.md`); composing it with the images is
-  milestone 3.
+  extracted (`docs/animation-data.md`) and composed with the images by
+  `render_run_cycle.py` (`docs/run-cycle-analysis.md`).
 
 ## Other formats
 

@@ -223,8 +223,8 @@ Derived from the table (**inferred**, arithmetic only):
 
 - Start-up is 6 frames (1–6) and moves 8+3+3 = 14 units before the cycle begins.
 - The cycle is 8 frames (7–14) and moves 5+1+2+4+5+2+3+4 = 26 units per lap,
-  on the 140-unit-wide coordinate system. A block is 14 units wide (140 / 10
-  blocks per screen; **not yet verified** against `BlockEdge` in `TABLES.S`).
+  on the 140-unit-wide coordinate system. A block is 14 units wide
+  (**confirmed** from `BlockEdge` in `TABLES.S`; see `run-cycle-analysis.md`).
 - Footstep sounds are queued on the ticks that show frames 9 and 13, four
   frames apart. `runstop` is permitted on frames 7 and 11, each two frames
   before a footstep frame.
@@ -307,10 +307,11 @@ flipping, per-block redraw counters ("redraw buffers",
 `04 Support/MakeDisk/S/COMMENTS.S:156-229`) and save-under buffers ("peel"),
 rather than full redraws. A full redraw (`DoSure`) happens only on a screen cut.
 
-Blitter internals that will matter for pixel-exact output and are
-**not yet verified** beyond their existence: the mirrored path `MLAY` used for
-right-facing characters, the mask-then-OR mode, and how character masks are
-derived (`MASKTAB`, `HRPARAMS.S:29`).
+The mask-then-OR mode and the mirrored path used for right-facing characters
+are now modelled and tested for on-screen images (`docs/run-cycle-analysis.md`,
+`tools/extract_assets/pop_hires.py`). Still **not yet verified**: cropping at
+screen edges (`CROP`), the save-under buffers, and the XOR mode used for the
+shadow.
 
 ## 4. Sound in the frame
 

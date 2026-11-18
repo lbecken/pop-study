@@ -17,6 +17,8 @@ Supported:
     dw / da expr,...        16-bit little-endian words
     hex 0A1B,2C             raw hex bytes
     do expr / else / fin    conditional assembly
+    lup expr ... --^        repeat the enclosed lines expr times
+    ]name = expr            variable: may be reassigned, evaluated in order
     lst, lstdo, tr, usr, xc ignored (listing / disk-write controls)
 
 Labels start in column 0.  `:name` labels are local to the most recent
@@ -25,7 +27,9 @@ after the operand field.
 
 Expressions are evaluated strictly left to right with no operator
 precedence, as Merlin does: `$c0+$20+6`, `-2`, `altset1-*`.  `*` in operand
-position is the current location counter.
+position is the current location counter.  A leading `#` or `<` selects the
+low byte of the value and `>` (or `#>`) the high byte.  Without a prefix a
+`db` value must fit in a byte; this is stricter than Merlin, on purpose.
 """
 
 from __future__ import annotations
@@ -117,9 +121,41 @@ def split_line(raw: str):
 
 class _Assembler:
     def __init__(self, text: str):
-        self.source = text.splitlines()
+        self.source = self._expand_lup(text.splitlines())
         self.symbols: Dict[str, int] = {}
         self.locals: Dict[Tuple[str, str], int] = {}
+
+    @staticmethod
+    def _expand_lup(raw_lines: List[str]) -> List[Tuple[int, str]]:
+        """Unroll `lup n` ... `--^` blocks.  The count must be a literal."""
+        out: List[Tuple[int, str]] = []
+        i = 0
+        while i < len(raw_lines):
+            _, op, operand, _ = split_line(raw_lines[i])
+            if op == "--^":
+                raise MerlinError("--^ without lup", i + 1)
+            if op != "lup":
+                out.append((i + 1, raw_lines[i]))
+                i += 1
+                continue
+            if not re.fullmatch(r"[0-9]+|\$[0-9A-Fa-f]+", operand):
+                raise MerlinError("lup count must be a literal, got %r" % operand, i + 1)
+            count = int(operand[1:], 16) if operand.startswith("$") else int(operand)
+            body: List[Tuple[int, str]] = []
+            j = i + 1
+            while True:
+                if j >= len(raw_lines):
+                    raise MerlinError("lup without --^", i + 1)
+                _, op2, _, _ = split_line(raw_lines[j])
+                if op2 == "lup":
+                    raise MerlinError("nested lup is not supported", j + 1)
+                if op2 == "--^":
+                    break
+                body.append((j + 1, raw_lines[j]))
+                j += 1
+            out.extend(body * count)
+            i = j + 1
+        return out
 
     # -- expression evaluation ------------------------------------------------
 
@@ -136,7 +172,13 @@ class _Assembler:
     def evaluate(self, expr: str, pc: int, scope: str) -> int:
         s = expr.strip()
         if s.startswith("#"):
+            # `#expr` = low byte, `#>expr` = high byte (as in `dfb #TABLE-$80`)
             s = s[1:]
+            if s[:1] not in ("<", ">"):
+                return self.evaluate(s, pc, scope) & 0xFF
+        if s[:1] in ("<", ">"):
+            value = self.evaluate(s[1:], pc, scope)
+            return (value >> 8) & 0xFF if s[0] == ">" else value & 0xFF
         if not s:
             raise MerlinError("empty expression")
         pos, value, pending = 0, 0, "+"
@@ -205,8 +247,7 @@ class _Assembler:
         scope = ""
         cond_stack: List[bool] = []
 
-        for idx, raw in enumerate(self.source):
-            n = idx + 1
+        for n, raw in self.source:
             try:
                 label, op, operand, comment = split_line(raw)
                 if op in ("do", "else", "fin"):
@@ -235,7 +276,7 @@ class _Assembler:
                     if not label:
                         raise MerlinError("equate without a label")
                     self._define(label, self.evaluate(operand, here, scope), scope, final)
-                    if not label.startswith(":"):
+                    if label[0] not in ":]":
                         scope = label
                     continue
 
@@ -244,6 +285,8 @@ class _Assembler:
                     self._define(label, here, scope, final)
                     if label.startswith(":"):
                         qualified = "%s%s" % (scope, label)
+                    elif label.startswith("]"):
+                        qualified = None
                     else:
                         scope = label
                         qualified = label
@@ -335,7 +378,9 @@ class _Assembler:
                         lines, label_lines)
 
     def _define(self, label: str, value: int, scope: str, final: bool):
-        if label.startswith(":"):
+        if label.startswith("]"):
+            self.symbols[label] = value          # variables may be reassigned
+        elif label.startswith(":"):
             key = (scope, label)
             if not final and key in self.locals:
                 raise MerlinError("duplicate local label %s in scope %s" % (label, scope))

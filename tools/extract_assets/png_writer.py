@@ -38,3 +38,21 @@ def scale_rows(rows: Sequence[Sequence[int]], factor: int) -> List[List[int]]:
         wide = [v for v in row for _ in range(factor)]
         out.extend([wide] * factor)
     return out
+
+
+def encode_rgb_png(rows: Sequence[Sequence[Sequence[int]]]) -> bytes:
+    """Encode rows of (r, g, b) tuples (all rows the same length) as PNG."""
+    height = len(rows)
+    width = len(rows[0]) if height else 0
+    if width == 0 or height == 0:
+        raise ValueError("cannot encode an empty image")
+    raw = bytearray()
+    for row in rows:
+        if len(row) != width:
+            raise ValueError("ragged rows")
+        raw.append(0)
+        for px in row:
+            raw.extend(px)
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)
+    return (b"\x89PNG\r\n\x1a\n" + _chunk(b"IHDR", ihdr)
+            + _chunk(b"IDAT", zlib.compress(bytes(raw), 9)) + _chunk(b"IEND", b""))
