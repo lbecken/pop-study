@@ -17,6 +17,7 @@ Supported:
     dw / da expr,...        16-bit little-endian words
     hex 0A1B,2C             raw hex bytes
     do expr / else / fin    conditional assembly
+    asc "text" / asc 'text' ASCII with the high bit set / clear
     lup expr ... --^        repeat the enclosed lines expr times
     ]name = expr            variable: may be reassigned, evaluated in order
     lst, lstdo, tr, usr, xc ignored (listing / disk-write controls)
@@ -26,8 +27,10 @@ global label.  Comments are lines starting with `*` or `;`, and anything
 after the operand field.
 
 Expressions are evaluated strictly left to right with no operator
-precedence, as Merlin does: `$c0+$20+6`, `-2`, `altset1-*`.  `*` in operand
-position is the current location counter.  A leading `#` or `<` selects the
+precedence, as Merlin does: `$c0+$20+6`, `-2`, `altset1-*`.  Operators are
++ - * / and Merlin's `.` (OR), `!` (exclusive OR) and `&` (AND).  `*` in operand
+position is the current location counter.  "x" is a character with the high
+bit set and 'x' one with it clear.  A leading `#` or `<` selects the
 low byte of the value and `>` (or `#>`) the high byte.  Without a prefix a
 `db` value must fit in a byte; this is stricter than Merlin, on purpose.
 """
@@ -39,12 +42,14 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 IGNORED_OPS = {"lst", "lstdo", "tr", "usr", "xc"}
-_LABEL_RE = re.compile(r"^(:[A-Za-z0-9_?.]+|\]?[A-Za-z_][A-Za-z0-9_?.]*)$")
+_LABEL_RE = re.compile(r"^(:[A-Za-z0-9_?]+|\]?[A-Za-z_][A-Za-z0-9_?]*)$")
 _TERM_RE = re.compile(r"""
-    \$(?P<hex>[0-9A-Fa-f]+)
+    "(?P<hichar>[^"])"
+  | '(?P<lochar>[^'])'
+  | \$(?P<hex>[0-9A-Fa-f]+)
   | %(?P<bin>[01]+)
   | (?P<dec>[0-9]+)
-  | (?P<sym>:[A-Za-z0-9_?.]+|\]?[A-Za-z_][A-Za-z0-9_?.]*)
+  | (?P<sym>:[A-Za-z0-9_?]+|\]?[A-Za-z_][A-Za-z0-9_?]*)
   | (?P<pc>\*)
 """, re.X)
 
@@ -79,6 +84,7 @@ class Assembly:
     locals: Dict[Tuple[str, str], int]    # (global scope, ":name") -> value
     lines: List[Line] = field(default_factory=list)        # lines that emit bytes
     label_lines: List[Line] = field(default_factory=list)  # lines defining an address label
+    warnings: List[str] = field(default_factory=list)      # tolerated oddities
 
     @property
     def end(self) -> int:
@@ -111,47 +117,79 @@ def split_line(raw: str):
     tail = parts[1].strip() if len(parts) > 1 else ""
     if tail.startswith(";"):
         return label, op, "", tail[1:].strip()
-    parts = tail.split(None, 1)
-    operand = parts[0] if parts else ""
-    comment = parts[1].strip() if len(parts) > 1 else ""
+    # The operand ends at the first blank that is not inside quotes.
+    end, quote = 0, ""
+    while end < len(tail):
+        ch = tail[end]
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "\"'":
+            quote = ch
+        elif ch.isspace():
+            break
+        end += 1
+    operand = tail[:end]
+    comment = tail[end:].strip()
     if comment.startswith(";"):
         comment = comment[1:].strip()
     return label, op, operand, comment
 
 
 class _Assembler:
-    def __init__(self, text: str):
-        self.source = self._expand_lup(text.splitlines())
+    def __init__(self, text: str, include=None):
+        """include: optional callable name -> text, used for `put name`."""
+        self.source = self._expand_lup(self._expand_put(text.splitlines(), include, 0))
         self.symbols: Dict[str, int] = {}
         self.locals: Dict[Tuple[str, str], int] = {}
 
     @staticmethod
-    def _expand_lup(raw_lines: List[str]) -> List[Tuple[int, str]]:
+    def _expand_put(raw_lines: List[str], include, depth: int) -> List[Tuple[int, str]]:
+        """Number the lines and splice in `put` files.  Lines from an included
+        file carry the line number of the `put` that brought them in."""
+        out: List[Tuple[int, str]] = []
+        for i, raw in enumerate(raw_lines):
+            _, op, operand, _ = split_line(raw)
+            if op != "put":
+                out.append((i + 1, raw))
+                continue
+            if include is None:
+                raise MerlinError("put %s: no include resolver given" % operand, i + 1)
+            if depth >= 4:
+                raise MerlinError("put nested too deeply", i + 1)
+            inner = _Assembler._expand_put(include(operand).splitlines(), include, depth + 1)
+            out.extend((i + 1, text) for _, text in inner)
+        return out
+
+    @staticmethod
+    def _expand_lup(numbered: List[Tuple[int, str]]) -> List[Tuple[int, str]]:
         """Unroll `lup n` ... `--^` blocks.  The count must be a literal."""
         out: List[Tuple[int, str]] = []
+        raw_lines = [text for _, text in numbered]
+        numbers = [n for n, _ in numbered]
         i = 0
         while i < len(raw_lines):
             _, op, operand, _ = split_line(raw_lines[i])
             if op == "--^":
-                raise MerlinError("--^ without lup", i + 1)
+                raise MerlinError("--^ without lup", numbers[i])
             if op != "lup":
-                out.append((i + 1, raw_lines[i]))
+                out.append((numbers[i], raw_lines[i]))
                 i += 1
                 continue
             if not re.fullmatch(r"[0-9]+|\$[0-9A-Fa-f]+", operand):
-                raise MerlinError("lup count must be a literal, got %r" % operand, i + 1)
+                raise MerlinError("lup count must be a literal, got %r" % operand, numbers[i])
             count = int(operand[1:], 16) if operand.startswith("$") else int(operand)
             body: List[Tuple[int, str]] = []
             j = i + 1
             while True:
                 if j >= len(raw_lines):
-                    raise MerlinError("lup without --^", i + 1)
+                    raise MerlinError("lup without --^", numbers[i])
                 _, op2, _, _ = split_line(raw_lines[j])
                 if op2 == "lup":
-                    raise MerlinError("nested lup is not supported", j + 1)
+                    raise MerlinError("nested lup is not supported", numbers[j])
                 if op2 == "--^":
                     break
-                body.append((j + 1, raw_lines[j]))
+                body.append((numbers[j], raw_lines[j]))
                 j += 1
             out.extend(body * count)
             i = j + 1
@@ -197,7 +235,11 @@ class _Assembler:
                 m = _TERM_RE.match(s, pos)
                 if not m:
                     raise MerlinError("cannot parse %r at %r" % (expr, s[pos:]))
-                if m.group("hex") is not None:
+                if m.group("hichar") is not None:
+                    term = ord(m.group("hichar")) | 0x80      # "x": high bit set
+                elif m.group("lochar") is not None:
+                    term = ord(m.group("lochar"))             # 'x': high bit clear
+                elif m.group("hex") is not None:
                     term = int(m.group("hex"), 16)
                 elif m.group("bin") is not None:
                     term = int(m.group("bin"), 2)
@@ -214,6 +256,12 @@ class _Assembler:
                     value -= term
                 elif pending == "*":
                     value *= term
+                elif pending == ".":
+                    value |= term
+                elif pending == "!":
+                    value ^= term
+                elif pending == "&":
+                    value &= term
                 else:
                     if term == 0:
                         raise MerlinError("division by zero in %r" % expr)
@@ -221,7 +269,7 @@ class _Assembler:
                 pos = m.end()
                 expect_term = False
             else:
-                if ch not in "+-*/":
+                if ch not in "+-*/.!&":
                     raise MerlinError("unexpected %r in %r" % (ch, expr))
                 pending = ch
                 pos += 1
@@ -246,11 +294,17 @@ class _Assembler:
         label_lines: List[Line] = []
         scope = ""
         cond_stack: List[bool] = []
+        warnings: List[str] = []
 
         for n, raw in self.source:
             try:
                 label, op, operand, comment = split_line(raw)
                 if op in ("do", "else", "fin"):
+                    if label and all(cond_stack):
+                        # a label on the directive line itself, e.g. `:x do FLAG`
+                        self._define(label, dpc if in_dum else pc, scope, final)
+                        if label[0] not in ":]":
+                            scope = label
                     if op == "do":
                         active = all(cond_stack) and self.evaluate(operand, pc, scope) != 0
                         cond_stack.append(active)
@@ -259,9 +313,12 @@ class _Assembler:
                             raise MerlinError("else without do")
                         cond_stack[-1] = not cond_stack[-1]
                     else:
-                        if not cond_stack:
-                            raise MerlinError("fin without do")
-                        cond_stack.pop()
+                        if cond_stack:
+                            cond_stack.pop()
+                        elif final:
+                            # Merlin ignores a FIN with no DO open, and the
+                            # original source has one (SPECIALK.S line 248).
+                            warnings.append("line %d: fin without do (ignored)" % n)
                     continue
                 if cond_stack and not all(cond_stack):
                     continue
@@ -336,13 +393,19 @@ class _Assembler:
                                 raise MerlinError("value %d does not fit a word" % v)
                             out += bytes(((v & 0xFF), (v >> 8) & 0xFF))
                     data = bytes(out)
+                elif op == "asc":
+                    m_asc = re.fullmatch(r'''(["'])(.*)\1''', operand)
+                    if not m_asc:
+                        raise MerlinError("unsupported asc operand %r" % operand)
+                    high = 0x80 if m_asc.group(1) == '"' else 0x00
+                    data = bytes(ord(ch) | high for ch in m_asc.group(2))
                 elif op == "hex":
                     digits = operand.replace(",", "")
                     if len(digits) % 2 or not re.fullmatch(r"[0-9A-Fa-f]*", digits):
                         raise MerlinError("bad hex data %r" % operand)
                     data = bytes.fromhex(digits)
                 else:
-                    raise MerlinError("unsupported opcode %r" % op)
+                    data = self.assemble_instruction(op, operand, here, scope, final, n)
 
                 if in_dum and data:
                     raise MerlinError("data emitted inside a dummy section")
@@ -375,7 +438,13 @@ class _Assembler:
         for a, d in chunks:
             image[a - low:a - low + len(d)] = d
         return Assembly(low, bytes(image), dict(self.symbols), dict(self.locals),
-                        lines, label_lines)
+                        lines, label_lines, warnings)
+
+    def assemble_instruction(self, op: str, operand: str, pc: int, scope: str,
+                             final: bool, line_no: int) -> bytes:
+        """Hook for subclasses that know CPU instructions.  The data-only
+        assembler refuses anything it does not understand."""
+        raise MerlinError("unsupported opcode %r" % op)
 
     def _define(self, label: str, value: int, scope: str, final: bool):
         if label.startswith("]"):
@@ -391,9 +460,13 @@ class _Assembler:
             self.symbols[label] = value
 
 
-def assemble(text: str) -> Assembly:
-    """Assemble Merlin data source text.  Raises MerlinError on anything odd."""
-    return _Assembler(text).run()
+def assemble(text: str, include=None) -> Assembly:
+    """Assemble Merlin data source text.  Raises MerlinError on anything odd.
+
+    include: optional callable mapping the operand of a `put` directive to
+    the text of that file.
+    """
+    return _Assembler(text, include).run()
 
 
 def parse_equates(text: str) -> Dict[str, int]:

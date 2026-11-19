@@ -63,3 +63,83 @@ void pop_seqfile_free(pop_seqfile *f)
         memset(f, 0, sizeof *f);
     }
 }
+
+static uint32_t u32le(const uint8_t *p)
+{
+    return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16)
+           | ((uint32_t)p[3] << 24);
+}
+
+int pop_sfxfile_load(const char *path, pop_sfxfile *out, const char **err)
+{
+    uint8_t *raw = NULL;
+    long size;
+    size_t pos, total = 0, used = 0;
+    uint16_t i;
+    FILE *fp;
+
+    memset(out, 0, sizeof *out);
+    fp = fopen(path, "rb");
+    if (!fp) return fail(err, "cannot open file", NULL, NULL);
+    if (fseek(fp, 0, SEEK_END) != 0 || (size = ftell(fp)) < 16 || size > 16 * 1024 * 1024
+        || fseek(fp, 0, SEEK_SET) != 0)
+        return fail(err, "bad file size", fp, NULL);
+    raw = malloc((size_t)size);
+    if (!raw) return fail(err, "out of memory", fp, NULL);
+    if (fread(raw, 1, (size_t)size, fp) != (size_t)size)
+        return fail(err, "read error", fp, raw);
+    fclose(fp);
+    if (memcmp(raw, POP_SFXFILE_MAGIC, 8) != 0)
+        return fail(err, "not a POPSFX01 file", NULL, raw);
+
+    out->cpu_hz = u32le(raw + 8);
+    out->count = u16le(raw + 12);
+    if (out->cpu_hz == 0 || out->count == 0)
+        return fail(err, "inconsistent header", NULL, raw);
+
+    /* first pass: validate and size */
+    pos = 16;
+    for (i = 0; i < out->count; i++) {
+        uint32_t n;
+        if (pos + 8 > (size_t)size) return fail(err, "truncated effect header", NULL, raw);
+        n = u32le(raw + pos + 4);
+        if (n > ((size_t)size - pos - 8) / 4) return fail(err, "truncated toggle list", NULL, raw);
+        total += n;
+        pos += 8 + (size_t)n * 4;
+    }
+    out->effects = calloc(out->count, sizeof *out->effects);
+    out->storage = calloc(total ? total : 1, sizeof *out->storage);
+    if (!out->effects || !out->storage) {
+        pop_sfxfile_free(out);
+        return fail(err, "out of memory", NULL, raw);
+    }
+    pos = 16;
+    for (i = 0; i < out->count; i++) {
+        uint32_t n = u32le(raw + pos + 4), j, last = 0;
+        out->effects[i].total_cycles = u32le(raw + pos);
+        out->effects[i].count = n;
+        out->effects[i].toggles = out->storage + used;
+        for (j = 0; j < n; j++) {
+            uint32_t c = u32le(raw + pos + 8 + (size_t)j * 4);
+            if (c < last || c > out->effects[i].total_cycles) {
+                pop_sfxfile_free(out);
+                return fail(err, "toggle list not ascending within the effect", NULL, raw);
+            }
+            out->storage[used + j] = c;
+            last = c;
+        }
+        used += n;
+        pos += 8 + (size_t)n * 4;
+    }
+    free(raw);
+    return 0;
+}
+
+void pop_sfxfile_free(pop_sfxfile *f)
+{
+    if (f) {
+        free(f->effects);
+        free(f->storage);
+        memset(f, 0, sizeof *f);
+    }
+}

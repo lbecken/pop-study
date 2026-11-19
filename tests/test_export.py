@@ -37,3 +37,19 @@ def test_seqtable_bin_header_and_names(tmp_path):
     assert defs["POP_SEQNO_RUNNING"] == "84"
     assert defs["POP_SEQNO_MRAISE"] == "114"
     assert len(set(defs.values())) == len(defs)        # one name per number
+
+    sfx = (tmp_path / "sfx.bin").read_bytes()
+    assert sfx[:8] == b"POPSFX01"
+    cpu_hz, count, reserved = struct.unpack_from("<IHH", sfx, 8)
+    assert (cpu_hz, count, reserved) == (1020484, 20, 0)
+    pos, flips = 16, []
+    for _ in range(count):
+        total, n = struct.unpack_from("<II", sfx, pos)
+        cycles = struct.unpack_from("<%dI" % n, sfx, pos + 8)
+        assert list(cycles) == sorted(cycles) and (not cycles or cycles[-1] <= total)
+        flips.append(n)
+        pos += 8 + 4 * n
+    assert pos == len(sfx)
+    assert flips[9] == 3 and flips[8] == 80            # Footstep, GotKey
+    names = (tmp_path / "pop_sfxnames.h").read_text()
+    assert "#define POP_SFX_FOOTSTEP          9" in names

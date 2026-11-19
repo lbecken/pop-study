@@ -333,7 +333,8 @@ shadow.
   pose and nothing fast is moving, then runs the player to completion
   (`TOPCTRL.S:1388-1466`).
 
-Observation (**inferred** from reading `tone`, not yet simulated): the delay is
-not linear in the 16-bit pitch value. The inner loop counts the low byte and the
-middle loop repeats it high-byte times, so "pitch 1000" (`$03E8`) is three
-passes of 232, not 1000 iterations. Exact frequencies need a cycle count.
+The delay is not linear in the 16-bit pitch value: the inner loop counts the
+low byte and the middle loop repeats it high-byte times, so "pitch 1000"
+(`$03E8`) is three passes of 232. This and every effect's exact timing are now
+**confirmed** by running the original routine in a 6502 simulator; see
+`docs/audio-analysis.md`.

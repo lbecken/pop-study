@@ -45,6 +45,11 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | 2026-11-19 | pytest, with original | Python 3.13, Linux | 113 passed |
 | 2026-11-19 | pytest, without original | Python 3.13, Linux | 100 passed, 13 skipped |
 | 2026-11-19 | `render_room.py`, levels 0–14 | – | 299 screens, no errors, no writes past column 39, no map inconsistencies |
+| 2026-11-19 | pytest, with original | Python 3.13, Linux | 131 passed |
+| 2026-11-19 | pytest, without original | Python 3.13, Linux | 114 passed, 17 skipped |
+| 2026-11-19 | CTest, with original | GCC 13.3, `-Werror`, ASan + UBSan | 7 of 7 passed |
+| 2026-11-19 | CTest, with original | Clang 18.1, `-Werror`; three test programs also under valgrind | 7 of 7 passed, no valgrind errors |
+| 2026-11-19 | CTest, without original | GCC 13.3, `-Werror` | 3 of 3 passed |
 
 ## Kinds of evidence
 
@@ -56,7 +61,8 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | Structural checks | sequence table: every label, entry and branch target on an instruction boundary | strong |
 | Internal symmetry | right-facing run is the exact dot mirror of the left-facing run | strong for the position and mirror code together |
 | Physical plausibility | supporting foot stays within 2 units for each stance; feet meet the floor line | moderate |
-| Two implementations | C interpreter vs Python decoder, 45,600 ticks identical | catches slips, not a shared misreading |
+| Two implementations | C interpreter vs Python decoder, 45,600 ticks identical; C effect renderer vs Python, 26,204 samples | catches slips, not a shared misreading |
+| Executing the original | sound effects obtained by running the assembled `SOUND.S` in a 6502 simulator; timing equals the hand-derived loop formula | strong for behaviour; depends on the simulator's cycle table |
 | Mutation check | a deliberately wrong build makes the comparison fail | shows the comparison has teeth |
 | Cross-screen continuity | rendered screens placed by the level map line up at their edges | moderate: wrong piece offsets or neighbour rules would show as seams |
 | Visual inspection | contact sheets, run-cycle sheets, rendered rooms | weak, by eye |
@@ -66,8 +72,9 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 - **Nothing has been compared with the running game.** The repository has no
   disk image and no assembled binary. Every result above is consistency with
   the source and with itself.
-- The project's Merlin data assembler has not been compared with an
-  independent assembler (unknown P1).
+- The project's assembler and 6502 simulator have not been compared with
+  independent ones (unknowns P1, P5).
+- No audio has been compared with a real machine or an emulator.
 - Real frame timing (unknown T1).
 - macOS and Windows builds of the port.
 

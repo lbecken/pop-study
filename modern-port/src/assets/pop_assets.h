@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "pop_seq.h"
+#include "pop_sfx.h"
 
 /* seqtable.bin layout (all integers little-endian):
  *   0   8 bytes  magic "POPSEQT1"
@@ -33,5 +34,27 @@ typedef struct pop_seqfile {
  * NULL, points *err at a static description. */
 int pop_seqfile_load(const char *path, pop_seqfile *out, const char **err);
 void pop_seqfile_free(pop_seqfile *f);
+
+/* sfx.bin layout (all integers little-endian):
+ *   0   8 bytes  magic "POPSFX01"
+ *   8   u32      CPU clock in Hz used for the cycle counts
+ *   12  u16      number of effects
+ *   14  u16      reserved, 0
+ *   then, per effect:
+ *       u32      total cycles of the PLAYBACK call
+ *       u32      number of speaker accesses n
+ *       n x u32  cycle of each access, ascending
+ */
+#define POP_SFXFILE_MAGIC "POPSFX01"
+
+typedef struct pop_sfxfile {
+    uint32_t  cpu_hz;
+    uint16_t  count;
+    pop_sfx  *effects;   /* count entries; owned */
+    uint32_t *storage;   /* all toggle lists; owned */
+} pop_sfxfile;
+
+int pop_sfxfile_load(const char *path, pop_sfxfile *out, const char **err);
+void pop_sfxfile_free(pop_sfxfile *f);
 
 #endif /* POP_ASSETS_H */

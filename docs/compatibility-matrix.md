@@ -25,7 +25,11 @@ Status of each behaviour in the reconstruction.
 | World | Level blueprint and initial states (`SETINITIALS`) | model only | `tools/extract_assets/pop_level.py` | |
 | World | Collisions, moving objects, pressure-plate links | missing | – | |
 | Opponents | AI, sword fighting | missing | – | |
-| Audio | Sound effects | missing | – | all parameters are in `SOUND.S` |
+| Audio | Sound-effect queue (`ADDSOUND`, `ZEROSOUND`, play order) | faithful, unverified | `modern-port/src/core/pop_sound.c` | |
+| Audio | Sound-effect waveforms | faithful timing, approximate sound, unverified | `modern-port/src/audio/pop_sfx.c`, generated `sfx.bin` | flip times come from executing the original code; output is the 1-bit signal, not speaker acoustics |
+| Audio | Effects delaying the frame they play in | missing | – | decision D2 |
+| Audio | Audio output device | missing | – | SDL3 backend, milestone 7 |
+| Audio | `GTONE`, `WHOOP`, cheat-timer click | missing | – | |
 | Audio | Music | missing | – | player source present, score data absent from the repository |
 | Timing | Frame cadence | missing | – | decision D2; original has no fixed rate |
 | Platform | SDL3 window, input, audio | missing | – | |

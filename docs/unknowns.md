@@ -9,7 +9,7 @@ Items move to the relevant document once resolved.
 | --- | --- | --- |
 | T1 | Real duration of a game frame and its variance. Source says only "approx. 11 fps" and 725 frames per game minute (`SPECIALK.S:68-70`). | Measure in an emulator with a disk image, or cycle-count a representative frame. |
 | T2 | Whether any per-frame delay hides in routines not yet read (`keys`, `controller`, `fast`). The `MainLoop` body and `PAGEFLIP` have none. | Read `SPECIALK.S` `KEYS`, `GRAFIX.S` `controller`, `FRAMEADV.S` `FAST`. |
-| T3 | Exact frequency and length of each sound effect. | Cycle-count `tone` (`SOUND.S:331-352`) for each (pitch, duration) pair. |
+| T3 | `WHOOP` and `GTONE` timing (the effects in `SOUND.S` are resolved: `docs/audio-analysis.md`). | Assemble `GRAFIX.S` (needs the 65C02 `tsb`) and run them in the simulator. |
 | T4 | How long each song freezes the game. | Needs the song data (see A1). |
 
 ## Graphics
@@ -38,7 +38,8 @@ Items move to the relevant document once resolved.
 | # | Question | Next step |
 | --- | --- | --- |
 | A1 | Music score data is not in the repository. | Decide whether to source it from a disk image you own (decision D4). |
-| A2 | Song data format. | Derivable from `04 Support/MakeDisk/S/MSYS.S` (`NEWNOTE`, lines 275-463). Not yet analysed. |
+| A2 | Song data format and the player's synthesis method. | Derivable from `04 Support/MakeDisk/S/MSYS.S` (`NEWNOTE`, lines 275-463). Not yet analysed. `MSYS.S` should assemble with `mos6502.py` (not yet tried), after which it can be run on any song table. |
+| A4 | How an Apple II speaker and case colour the 1-bit signal, if previews should sound like the machine. | Outside the source; would need a measured response or a recording. |
 | A3 | Whether `MSYS.S` matches the player on the shipped 3.5" disk. | Compare against a disk image. |
 
 ## Engine
@@ -66,6 +67,8 @@ Items move to the relevant document once resolved.
 
 | # | Question | Next step |
 | --- | --- | --- |
-| P1 | Whether the source assembles unmodified with a modern Merlin-compatible assembler. This would give a byte-exact reference binary and an oracle for unit tests. The project's own data assembler handles `FRAMEDEF.S` and `SEQTABLE.S` and its output fits the declared memory areas, but has not been compared with an independent assembler or a disk image. | Try Merlin32 on `SEQTABLE.S` and compare bytes with `merlin_data.py`. |
+| P1 | Byte-exactness of the project's assembler. It assembles 18 of the 22 original modules and each fits its memory slot (`docs/memory-map.md`), but the bytes have not been compared with an independent assembler or a disk image. | Try Merlin32 on a few modules and compare; or compare with a disk image. |
+| P4 | Four modules do not assemble: `GRAFIX.S` (65C02 `tsb`), `SPECIALK.S` (`rev`), `UNPACK.S` (`mac` macros), `BOOT.S` (`sav`). | Add those features to `mos6502.py` / `merlin_data.py`. |
+| P5 | The 6502 simulator is verified only for the instructions its tests exercise. | Run a public 6502 functional test suite against it before using it as an oracle for larger routines. |
 | P2 | Git history of the original repository was not examined (shallow clone). | `git fetch --depth=1000` and review. |
 | P3 | The author's 1989 technical document referenced in the README is not in the repository. | Read it at jordanmechner.com/library; cite, do not copy. |

@@ -12,12 +12,12 @@ tools/
   extract_assets/     Python: image tables, Merlin data assembler, frame/sequence
                       decoders, blitter model, run-cycle renderer, level parser,
                       room renderer
-  extract_audio/      Python: sound-effect simulator (later)
+  extract_audio/      Python: sound effects by running the original sound module
 modern-port/
   CMakeLists.txt
   src/core/           C17, no I/O, no SDL: animation, player, collision, rooms, enemies
   src/assets/         loaders for generated data files
-  src/audio/          tone model + SDL3 backend (later)
+  src/audio/          effect renderer (flip list to PCM); SDL3 backend later
   src/platform/       SDL3 window, input, renderer (later)
   tools/              command-line helpers
   tests/              C tests, C-versus-Python comparisons, later replay fixtures
@@ -27,7 +27,8 @@ build/                generated, git-ignored
   data/               frames.json, sequences.json
   run_cycle/          timeline.png, pivot.png, mask_demo.png, run_cycle.json
   rooms/              levelNN/screenSS.png and .json, level.json, overview.png
-  port/               CMake build tree; port/data/ holds seqtable.bin
+  audio/              sfx.json, sfx.csv, sfx_NN_name.wav, sfx_all.wav
+  port/               CMake build tree; port/data/ holds seqtable.bin, sfx.bin
 ```
 
 The original checkout stays outside this repository and is never written to.
@@ -41,8 +42,8 @@ The original checkout stays outside this repository and is never written to.
 | 3 | Run frames drawn at their real positions by a byte-level blitter model (mask and mirror modes) with ports of the position routines; timeline and pivot sheets; `docs/run-cycle-analysis.md` | 90 pytest cases; blitter tables equal `HRTABLES.S` byte for byte; right-facing run is an exact mirror; supporting foot stays within 2 units per stance | **done** |
 | 4 | First C17 code: `ADDCHARX`, `JUMPSEQ`, `GETSEQ`, `ANIMCHAR` in `modern-port/src/core`; CMake build that generates `seqtable.bin` from the user's checkout; `docs/port/sequence-interpreter.md` | 4 CTest tests: synthetic unit tests, loader tests, original-table tests, and 45,600 ticks compared C against Python; GCC and Clang with `-Werror`, ASan/UBSan, valgrind | **done** |
 | 5 | Level blueprint parser; Python model of the full-screen redraw (`SURE` and the list blitters) rendering every screen to PNG; `docs/level-format.md`, `docs/room-rendering.md` | 113 pytest cases; all 299 reachable screens of 15 levels build and draw; screens line up across edges when laid out by the level map. Not compared with screenshots (none available) | **done** |
-| 6 | Sound: cycle-counted `tone` simulator → WAV + JSON; `docs/audio-analysis.md` | Frequencies checked by hand for two effects | proposed next |
-| 7 | SDL3 shell: window, fixed timestep, nearest-neighbour scaling, plays the run cycle with keyboard input | Manual + deterministic headless trace | |
+| 6 | Sound effects by executing the original `SOUND.S`: a 6502 assembler and cycle-counting simulator, flip lists as JSON/CSV, WAV previews; C sound queue and effect renderer; `docs/audio-analysis.md`. Side result: 18 of 22 original modules assemble and fit their memory slots | 131 pytest cases; 7 CTest tests incl. C renderer against Python, sample by sample; simulator timing equals the hand-derived loop formula for every effect | **done** |
+| 7 | SDL3 shell: window, fixed timestep, nearest-neighbour scaling, plays the run cycle with keyboard input; SDL3 audio backend for the effect renderer | Manual + deterministic headless trace. Needs SDL3, which is not installed in the current environment | proposed next |
 | 8 | Player control and physics: `GenCtrl` standing/running/turning/jumping, `gravity`, `checkfloor` | Input replay → state trace fixtures | |
 | 9 | Collision, then TROBs/MOBs, then opponents and sword fighting, one subsystem per milestone | Replay traces per subsystem | |
 | 10 | Blitter fidelity: masks, mirroring, colour model | Pixel comparison with emulator captures | |
@@ -83,9 +84,11 @@ songs; the port stays silent where music would play unless the user supplies
 song tables extracted from their own disk image.
 *Alternative:* leave music out entirely.
 
-**D5. Test oracle.**
-*Default:* hand-derived expectations from reading the source, plus emulator
-comparison when a disk image is available.
-*Alternative (recommended if it works, see unknown P1):* assemble the original
-modules with a Merlin-compatible assembler and run individual routines in a
-6502 simulator, giving exact reference outputs for every ported routine.
+**D5. Test oracle.** *Now available in part.* The project's own assembler
+and 6502 simulator (`tools/extract_assets/mos6502.py`) assemble 18 of the 22
+original modules and run their routines; milestone 6 uses this for sound.
+*Default from here on:* for each routine ported to C, run the original in the
+simulator and compare, in addition to hand-derived tests. The simulator is new
+code with documented cycle counts; it has not itself been checked against an
+independent emulator, and emulator comparison of the whole game still needs a
+disk image.

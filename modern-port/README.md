@@ -9,6 +9,8 @@ checkout of the original source and is never stored in this repository.
 | Subsystem | State |
 | --- | --- |
 | Sequence interpreter (`ADDCHARX`, `JUMPSEQ`, `GETSEQ`, `ANIMCHAR`) | ported, tested |
+| Sound-effect queue (`ADDSOUND`, `ZEROSOUND`, play order) | ported, tested |
+| Sound-effect rendering (speaker flip list to PCM) | written, tested against the Python renderer; no output device yet |
 | Everything else | not started |
 
 There is no runnable game yet and no SDL3 dependency yet.
@@ -18,8 +20,9 @@ See `../docs/port/` for per-subsystem notes and `../docs/milestones.md` for the 
 
 ```
 src/core/     game rules; no I/O, no SDL
+src/audio/    effect data to PCM; no I/O, no SDL
 src/assets/   loaders for generated data files
-tools/        command-line helpers (pop_seqdump)
+tools/        command-line helpers (pop_seqdump, pop_sfxdump)
 tests/        C tests and the C-versus-Python comparison
 ```
 
@@ -56,6 +59,6 @@ Options: `-DPOP_WERROR=ON` (warnings as errors), `-DPOP_SANITIZE=ON`
 
 | Platform | Compiler | Result |
 | --- | --- | --- |
-| Linux x86-64 (Ubuntu 24.04) | GCC 13.3, with `-Werror` and ASan/UBSan | all 4 tests pass |
-| Linux x86-64 (Ubuntu 24.04) | Clang 18.1, with `-Werror`; original-data test also run under valgrind with no errors | all 4 tests pass |
+| Linux x86-64 (Ubuntu 24.04) | GCC 13.3, with `-Werror` and ASan/UBSan | all 7 tests pass |
+| Linux x86-64 (Ubuntu 24.04) | Clang 18.1, with `-Werror`; three test programs also run under valgrind with no errors | all 7 tests pass |
 | macOS, Windows | – | **not tested**. The code is plain C17 with no platform calls, and the CMake file has an MSVC branch, but neither has been built. |

@@ -87,6 +87,44 @@ How `ctrlsubs`, `msys` and the bank-1 data share `$D000-$DFFF` between the two
 4K banks is **not yet verified** (next step: read `MISC.S` `MOVEAUXLC` and the
 bank switching in `GRAFIX.S:1589-1660`).
 
+## Assembled extents
+
+**Confirmed** by assembling the original modules with the project's own
+assembler (`tools/extract_assets/mos6502.py`). Each fits below the module that
+follows it, several with only a byte or two to spare, which is also evidence
+that the assembler reproduces the original instruction sizes. The byte values
+have not been compared with an independent assembler or a disk image.
+
+| Module | Extent | Bytes | Next module starts |
+| --- | --- | --- | --- |
+| `TABLES.S` | `$0E00-$1288` | 1161 | `frameadv` `$1290` |
+| `FRAMEADV.S` | `$1290-$1FA9` | 3354 | `topctrl` `$2000` |
+| `TOPCTRL.S` | `$2000-$27F8` | 2041 | frame definitions `$2800` |
+| `FRAMEDEF.S` | `$2800-$2FD0` | 2001 | `seqtab` `$3000` |
+| `SEQTABLE.S` | `$3000-$39F1` | 2546 | `ctrl` `$3A00` |
+| `CTRL.S` | `$3A00-$44FE` | 2815 | `coll` `$4500` |
+| `COLL.S` | `$4500-$4BF1` | 1778 | `gamebg` `$4C00` |
+| `GAMEBG.S` | `$4C00-$5215` | 1558 | `auto` `$5400` |
+| `AUTO.S` | `$5400-$5DC0` | 2497 | `redbufs` `$5E00` |
+| `CTRLSUBS.S` | `$D000-$D8FE` | 2303 | `specialk` `$D900` |
+| `VERSION.S` | `$DFD8-$DFF4` | 29 | `subs` `$E000` |
+| `SUBS.S` | `$E000-$E965` | 2406 | `sound` `$EA00` |
+| `SOUND.S` | `$EA00-$EB2E` | 303 | `mover` `$EE00` |
+| `MOVER.S` | `$EE00-$F863` | 2660 | `misc` `$F900` |
+| `MISC.S` | `$F900-$FE2B` | 1324 | end of memory |
+| `HRTABLES.S` (main) | `$E000-$E9AF` | 2480 | `unpack` `$EA00` |
+| `HIRES.S` (main) | `$EE00-$F843` | 2628 | `master` `$F880` |
+| `MASTER.S` (main) | `$F880-$FFF5` | 1910 | CPU vectors `$FFFA` |
+
+`MISC.S` runs past `debugs = $FC00` (`GAMEEQ.S:39`); the debug module is not in
+the game directory and is presumably absent from the release build
+(**inferred**).
+
+Four modules do not assemble yet because they use features the assembler does
+not implement: `GRAFIX.S` (a 65C02 `tsb` instruction), `SPECIALK.S` (`rev`
+strings), `UNPACK.S` (macros) and `BOOT.S` (`sav`). The original source also
+contains one stray `fin` (`SPECIALK.S:248`), which Merlin ignores.
+
 ## Hardware I/O used
 
 | Address | Use | Source |
