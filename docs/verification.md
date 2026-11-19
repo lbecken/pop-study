@@ -42,6 +42,9 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | 2026-11-18 | CTest, without original | Clang 18.1, `-Werror` | 2 of 2 passed (original-data tests not built) |
 | 2026-11-18 | `test_seq_original` under valgrind | Clang 18.1 build | no errors, no leaks |
 | 2026-11-18 | `extract_animdata.py` | – | 0 structural errors, 2 naming findings |
+| 2026-11-19 | pytest, with original | Python 3.13, Linux | 113 passed |
+| 2026-11-19 | pytest, without original | Python 3.13, Linux | 100 passed, 13 skipped |
+| 2026-11-19 | `render_room.py`, levels 0–14 | – | 299 screens, no errors, no writes past column 39, no map inconsistencies |
 
 ## Kinds of evidence
 
@@ -55,7 +58,8 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | Physical plausibility | supporting foot stays within 2 units for each stance; feet meet the floor line | moderate |
 | Two implementations | C interpreter vs Python decoder, 45,600 ticks identical | catches slips, not a shared misreading |
 | Mutation check | a deliberately wrong build makes the comparison fail | shows the comparison has teeth |
-| Visual inspection | contact sheets, run-cycle sheets | weak, by eye |
+| Cross-screen continuity | rendered screens placed by the level map line up at their edges | moderate: wrong piece offsets or neighbour rules would show as seams |
+| Visual inspection | contact sheets, run-cycle sheets, rendered rooms | weak, by eye |
 
 ## Not verified
 

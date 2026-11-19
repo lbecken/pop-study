@@ -22,6 +22,8 @@ licensing position this policy is based on.
 | `docs/graphics-formats.md` | Image-table format and the visual verification procedure |
 | `docs/animation-data.md` | Frame-definition and sequence formats, extraction checks, findings |
 | `docs/run-cycle-analysis.md` | The run, tick by tick: positions, foot contacts, timing, transitions |
+| `docs/level-format.md` | Level blueprint layout, piece ids, initial states |
+| `docs/room-rendering.md` | How a screen is assembled from piece sections; order, lists, special pieces |
 | `docs/port/` | Per-subsystem port notes: interface, pseudocode, pitfalls, tests |
 | `docs/verification.md` | Test commands, recorded results, what has not been verified |
 | `docs/compatibility-matrix.md` | Which behaviours are faithful, approximate, missing or unverified |
@@ -29,7 +31,7 @@ licensing position this policy is based on.
 | `docs/unknowns.md` | Open questions, each with the next inspection step |
 | `docs/milestones.md` | Milestone plan, directory layout, decisions awaiting input |
 | `assets/manifest.json` | Hashed inventory of all 582 original files (metadata only) |
-| `tools/extract_assets/` | Image-table decoder, Merlin data assembler, frame/sequence extractor, blitter model, run-cycle renderer, manifest generator (Python 3, stdlib only) |
+| `tools/extract_assets/` | Image-table decoder, Merlin data assembler, frame/sequence extractor, blitter model, run-cycle renderer, level parser, room renderer, manifest generator (Python 3, stdlib only) |
 | `tests/` | pytest suite |
 
 ## Quick start
@@ -51,6 +53,10 @@ python3 tools/extract_assets/render_run_cycle.py --source ../pop-original --out 
 ```
 
 ```bash
+python3 tools/extract_assets/render_room.py --source ../pop-original --out build/rooms --level 1
+```
+
+```bash
 python3 tools/extract_assets/make_manifest.py --source ../pop-original --out assets/manifest.json
 ```
 
@@ -58,7 +64,7 @@ python3 tools/extract_assets/make_manifest.py --source ../pop-original --out ass
 POP_SOURCE_DIR=../pop-original python3 -m pytest tests -q
 ```
 
-Without `POP_SOURCE_DIR` the ten integration tests are skipped and only the
+Without `POP_SOURCE_DIR` the 13 integration tests are skipped and only the
 synthetic-data unit tests run. `build/` is git-ignored.
 
 The C port:
@@ -79,9 +85,11 @@ ctest --test-dir build/port --output-on-failure
 
 Done: milestone 1 (inventory, image-table extraction), milestone 2 (frame
 definitions and animation sequences extracted and cross-checked) and milestone
-3 (run cycle drawn at its real screen positions and analysed) and milestone 4
+3 (run cycle drawn at its real screen positions and analysed), milestone 4
 (the sequence interpreter in C17, tested against the original table and
-against the Python decoder). There is no runnable game yet. See
+against the Python decoder) and milestone 5 (level parser and a Python model
+of the full-screen redraw that renders every screen of every level). There is
+no runnable game yet. See
 `docs/milestones.md`.
 
 ## Conventions

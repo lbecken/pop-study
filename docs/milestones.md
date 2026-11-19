@@ -10,8 +10,8 @@ docs/                 analysis; one file per topic, citations to the original
 assets/manifest.json  hashed inventory of the original (metadata only)
 tools/
   extract_assets/     Python: image tables, Merlin data assembler, frame/sequence
-                      decoders, blitter model, run-cycle renderer; later level
-                      parser
+                      decoders, blitter model, run-cycle renderer, level parser,
+                      room renderer
   extract_audio/      Python: sound-effect simulator (later)
 modern-port/
   CMakeLists.txt
@@ -26,6 +26,7 @@ build/                generated, git-ignored
   extracted/          decoded images
   data/               frames.json, sequences.json
   run_cycle/          timeline.png, pivot.png, mask_demo.png, run_cycle.json
+  rooms/              levelNN/screenSS.png and .json, level.json, overview.png
   port/               CMake build tree; port/data/ holds seqtable.bin
 ```
 
@@ -39,8 +40,8 @@ The original checkout stays outside this repository and is never written to.
 | 2 | `FRAMEDEF.S` and `SEQTABLE.S` assembled and decoded to JSON: frames, swords, sequences, per-tick dx/dy, traces; `docs/animation-data.md` | 51 pytest cases; 114 entry points resolve; all labels and branches aligned; run cycle sums to 26; every referenced image exists | **done** |
 | 3 | Run frames drawn at their real positions by a byte-level blitter model (mask and mirror modes) with ports of the position routines; timeline and pivot sheets; `docs/run-cycle-analysis.md` | 90 pytest cases; blitter tables equal `HRTABLES.S` byte for byte; right-facing run is an exact mirror; supporting foot stays within 2 units per stance | **done** |
 | 4 | First C17 code: `ADDCHARX`, `JUMPSEQ`, `GETSEQ`, `ANIMCHAR` in `modern-port/src/core`; CMake build that generates `seqtable.bin` from the user's checkout; `docs/port/sequence-interpreter.md` | 4 CTest tests: synthetic unit tests, loader tests, original-table tests, and 45,600 ticks compared C against Python; GCC and Clang with `-Werror`, ASan/UBSan, valgrind | **done** |
-| 5 | Level blueprint parser and a static room render to PNG (needs `BGDATA.S`, `FRAMEADV.S` analysis) | Compare against trusted screenshots | proposed next |
-| 6 | Sound: cycle-counted `tone` simulator → WAV + JSON; `docs/audio-analysis.md` | Frequencies checked by hand for two effects | |
+| 5 | Level blueprint parser; Python model of the full-screen redraw (`SURE` and the list blitters) rendering every screen to PNG; `docs/level-format.md`, `docs/room-rendering.md` | 113 pytest cases; all 299 reachable screens of 15 levels build and draw; screens line up across edges when laid out by the level map. Not compared with screenshots (none available) | **done** |
+| 6 | Sound: cycle-counted `tone` simulator → WAV + JSON; `docs/audio-analysis.md` | Frequencies checked by hand for two effects | proposed next |
 | 7 | SDL3 shell: window, fixed timestep, nearest-neighbour scaling, plays the run cycle with keyboard input | Manual + deterministic headless trace | |
 | 8 | Player control and physics: `GenCtrl` standing/running/turning/jumping, `gravity`, `checkfloor` | Input replay → state trace fixtures | |
 | 9 | Collision, then TROBs/MOBs, then opponents and sword fighting, one subsystem per milestone | Replay traces per subsystem | |

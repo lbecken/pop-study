@@ -24,8 +24,11 @@ Items move to the relevant document once resolved.
 | G6 | Whether the title/prologue/epilog screens exist among the `PAC.*` files. | Decode after G5. |
 | G7 | Why `04 Support/DRAZ/IP/IMG.CHTABLE3` does not parse. | Hex-inspect; may be an older table layout. |
 | G8 | Contents of trailing bytes in image-table files. | Dump and compare with neighbouring image data. |
-| G9 | Which opponent each `IMG.CHTAB4.*` set belongs to, by code rather than by file name. | Trace `ch4trk` / `CHset` selection (`MASTER.S:524-591`) back to the per-level table. |
+| G9 | Which file each `chset` number 0–5 names. The per-level table is `MISC.S:774` (levels 0–2: 0; 3: 1; 4, 5, 7–11: 2; 6: 3; 12: 4; 13, 14: 5). Matching by what is known of the game gives 0 and 2 = guard, 1 = skeleton, 3 = fat guard, 4 = shadow, 5 = vizier, but that mapping is **inferred**, not read from the source. | Compare disk track contents with the files, given a disk image. |
 | G11 | What uses `IMG.CHTAB6.B`. The altset2 frames reference chtable6 images up to 103, which only `IMG.CHTAB6.A` has (`docs/animation-data.md`). | Trace where `chtable6` is loaded (`MASTER.S` stage 2, side A vs side B) and which scenes run from each. |
+| G16 | Background set 2 (levels 7, 8, 9, 12, 13) is loaded from a different track than set 0 but the game directory has one dungeon pair; rendered here with the same files. `04 Support/DRAZ/IP` holds other variants (`IMG.BGTAB.DUN1/2`, `RED1/2`, `TWR1/2`). | Compare with a disk image; parse the variant files and see which the level-7 piece numbers fit. |
+| G17 | Partial redraw: redraw buffers, wipes and how `FAST` chooses what to redraw. | Read `RedBlockFast` (`FRAMEADV.S:381-475`) and the marking routines in `CTRLSUBS.S`. |
+| G18 | The mirror: piece id 13 is in no level file. | Read the `mirlevel` handling in `TOPCTRL.S` and `MOVER.S`. |
 | G13 | Cropping at screen edges and against foreground (`CROP`, `cropchar`, the `CU/CD/CL/CR` cut-offs). Not modelled; the blitter model refuses off-screen images. | Read `CROP` (`HIRES.S:375-507`) and `CROPCHAR` (`CTRLSUBS.S:1313`). |
 | G14 | The XOR draw mode used for the shadow and the one-dot shift used for guards (`DrawEored`, `DrawShifted`, `GAMEBG.S:442-458`). | Read `LayXOR` / `MLayXOR` in `HIRES.S`. |
 | G15 | Save-under ("peel") buffers: `LAYRSAVE`, `PEEL`, and the two-frame delay. | Read `HIRES.S:542-639`, `GRAFIX.S` `SNGPEEL`/`ADDPEEL`. |
@@ -42,6 +45,7 @@ Items move to the relevant document once resolved.
 
 | # | Question | Next step |
 | --- | --- | --- |
+| E16 | Level data semantics not yet read: `BLUETYPE` bit 5 (`reqmask`) and bits 6–7 (`secmask`), the guard start arrays in `INFO`, and how the link list is walked when a plate is pressed. | Read `MOVER.S` `PUSHPP` and `AUTO.S` `ADDGUARD`. |
 | E1 | Collision system (`checkbarr`, `collisions`, the `CD*` buffers). | Read `COLL.S` from the top. |
 | E2 | `gravity` / `addfall` / `checkfloor` and fall damage. | Read `CTRL.S` / `CTRLSUBS.S`. |
 | E3 | Opponent AI (`ShadCtrl`, `AutoCtrl`, `guardprog`). | Read `AUTO.S`. |

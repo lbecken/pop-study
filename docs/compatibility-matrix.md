@@ -18,10 +18,12 @@ Status of each behaviour in the reconstruction.
 | Rendering | Character position (`SETUPCHAR`, `GETBASEX`, `CVTX`) | model only | `tools/extract_assets/pop_charpos.py` | |
 | Rendering | Mask blitter, normal and mirrored, on-screen images | model only | `tools/extract_assets/pop_hires.py` | no cropping |
 | Rendering | Cropping, save-under buffers, XOR and other draw modes | missing | – | unknowns G13–G15 |
-| Rendering | Backgrounds, redraw buffers, page flipping | missing | – | |
+| Rendering | Full-screen background redraw (`SURE`), background/mid/foreground lists, fast blitters | model only | `tools/extract_assets/pop_room.py`, `pop_hires.py` | all 299 screens render; no characters |
+| Rendering | Partial redraw, redraw buffers, wipes, page flipping | missing | – | unknown G17 |
 | Rendering | Colour | missing | – | decision D3 |
 | Player | Input, control, gravity, falling | missing | – | |
-| World | Levels, collisions, moving objects | missing | – | |
+| World | Level blueprint and initial states (`SETINITIALS`) | model only | `tools/extract_assets/pop_level.py` | |
+| World | Collisions, moving objects, pressure-plate links | missing | – | |
 | Opponents | AI, sword fighting | missing | – | |
 | Audio | Sound effects | missing | – | all parameters are in `SOUND.S` |
 | Audio | Music | missing | – | player source present, score data absent from the repository |

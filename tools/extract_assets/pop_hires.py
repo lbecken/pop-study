@@ -2,13 +2,19 @@
 
 New code for the pop-study project; contains no original code or data.
 
-It models only what milestone 3 needs: drawing a character image that lies
-entirely on screen, in "mask" mode, either normally or mirrored.  Cropping
-(the CROP routine), the peel/save-under buffers and the other opacity modes
-are not modelled; an image that would need cropping raises CropNotModelled.
+It models: drawing a character image that lies entirely on screen in "mask"
+mode, normally or mirrored (lay_mask); the general shifted blitter for
+on-screen images (lay_gen); and the byte-aligned fast routines used for
+backgrounds (fastlay, fastmask).  Cropping (the CROP routine), the
+peel/save-under buffers and the XOR mode are not modelled; an image that
+would need cropping raises CropNotModelled.
 
 Evidence (original repository @ 25243550, "01 POP Source/Source"):
 
+    LayGen           HIRES.S 681-824      AND / OR / store with dot shift
+    FASTLAY          HIRES.S 1740-1890    byte-aligned AND / OR / store / XOR
+    FASTMASK         HIRES.S 1892-1955    byte-aligned mask
+    CLS              HIRES.S 204-222      fill with $80
     LayMask          HIRES.S 833-998      mask-then-OR, left to right
     MLayMask         HIRES.S 1356-1533    same, image read right to left and
                                           each byte mirrored; XCO -= WIDTH first
@@ -75,12 +81,27 @@ def row_address(y: int) -> int:
 
 # --- page ---------------------------------------------------------------------------
 
+PAGE_SIZE = 0x2000
+PAGE_BASE = 0x2000
+OP_AND, OP_ORA, OP_STA, OP_EOR, OP_MASK = 0, 1, 2, 3, 4      # EQ.S 488-492
+
+
 class HiresPage:
-    """192 rows of 40 bytes, addressed by (row, column) rather than by the
-    interleaved Apple II memory layout."""
+    """One hi-res page as the 8192 bytes of memory it occupies.
+
+    `rows[y]` is a 40-byte view of screen line y, so code can address
+    (row, column) while the bytes stay in the interleaved Apple II layout.
+    The fast blitters write through `mem` with the original address
+    arithmetic, so a write past column 39 lands where it would on the real
+    machine (another line or a "screen hole") instead of being dropped.
+    """
 
     def __init__(self, fill: int = 0x00):
-        self.rows = [bytearray([fill]) * COLUMNS for _ in range(ROWS)]
+        self.mem = bytearray([fill]) * PAGE_SIZE
+        view = memoryview(self.mem)
+        self.rows = [view[row_address(y) - PAGE_BASE:row_address(y) - PAGE_BASE + COLUMNS]
+                     for y in range(ROWS)]
+        self.overflow_writes = 0     # bytes written at column 40 or beyond
 
     def dots(self) -> List[List[int]]:
         """280x192 dots, 0/1, bit 0 of each byte leftmost, bit 7 ignored."""
@@ -133,3 +154,100 @@ def lay_mask(page: HiresPage, data: bytes, width: int, height: int,
 
 def crop_dots(dots: Sequence[Sequence[int]], x0: int, y0: int, w: int, h: int):
     return [list(r[x0:x0 + w]) for r in dots[y0:y0 + h]]
+
+
+def _top_line(yco: int, height: int) -> int:
+    """FASTLAY's "limited Y-clipping": lines yco down to top+1 are drawn;
+    if the image is taller than yco+1 it is cut at screen line 0."""
+    top = yco - height
+    return top if top >= 0 else -1
+
+
+def fastlay(page: HiresPage, data: bytes, width: int, height: int,
+            xco: int, yco: int, opacity: int) -> None:
+    """FASTLAY / fastlaySTA: byte-aligned, no shift, no side clipping.
+
+    Each screen byte becomes  image AND screen / image OR screen / image /
+    image XOR screen  according to `opacity`.  `yco` must be 0-191 (ADDBACK
+    and ADDFORE reject anything else before it gets here).
+    """
+    if not 0 <= yco < ROWS:
+        raise ValueError("yco %d outside the screen" % yco)
+    if opacity not in (OP_AND, OP_ORA, OP_STA, OP_EOR):
+        raise ValueError("fastlay opacity %d" % opacity)
+    y, src = yco, 0
+    top = _top_line(yco, height)
+    while y != top:
+        base = row_address(y) - PAGE_BASE + xco
+        for i in range(width):
+            b = data[src + i]
+            a = base + i
+            if not 0 <= a < PAGE_SIZE:
+                raise CropNotModelled("write outside the hi-res page")
+            if xco + i >= COLUMNS:
+                page.overflow_writes += 1
+            if opacity == OP_STA:
+                page.mem[a] = b
+            elif opacity == OP_ORA:
+                page.mem[a] |= b
+            elif opacity == OP_AND:
+                page.mem[a] &= b
+            else:
+                page.mem[a] ^= b
+        src += width
+        y -= 1
+
+
+def fastmask(page: HiresPage, data: bytes, width: int, height: int,
+             xco: int, yco: int) -> None:
+    """FASTMASK: screen byte &= MASKTAB[image byte]; byte-aligned."""
+    if not 0 <= yco < ROWS:
+        raise ValueError("yco %d outside the screen" % yco)
+    y, src = yco, 0
+    top = _top_line(yco, height)
+    while y != top:
+        base = row_address(y) - PAGE_BASE + xco
+        for i in range(width):
+            b = data[src + i]
+            if b < 0x80:
+                raise ValueError("image byte without bit 7")
+            a = base + i
+            if not 0 <= a < PAGE_SIZE:
+                raise CropNotModelled("write outside the hi-res page")
+            if xco + i >= COLUMNS:
+                page.overflow_writes += 1
+            page.mem[a] &= MASKTAB[b & 0x7F]
+        src += width
+        y -= 1
+
+
+def lay_gen(page: HiresPage, data: bytes, width: int, height: int,
+            xco: int, offset: int, yco: int, opacity: int) -> None:
+    """LayGen for an image entirely on screen: shifted AND / OR / store."""
+    if not 0 <= offset <= 6:
+        raise ValueError("offset must be 0-6")
+    if opacity not in (OP_AND, OP_ORA, OP_STA):
+        raise ValueError("lay_gen opacity %d" % opacity)
+    if xco < 0 or xco + width > COLUMNS - 1 or yco > ROWS - 1 or yco - height + 1 < 0:
+        raise CropNotModelled("image at columns %d..%d, lines %d..%d"
+                              % (xco, xco + width, yco - height + 1, yco))
+    shift, carry_t = SHIFT[offset], CARRY[offset]
+
+    def put(row, col, value):
+        if opacity == OP_STA:
+            row[col] = value
+        elif opacity == OP_ORA:
+            row[col] |= value
+        else:
+            row[col] &= value
+
+    for r in range(height):
+        row = page.rows[yco - r]
+        carry = row[xco] & AMASKS[offset]
+        for i in range(width):
+            b = data[r * width + i]
+            if b < 0x80:
+                raise ValueError("image byte without bit 7")
+            put(row, xco + i, shift[b & 0x7F] | carry)
+            carry = carry_t[b & 0x7F]
+        put(row, xco + width, (row[xco + width] & BMASKS[offset]) | carry)

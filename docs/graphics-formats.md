@@ -61,7 +61,8 @@ lines high.
 
 | Data | Status |
 | --- | --- |
-| Level blueprint (`LEVEL*`, 2304 bytes) | Layout documented by the author, `04 Support/MakeDisk/S/COMMENTS.S:237-338`; size **confirmed**; no parser written yet |
+| Level blueprint (`LEVEL*`, 2304 bytes) | Parsed; see `docs/level-format.md` |
+| Background piece tables (`BGDATA.S`) and room assembly | Modelled; see `docs/room-rendering.md` |
 | Frame definitions | Decoded; see `docs/animation-data.md` |
 | Sequence table | Decoded; see `docs/animation-data.md` |
 | `PAC.*` packed pictures | **Not yet verified.** Candidate decoders: `SNGEXPAND` / `DBLEXPAND` in `UNPACK.S`, pack/unpack in `DRAZ.S` |
