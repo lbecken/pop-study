@@ -192,9 +192,11 @@ Neither error occurs for any of the 114 entry points of the shipped table
 | `seq_c_vs_python` | original table | every field of every tick, 114 entries × 200 ticks × 2 facings = 45,600 ticks, identical between the C port and the independent Python decoder |
 
 The last test compares two implementations written from the same reading of
-the source, so it catches slips in either but not a shared misreading. The
-remaining check, against the real game in an emulator, needs a disk image
-(unknown P1 / T1).
+the source. Since milestone 8 that gap is closed: `tests/test_oracle.py` runs
+the **original** `ANIMCHAR` in the 6502 simulator for all 114 sequences, 80
+ticks, both facings, and it matches the same model field for field, including
+the sounds it queues (18,240 ticks). What remains is a comparison with the
+real game in an emulator, which needs a disk image.
 
 A deliberately broken build (sign of `chy` flipped) was confirmed to make
 `seq_c_vs_python` fail, at entry 3, tick 10.

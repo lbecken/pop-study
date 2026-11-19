@@ -143,3 +143,63 @@ void pop_sfxfile_free(pop_sfxfile *f)
         memset(f, 0, sizeof *f);
     }
 }
+
+int pop_framefile_load(const char *path, pop_framefile *out, const char **err)
+{
+    uint8_t header[POP_FRAMEFILE_HEADER];
+    uint8_t *mem;
+    uint16_t size;
+    FILE *fp;
+
+    memset(out, 0, sizeof *out);
+    fp = fopen(path, "rb");
+    if (!fp) return fail(err, "cannot open file", NULL, NULL);
+    if (fread(header, 1, sizeof header, fp) != sizeof header)
+        return fail(err, "file shorter than its header", fp, NULL);
+    if (memcmp(header, POP_FRAMEFILE_MAGIC, 8) != 0)
+        return fail(err, "not a POPFRAM1 file", fp, NULL);
+    size = u16le(header + 10);
+    if (size == 0) return fail(err, "inconsistent header", fp, NULL);
+    mem = malloc(size);
+    if (!mem) return fail(err, "out of memory", fp, NULL);
+    if (fread(mem, 1, size, fp) != size)
+        return fail(err, "file shorter than its declared size", fp, mem);
+    fclose(fp);
+
+    out->storage = mem;
+    out->tab.data = mem;
+    out->tab.size = size;
+    out->tab.origin = u16le(header + 8);
+    out->tab.fdef = u16le(header + 12);
+    out->tab.altset1 = u16le(header + 14);
+    out->tab.altset2 = u16le(header + 16);
+    out->tab.swordtab = u16le(header + 18);
+    if (out->tab.fdef < out->tab.origin || out->tab.altset1 < out->tab.fdef
+        || out->tab.altset2 < out->tab.altset1 || out->tab.swordtab < out->tab.altset2
+        || (uint32_t)out->tab.swordtab > (uint32_t)out->tab.origin + size) {
+        pop_framefile_free(out);
+        return fail(err, "table addresses out of order", NULL, NULL);
+    }
+    return 0;
+}
+
+void pop_framefile_free(pop_framefile *f)
+{
+    if (f) {
+        free(f->storage);
+        memset(f, 0, sizeof *f);
+    }
+}
+
+int pop_level_load(const char *path, pop_game *g, const char **err)
+{
+    uint8_t extra;
+    FILE *fp = fopen(path, "rb");
+    if (!fp) return fail(err, "cannot open file", NULL, NULL);
+    if (fread(g->blueprint, 1, POP_LEVEL_SIZE, fp) != POP_LEVEL_SIZE)
+        return fail(err, "level file shorter than 2304 bytes", fp, NULL);
+    if (fread(&extra, 1, 1, fp) != 0)
+        return fail(err, "level file longer than 2304 bytes", fp, NULL);
+    fclose(fp);
+    return 0;
+}

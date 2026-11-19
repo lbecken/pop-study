@@ -50,6 +50,12 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | 2026-11-19 | CTest, with original | GCC 13.3, `-Werror`, ASan + UBSan | 7 of 7 passed |
 | 2026-11-19 | CTest, with original | Clang 18.1, `-Werror`; three test programs also under valgrind | 7 of 7 passed, no valgrind errors |
 | 2026-11-19 | CTest, without original | GCC 13.3, `-Werror` | 3 of 3 passed |
+| 2026-11-19 | pytest, with original (after milestone 8a) | Python 3.13, Linux | 139 passed |
+| 2026-11-19 | pytest, without original | Python 3.13, Linux | 114 passed, 25 skipped |
+| 2026-11-19 | CTest, with original | GCC 13.3, `-Werror`, ASan + UBSan | 9 of 9 passed |
+| 2026-11-19 | CTest, with original | Clang 18.1, `-Werror`; `test_world` under valgrind | 9 of 9 passed, no valgrind errors |
+| 2026-11-19 | CTest, without original | GCC 13.3, `-Werror` | 4 of 4 passed |
+| 2026-11-19 | `fuzz_world.py`, 1,500 rounds, seed 42 | – | 58,500 cases, C port and original agree |
 
 ## Kinds of evidence
 
@@ -63,6 +69,7 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | Physical plausibility | supporting foot stays within 2 units for each stance; feet meet the floor line | moderate |
 | Two implementations | C interpreter vs Python decoder, 45,600 ticks identical; C effect renderer vs Python, 26,204 samples | catches slips, not a shared misreading |
 | Executing the original | sound effects obtained by running the assembled `SOUND.S` in a 6502 simulator; timing equals the hand-derived loop formula | strong for behaviour; depends on the simulator's cycle table |
+| Differential fuzzing | each ported C routine against the original routine in the simulator, on random states wider than valid ones (`docs/oracle.md`) | strong: independent of my reading of the code; depends on the assembler and simulator being right |
 | Mutation check | a deliberately wrong build makes the comparison fail | shows the comparison has teeth |
 | Cross-screen continuity | rendered screens placed by the level map line up at their edges | moderate: wrong piece offsets or neighbour rules would show as seams |
 | Visual inspection | contact sheets, run-cycle sheets, rendered rooms | weak, by eye |

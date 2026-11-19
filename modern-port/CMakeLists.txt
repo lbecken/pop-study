@@ -38,7 +38,7 @@ else()
 endif()
 
 # Game rules: no I/O, no SDL.
-add_library(pop_core STATIC src/core/pop_seq.c src/core/pop_sound.c)
+add_library(pop_core STATIC src/core/pop_seq.c src/core/pop_sound.c src/core/pop_world.c)
 target_include_directories(pop_core PUBLIC src/core)
 
 # Sound: effect data to PCM.  No I/O, no SDL (the SDL3 backend comes later).
@@ -55,6 +55,9 @@ target_link_libraries(pop_seqdump PRIVATE pop_assets)
 
 add_executable(pop_sfxdump tools/pop_sfxdump.c)
 target_link_libraries(pop_sfxdump PRIVATE pop_assets)
+
+add_executable(pop_worldrun tools/pop_worldrun.c)
+target_link_libraries(pop_worldrun PRIVATE pop_assets)
 
 enable_testing()
 
@@ -73,6 +76,10 @@ if(NOT MSVC)
 endif()
 add_test(NAME sound_unit COMMAND test_sound)
 
+add_executable(test_world tests/test_world.c)
+target_link_libraries(test_world PRIVATE pop_core)
+add_test(NAME world_unit COMMAND test_world)
+
 # --- tests on the original data (optional) -----------------------------------
 if(POP_SOURCE_DIR)
   if(NOT EXISTS "${POP_SOURCE_DIR}/01 POP Source/Source/SEQTABLE.S")
@@ -85,7 +92,8 @@ if(POP_SOURCE_DIR)
   set(POP_AUDIO_TOOLS "${CMAKE_CURRENT_SOURCE_DIR}/../tools/extract_audio")
   set(POP_DATA "${CMAKE_CURRENT_BINARY_DIR}/data")
   set(POP_DATA_FILES "${POP_DATA}/seqtable.bin" "${POP_DATA}/pop_seqnames.h"
-                     "${POP_DATA}/sfx.bin" "${POP_DATA}/pop_sfxnames.h")
+                     "${POP_DATA}/sfx.bin" "${POP_DATA}/pop_sfxnames.h"
+                     "${POP_DATA}/framedef.bin")
   add_custom_command(
     OUTPUT ${POP_DATA_FILES}
     COMMAND "${Python3_EXECUTABLE}" "${POP_TOOLS}/export_port_data.py"
@@ -97,6 +105,7 @@ if(POP_SOURCE_DIR)
             "${POP_SOURCE_DIR}/01 POP Source/Source/SEQDATA.S"
             "${POP_SOURCE_DIR}/01 POP Source/Source/SOUND.S"
             "${POP_SOURCE_DIR}/01 POP Source/Source/SOUNDNAMES.S"
+            "${POP_SOURCE_DIR}/01 POP Source/Source/FRAMEDEF.S"
     COMMENT "Generating port data from the original source"
     VERBATIM)
   add_custom_target(pop_data DEPENDS ${POP_DATA_FILES})
@@ -112,6 +121,7 @@ if(POP_SOURCE_DIR)
   target_link_libraries(test_sfx_original PRIVATE pop_assets)
   add_dependencies(test_sfx_original pop_data)
   add_dependencies(pop_sfxdump pop_data)
+  add_dependencies(pop_worldrun pop_data)
 
   add_test(NAME seq_original COMMAND test_seq_original "${POP_DATA}/seqtable.bin")
   add_test(NAME seq_c_vs_python
@@ -125,6 +135,11 @@ if(POP_SOURCE_DIR)
                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/compare_sfx.py"
                    "$<TARGET_FILE:pop_sfxdump>" "${POP_DATA}/sfx.bin"
                    "${POP_SOURCE_DIR}" 44100)
+  add_test(NAME world_c_vs_original
+           COMMAND "${Python3_EXECUTABLE}"
+                   "${CMAKE_CURRENT_SOURCE_DIR}/tests/fuzz_world.py"
+                   "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}/framedef.bin"
+                   "${POP_SOURCE_DIR}" 400 1989)
 else()
   message(STATUS "POP_SOURCE_DIR not set: original-data tests are not built")
 endif()

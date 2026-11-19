@@ -106,7 +106,9 @@ have not been compared with an independent assembler or a disk image.
 | `COLL.S` | `$4500-$4BF1` | 1778 | `gamebg` `$4C00` |
 | `GAMEBG.S` | `$4C00-$5215` | 1558 | `auto` `$5400` |
 | `AUTO.S` | `$5400-$5DC0` | 2497 | `redbufs` `$5E00` |
+| `GRAFIX.S` (without its IIGS tail) | `$0400-$0DAA` | 2475 | `tables` `$0E00` |
 | `CTRLSUBS.S` | `$D000-$D8FE` | 2303 | `specialk` `$D900` |
+| `SPECIALK.S` | `$D900-$DE25` | 1318 | `textline` `$DFD8` |
 | `VERSION.S` | `$DFD8-$DFF4` | 29 | `subs` `$E000` |
 | `SUBS.S` | `$E000-$E965` | 2406 | `sound` `$EA00` |
 | `SOUND.S` | `$EA00-$EB2E` | 303 | `mover` `$EE00` |
@@ -120,10 +122,10 @@ have not been compared with an independent assembler or a disk image.
 the game directory and is presumably absent from the release build
 (**inferred**).
 
-Four modules do not assemble yet because they use features the assembler does
-not implement: `GRAFIX.S` (a 65C02 `tsb` instruction), `SPECIALK.S` (`rev`
-strings), `UNPACK.S` (macros) and `BOOT.S` (`sav`). The original source also
-contains one stray `fin` (`SPECIALK.S:248`), which Merlin ignores.
+`UNPACK.S` (macros) and `BOOT.S` (`sav`) do not assemble, and `GRAFIX.S` is
+assembled without its final 65816 section. The original source also contains a
+stray `fin` (`SPECIALK.S:248`) and a `do` left open to the end of `GRAFIX.S`;
+Merlin accepts both.
 
 ## Hardware I/O used
 

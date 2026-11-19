@@ -25,6 +25,7 @@ licensing position this policy is based on.
 | `docs/level-format.md` | Level blueprint layout, piece ids, initial states |
 | `docs/room-rendering.md` | How a screen is assembled from piece sections; order, lists, special pieces |
 | `docs/audio-analysis.md` | Sound effects measured by running the original code; music status |
+| `docs/oracle.md` | Running original routines in the 6502 simulator as a test reference |
 | `docs/port/` | Per-subsystem port notes: interface, pseudocode, pitfalls, tests |
 | `docs/verification.md` | Test commands, recorded results, what has not been verified |
 | `docs/compatibility-matrix.md` | Which behaviours are faithful, approximate, missing or unverified |
@@ -34,6 +35,7 @@ licensing position this policy is based on.
 | `assets/manifest.json` | Hashed inventory of all 582 original files (metadata only) |
 | `tools/extract_assets/` | Image-table decoder, Merlin data assembler, frame/sequence extractor, blitter model, run-cycle renderer, level parser, room renderer, manifest generator (Python 3, stdlib only) |
 | `tools/extract_audio/` | Sound-effect extraction: runs the original sound module in a 6502 simulator |
+| `tools/oracle/` | Loads the original modules and calls their routines |
 | `tests/` | pytest suite |
 
 ## Quick start
@@ -70,7 +72,7 @@ python3 tools/extract_assets/make_manifest.py --source ../pop-original --out ass
 POP_SOURCE_DIR=../pop-original python3 -m pytest tests -q
 ```
 
-Without `POP_SOURCE_DIR` the 17 integration tests are skipped and only the
+Without `POP_SOURCE_DIR` the 25 integration tests are skipped and only the
 synthetic-data unit tests run. `build/` is git-ignored.
 
 The C port:
@@ -96,7 +98,9 @@ definitions and animation sequences extracted and cross-checked) and milestone
 against the Python decoder), milestone 5 (level parser and a Python model of
 the full-screen redraw that renders every screen of every level) and milestone
 6 (sound effects obtained by running the original sound code in a 6502
-simulator, with a C queue and renderer). There is no runnable game yet. See
+simulator, with a C queue and renderer) and the first part of milestone 8
+(the level-reading, frame-lookup and gravity routines in C, each compared with
+the original code on random inputs). There is no runnable game yet. See
 `docs/milestones.md`.
 
 ## Conventions

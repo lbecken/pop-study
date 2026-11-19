@@ -16,6 +16,7 @@ Output:
     sfx.bin           speaker toggle list of every sound effect, obtained by
                       executing SOUND.S (layout: pop_assets.h)
     pop_sfxnames.h    #define POP_SFX_<NAME> <n> for every effect name
+    framedef.bin      assembled FRAMEDEF.S with a 24-byte header
 """
 
 from __future__ import annotations
@@ -76,6 +77,16 @@ def build_names(source, entry_count):
     return "\n".join(lines)
 
 
+def build_framedef(source):
+    with open(os.path.join(source, SRC, "FRAMEDEF.S"), encoding="ascii") as f:
+        asm = assemble(f.read())
+    sym = asm.symbols
+    header = b"POPFRAM1" + struct.pack(
+        "<HHHHHHHH", asm.origin, len(asm.image), sym["Fdef"], sym["altset1"],
+        sym["altset2"], sym["swordtab"], 0, 0)
+    return header + asm.image
+
+
 def build_sfx(source):
     mod = SoundModule(os.path.join(source, SRC))
     effects = mod.all_effects()
@@ -117,9 +128,12 @@ def main(argv=None):
         f.write(sfx)
     with open(os.path.join(args.out, "pop_sfxnames.h"), "w") as f:
         f.write(sfx_header)
+    frames = build_framedef(args.source)
+    with open(os.path.join(args.out, "framedef.bin"), "wb") as f:
+        f.write(frames)
     print("wrote %s: seqtable.bin (%d bytes, %d entries), pop_seqnames.h, "
-          "sfx.bin (%d bytes, %d effects), pop_sfxnames.h"
-          % (args.out, len(blob), entries, len(sfx), sfx_count))
+          "sfx.bin (%d bytes, %d effects), pop_sfxnames.h, framedef.bin (%d bytes)"
+          % (args.out, len(blob), entries, len(sfx), sfx_count, len(frames)))
     return 0
 
 

@@ -61,14 +61,14 @@ Items move to the relevant document once resolved.
 | E12 | Meaning of each `CharAction` value set by `act` (0–7 seen in the table). | Read the `CharAction` tests in `CTRL.S`, `COLL.S`, `CTRLSUBS.S`. |
 | E14 | How `DoRunjump` adjusts `CharX` before a running jump so the take-off lines up with a ledge (`CTRL.S:1752` on). | Read to the end of `DoRunjump`; add to the run-jump trace. |
 | E13 | Which code paths write `CharPosn` or `CharSeq` directly, bypassing the table. Found so far: five `CharPosn` sites (`docs/animation-data.md` finding 4); `CharSeq` is written only by `JUMPSEQ`, by `goto` in `ANIMCHAR`, and at `AUTO.S:1881-1883`. There are 78 `jumpseq` calls. | Read `AUTO.S:1870-1890`; list the 78 `jumpseq` calls per trigger as each control routine is ported. |
-| E15 | Whether any caller of `ADDCHARX`, `JUMPSEQ` or `ANIMCHAR` depends on the register or flag state they leave (the C port does not model it). | Check each call site as it is ported; `jumpseq` leaves X = index, `animchar` leaves A = frame. |
+| E15 | Whether any caller of `ADDCHARX`, `JUMPSEQ` or `ANIMCHAR` depends on the register or flag state they leave (the C port does not model it). The block-reading routines' X and Y outputs are modelled (`docs/port/world-queries.md`); `GETLEFT` and siblings depend on the caller's Z flag, which all 17 call sites set. | Check each call site as it is ported; the oracle comparison will show any dependence. |
 
 ## Process
 
 | # | Question | Next step |
 | --- | --- | --- |
 | P1 | Byte-exactness of the project's assembler. It assembles 18 of the 22 original modules and each fits its memory slot (`docs/memory-map.md`), but the bytes have not been compared with an independent assembler or a disk image. | Try Merlin32 on a few modules and compare; or compare with a disk image. |
-| P4 | Four modules do not assemble: `GRAFIX.S` (65C02 `tsb`), `SPECIALK.S` (`rev`), `UNPACK.S` (`mac` macros), `BOOT.S` (`sav`). | Add those features to `mos6502.py` / `merlin_data.py`. |
+| P4 | `UNPACK.S` (`mac` macros) and `BOOT.S` (`sav`) do not assemble, and `GRAFIX.S` assembles only up to its final 65816 section (IIGS control panel). None is game logic. | Add macros and 65816 if those modules are ever needed. |
 | P5 | The 6502 simulator is verified only for the instructions its tests exercise. | Run a public 6502 functional test suite against it before using it as an oracle for larger routines. |
 | P2 | Git history of the original repository was not examined (shallow clone). | `git fetch --depth=1000` and review. |
 | P3 | The author's 1989 technical document referenced in the README is not in the repository. | Read it at jordanmechner.com/library; cite, do not copy. |

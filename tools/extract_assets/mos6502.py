@@ -67,6 +67,15 @@ OPCODES: Dict[str, Dict[str, int]] = {
     "tya": {"imp": 0x98},
 }
 ALIASES = {"blt": "bcc", "bge": "bcs"}        # Merlin spellings
+
+# 65C02 instructions the original source uses once, inside code that only
+# runs on an Apple IIGS (GRAFIX.S, after an `xc` directive).  They can be
+# assembled so that the module has its true size; the simulator does not
+# execute them.
+ASSEMBLE_ONLY: Dict[str, Dict[str, int]] = {
+    "tsb": {"zp": 0x04, "abs": 0x0C},
+    "trb": {"zp": 0x14, "abs": 0x1C},
+}
 SIZE = {"imp": 1, "acc": 1, "imm": 2, "zp": 2, "zpx": 2, "zpy": 2, "izx": 2, "izy": 2,
         "rel": 2, "abs": 3, "abx": 3, "aby": 3, "ind": 3}
 DECODE: Dict[int, Tuple[str, str]] = {
@@ -118,12 +127,12 @@ class _Asm6502(_Assembler):
 
     def assemble_instruction(self, op, operand, pc, scope, final, line_no):
         mnem = ALIASES.get(op, op)
-        if mnem not in OPCODES:
+        if mnem not in OPCODES and mnem not in ASSEMBLE_ONLY:
             raise MerlinError("unsupported opcode %r" % op)
         if final and not self._final_seen:
             self._final_seen = True
             self._cursor = 0
-        modes = OPCODES[mnem]
+        modes = OPCODES.get(mnem) or ASSEMBLE_ONLY[mnem]
         text = operand.strip()
         low = text.lower()
 
@@ -218,6 +227,14 @@ class Cpu6502:
     `on_read[address]` / `on_write[address]` are optional callbacks
     `f(cpu)` invoked when that address is accessed; `cpu.cycles` at that
     moment is the cycle count at the end of the accessing instruction.
+
+    `traps[address]` are callbacks `f(cpu)` run when execution reaches that
+    address; the routine there is skipped (the trap is followed by an RTS).
+    They stand in for code that is not loaded.
+
+    Writes to $C000-$C0FF (the Apple II soft switches) are not stored, so
+    code that flips memory banks runs harmlessly; there is one flat 64K of
+    memory and no bank switching.
     """
 
     def __init__(self):
@@ -229,6 +246,7 @@ class Cpu6502:
         self.cycles = 0
         self.on_read: Dict[int, Callable] = {}
         self.on_write: Dict[int, Callable] = {}
+        self.traps: Dict[int, Callable] = {}
 
     # -- memory -----------------------------------------------------------------
 
@@ -243,7 +261,8 @@ class Cpu6502:
 
     def _wr(self, a: int, v: int) -> None:
         a &= 0xFFFF
-        self.mem[a] = v & 0xFF
+        if not 0xC000 <= a <= 0xC0FF:
+            self.mem[a] = v & 0xFF
         if a in self.on_write:
             self._pending.append(self.on_write[a])
 
@@ -268,6 +287,12 @@ class Cpu6502:
     def step(self) -> int:
         """Execute one instruction; return the cycles it took."""
         self._pending: List[Callable] = []
+        if self.pc in self.traps:
+            self.traps[self.pc](self)
+            l = self._pull()                     # behave like RTS
+            self.pc = ((l | (self._pull() << 8)) + 1) & 0xFFFF
+            self.cycles += 6
+            return 6
         opcode = self.mem[self.pc]
         if opcode not in DECODE:
             raise CpuError("undocumented opcode $%02X at $%04X" % (opcode, self.pc))

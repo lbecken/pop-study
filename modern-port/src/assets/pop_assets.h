@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 
+#include "pop_game.h"
 #include "pop_seq.h"
 #include "pop_sfx.h"
 
@@ -56,5 +57,27 @@ typedef struct pop_sfxfile {
 
 int pop_sfxfile_load(const char *path, pop_sfxfile *out, const char **err);
 void pop_sfxfile_free(pop_sfxfile *f);
+
+/* framedef.bin layout (all integers little-endian):
+ *   0   8 bytes  magic "POPFRAM1"
+ *   8   u16      origin
+ *   10  u16      size of the table in bytes
+ *   12  u16 x 4  addresses of Fdef, altset1, altset2, swordtab
+ *   20  u16 x 2  reserved, 0
+ *   24  size bytes of table data
+ */
+#define POP_FRAMEFILE_MAGIC "POPFRAM1"
+#define POP_FRAMEFILE_HEADER 24
+
+typedef struct pop_framefile {
+    pop_frametab tab;
+    uint8_t     *storage;
+} pop_framefile;
+
+int pop_framefile_load(const char *path, pop_framefile *out, const char **err);
+void pop_framefile_free(pop_framefile *f);
+
+/* Read an original level file (LEVEL0..LEVEL14, 2304 bytes) into g->blueprint. */
+int pop_level_load(const char *path, pop_game *g, const char **err);
 
 #endif /* POP_ASSETS_H */

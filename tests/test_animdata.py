@@ -113,13 +113,18 @@ def test_conditional_assembly_and_ignored_ops():
     (" org $1000\n db nowhere\n", "undefined symbol"),
     (" org $1000\n db 300\n", "does not fit a byte"),
     (" org $1000\na db 1\na db 2\n", "duplicate label"),
-    (" org $1000\n do 1\n db 1\n", "do without fin"),
     (" db 1\n", "before any org"),
     (" org $1000\n db 1,,2\n", "bad operand list"),
 ])
 def test_assembler_rejects_what_it_does_not_understand(source, message):
     with pytest.raises(MerlinError, match=message):
         assemble(source)
+
+
+def test_open_do_at_end_of_file_is_a_warning():
+    asm = assemble(" org $1000\n do 1\n db 1\n")
+    assert asm.image == bytes([1])
+    assert asm.warnings == ["do without fin at end of file (ignored)"]
 
 
 def test_errors_carry_line_numbers():

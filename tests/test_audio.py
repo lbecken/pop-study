@@ -113,7 +113,9 @@ later = $20
     with pytest.raises(MerlinError, match="branch out of range"):
         assemble_6502(" org $0800\n bne far\n ds 200\nfar rts\n")
     with pytest.raises(MerlinError, match="unsupported opcode"):
-        assemble_6502(" org $0800\n tsb $10\n")
+        assemble_6502(" org $0800\n stz $10\n")
+    # two 65C02 instructions are accepted so IIGS-only code has its true size
+    assert assemble_6502(" org $0800\n tsb $c036\n trb $10\n").image.hex() == "0c36c01410"
     with pytest.raises(MerlinError, match="no immediate mode"):
         assemble_6502(" org $0800\n sta #1\n")
 

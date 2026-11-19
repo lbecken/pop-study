@@ -18,6 +18,7 @@ Supported:
     hex 0A1B,2C             raw hex bytes
     do expr / else / fin    conditional assembly
     asc "text" / asc 'text' ASCII with the high bit set / clear
+    rev "text"              the same, with the characters in reverse order
     lup expr ... --^        repeat the enclosed lines expr times
     ]name = expr            variable: may be reassigned, evaluated in order
     lst, lstdo, tr, usr, xc ignored (listing / disk-write controls)
@@ -393,12 +394,13 @@ class _Assembler:
                                 raise MerlinError("value %d does not fit a word" % v)
                             out += bytes(((v & 0xFF), (v >> 8) & 0xFF))
                     data = bytes(out)
-                elif op == "asc":
+                elif op in ("asc", "rev"):
                     m_asc = re.fullmatch(r'''(["'])(.*)\1''', operand)
                     if not m_asc:
-                        raise MerlinError("unsupported asc operand %r" % operand)
+                        raise MerlinError("unsupported %s operand %r" % (op, operand))
                     high = 0x80 if m_asc.group(1) == '"' else 0x00
-                    data = bytes(ord(ch) | high for ch in m_asc.group(2))
+                    text_bytes = m_asc.group(2)[::-1] if op == "rev" else m_asc.group(2)
+                    data = bytes(ord(ch) | high for ch in text_bytes)
                 elif op == "hex":
                     digits = operand.replace(",", "")
                     if len(digits) % 2 or not re.fullmatch(r"[0-9A-Fa-f]*", digits):
@@ -427,7 +429,9 @@ class _Assembler:
                 raise
 
         if cond_stack:
-            raise MerlinError("do without fin at end of file")
+            # Merlin accepts a DO left open at the end of a file, and the
+            # original source has one (GRAFIX.S line 2016).
+            warnings.append("do without fin at end of file (ignored)")
         if not final:
             return None
         if origin is None:
