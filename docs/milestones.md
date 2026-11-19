@@ -15,15 +15,18 @@ tools/
   extract_audio/      Python: sound-effect simulator (later)
 modern-port/
   CMakeLists.txt
-  src/core/           C17, no SDL: animation, player, collision, rooms, enemies
-  src/audio/          tone model + SDL3 backend
-  src/platform/       SDL3 window, input, renderer
-  tests/              C unit tests + replay fixtures
+  src/core/           C17, no I/O, no SDL: animation, player, collision, rooms, enemies
+  src/assets/         loaders for generated data files
+  src/audio/          tone model + SDL3 backend (later)
+  src/platform/       SDL3 window, input, renderer (later)
+  tools/              command-line helpers
+  tests/              C tests, C-versus-Python comparisons, later replay fixtures
 tests/                pytest for the tools
 build/                generated, git-ignored
   extracted/          decoded images
   data/               frames.json, sequences.json
   run_cycle/          timeline.png, pivot.png, mask_demo.png, run_cycle.json
+  port/               CMake build tree; port/data/ holds seqtable.bin
 ```
 
 The original checkout stays outside this repository and is never written to.
@@ -35,8 +38,8 @@ The original checkout stays outside this repository and is never written to.
 | 1 | Verified inventory; image-table decoder; `manifest.json`; Phase 1 docs (first pass) | 14 pytest cases; contact sheet inspected | **done** |
 | 2 | `FRAMEDEF.S` and `SEQTABLE.S` assembled and decoded to JSON: frames, swords, sequences, per-tick dx/dy, traces; `docs/animation-data.md` | 51 pytest cases; 114 entry points resolve; all labels and branches aligned; run cycle sums to 26; every referenced image exists | **done** |
 | 3 | Run frames drawn at their real positions by a byte-level blitter model (mask and mirror modes) with ports of the position routines; timeline and pivot sheets; `docs/run-cycle-analysis.md` | 90 pytest cases; blitter tables equal `HRTABLES.S` byte for byte; right-facing run is an exact mirror; supporting foot stays within 2 units per stance | **done** |
-| 4 | First C17 routine: `animchar` sequence interpreter + `jumpseq` + `addcharx`, driven by the JSON from M2 | C unit tests reproducing the tick table in `architecture.md` §3, including 8-bit wraparound cases | proposed next |
-| 5 | Level blueprint parser and a static room render to PNG (needs `BGDATA.S`, `FRAMEADV.S` analysis) | Compare against trusted screenshots | |
+| 4 | First C17 code: `ADDCHARX`, `JUMPSEQ`, `GETSEQ`, `ANIMCHAR` in `modern-port/src/core`; CMake build that generates `seqtable.bin` from the user's checkout; `docs/port/sequence-interpreter.md` | 4 CTest tests: synthetic unit tests, loader tests, original-table tests, and 45,600 ticks compared C against Python; GCC and Clang with `-Werror`, ASan/UBSan, valgrind | **done** |
+| 5 | Level blueprint parser and a static room render to PNG (needs `BGDATA.S`, `FRAMEADV.S` analysis) | Compare against trusted screenshots | proposed next |
 | 6 | Sound: cycle-counted `tone` simulator → WAV + JSON; `docs/audio-analysis.md` | Frequencies checked by hand for two effects | |
 | 7 | SDL3 shell: window, fixed timestep, nearest-neighbour scaling, plays the run cycle with keyboard input | Manual + deterministic headless trace | |
 | 8 | Player control and physics: `GenCtrl` standing/running/turning/jumping, `gravity`, `checkfloor` | Input replay → state trace fixtures | |

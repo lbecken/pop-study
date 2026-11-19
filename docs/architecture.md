@@ -170,7 +170,10 @@ not change the displayed frame by itself.
 
 ### Step B – the sequence interpreter
 
-`ANIMCHAR` (`COLL.S:994-1156`) runs once per frame per character. It reads
+`ANIMCHAR` (`COLL.S:994-1156`) is called from `DoKid` and `DoShad` once per
+frame, and from 31 other places that need the first frame of a new sequence
+immediately, so a character can advance two frames in one tick (see
+`docs/port/sequence-interpreter.md`). It reads
 bytes at `CharSeq` (via `GETSEQ`, `CTRLSUBS.S:1629-1639`), executing instruction
 bytes until it reads a byte that is not an instruction. That byte is the new
 frame number: it is stored in `CharPosn` and the routine returns.

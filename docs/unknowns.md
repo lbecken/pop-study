@@ -55,7 +55,8 @@ Items move to the relevant document once resolved.
 | E11 | How `$D000-$DFFF` is shared between language-card banks. | See `docs/memory-map.md`. |
 | E12 | Meaning of each `CharAction` value set by `act` (0–7 seen in the table). | Read the `CharAction` tests in `CTRL.S`, `COLL.S`, `CTRLSUBS.S`. |
 | E14 | How `DoRunjump` adjusts `CharX` before a running jump so the take-off lines up with a ledge (`CTRL.S:1752` on). | Read to the end of `DoRunjump`; add to the run-jump trace. |
-| E13 | Which code paths write `CharPosn` or `CharSeq` directly, bypassing the table (five `CharPosn` sites found so far, `docs/animation-data.md` finding 4). | Grep every `jumpseq` call and `CharSeq` write; list them per trigger. |
+| E13 | Which code paths write `CharPosn` or `CharSeq` directly, bypassing the table. Found so far: five `CharPosn` sites (`docs/animation-data.md` finding 4); `CharSeq` is written only by `JUMPSEQ`, by `goto` in `ANIMCHAR`, and at `AUTO.S:1881-1883`. There are 78 `jumpseq` calls. | Read `AUTO.S:1870-1890`; list the 78 `jumpseq` calls per trigger as each control routine is ported. |
+| E15 | Whether any caller of `ADDCHARX`, `JUMPSEQ` or `ANIMCHAR` depends on the register or flag state they leave (the C port does not model it). | Check each call site as it is ported; `jumpseq` leaves X = index, `animchar` leaves A = frame. |
 
 ## Process
 

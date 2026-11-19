@@ -22,6 +22,10 @@ licensing position this policy is based on.
 | `docs/graphics-formats.md` | Image-table format and the visual verification procedure |
 | `docs/animation-data.md` | Frame-definition and sequence formats, extraction checks, findings |
 | `docs/run-cycle-analysis.md` | The run, tick by tick: positions, foot contacts, timing, transitions |
+| `docs/port/` | Per-subsystem port notes: interface, pseudocode, pitfalls, tests |
+| `docs/verification.md` | Test commands, recorded results, what has not been verified |
+| `docs/compatibility-matrix.md` | Which behaviours are faithful, approximate, missing or unverified |
+| `modern-port/` | The C17 port (see its README); so far the sequence interpreter |
 | `docs/unknowns.md` | Open questions, each with the next inspection step |
 | `docs/milestones.md` | Milestone plan, directory layout, decisions awaiting input |
 | `assets/manifest.json` | Hashed inventory of all 582 original files (metadata only) |
@@ -54,16 +58,31 @@ python3 tools/extract_assets/make_manifest.py --source ../pop-original --out ass
 POP_SOURCE_DIR=../pop-original python3 -m pytest tests -q
 ```
 
-Without `POP_SOURCE_DIR` the nine integration tests are skipped and only the
+Without `POP_SOURCE_DIR` the ten integration tests are skipped and only the
 synthetic-data unit tests run. `build/` is git-ignored.
+
+The C port:
+
+```bash
+cmake -S modern-port -B build/port -DPOP_SOURCE_DIR=../pop-original
+```
+
+```bash
+cmake --build build/port
+```
+
+```bash
+ctest --test-dir build/port --output-on-failure
+```
 
 ## Status
 
 Done: milestone 1 (inventory, image-table extraction), milestone 2 (frame
 definitions and animation sequences extracted and cross-checked) and milestone
-3 (run cycle drawn at its real screen positions and analysed). The position
-arithmetic and the mask blitter exist as tested Python models; no C code has
-been written yet. See `docs/milestones.md`.
+3 (run cycle drawn at its real screen positions and analysed) and milestone 4
+(the sequence interpreter in C17, tested against the original table and
+against the Python decoder). There is no runnable game yet. See
+`docs/milestones.md`.
 
 ## Conventions
 
