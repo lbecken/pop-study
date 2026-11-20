@@ -7,6 +7,7 @@
 #include "pop_collide.h"
 
 #include "pop_control.h"
+#include "pop_mover.h"
 #include "pop_world.h"
 
 #define NEG(v) (((v) & 0x80u) != 0)
@@ -171,7 +172,7 @@ int pop_checkcoll(pop_game *g, uint8_t objid)
     } else if (objid == POP_MIRROR) {
         /* the kid passes through the mirror from the right only in a running jump */
         if (g->ch.id == 0 && g->ch.posn >= 39 && g->ch.posn < 44 && NEG(g->ch.face)) {
-            if (g->hooks.smash_mirror) g->hooks.smash_mirror(g->hooks.ctx);
+            pop_smashmirror(g);
             g->createshad = 0xFF;
             return 0;
         }

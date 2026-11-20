@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Differential test: C player-control, floor and collision routines against
-the original.
+"""Differential test: C player-control, floor, collision and moving-object
+routines against the original.
 
 New code for the pop-study project.
 
@@ -28,7 +28,7 @@ Usage:
     fuzz_control.py <pop_worldrun> <data dir> <original checkout> [cases] [seed] [only]
 
 `only` limits the run to some routines: a comma-separated list of names, or
-@control or @collision for those groups.
+@control, @collision or @mover for those groups.
 """
 
 import os
@@ -59,12 +59,22 @@ EXTRA = ["jarabove", "alertguard", "JSTKX", "JSTKY", "btn", "clrF", "clrB", "clr
 COLL_VARS = ["blocky", "collideL", "collideR", "collX", "begrange", "endrange", "AMtimer",
              "VisScrn", "scrnLeft", "scrnRight", "scrnBelowL", "scrnBelowR", "createshad",
              "NextLevel", "BlockYthis", "BlockYlast", "SongCue", "SongCount"]
-BYTES = fw.BYTES + EXTRA + COLL_VARS
+# moving-object variables (again with their own random stream)
+MOVER_VARS = ["numtrans", "nummob", "trobcount", "tempnt", "exitopen", "RNDseed",
+              "scrnAbove", "scrnBelow", "BGset1"]
+BYTES = fw.BYTES + EXTRA + COLL_VARS + MOVER_VARS
 WORDS = fw.WORDS + ["FCharX"]
 CD_BUFFERS = (("CDthisframe", 16), ("CDlastframe", 16), ("CDbelow", 16), ("CDabove", 16))
 SN_BUFFERS = (("SNthisframe", 16), ("SNlastframe", 16), ("SNbelow", 16), ("SNabove", 10))
-BUFFERS = (("redbuf", 30), ("wipebuf", 30), ("whitebuf", 30), ("topbuf", 10)) \
-    + CD_BUFFERS + SN_BUFFERS
+TROB_LISTS = (("trloc", 32), ("trscrn", 32), ("trdirec", 32))
+MOB_LISTS = (("mobx", 16), ("moby", 16), ("mobscrn", 16), ("mobvel", 16), ("mobtype", 16),
+             ("moblevel", 16))
+# the four buffers random_state fills itself (kept as they were, so that adding
+# buffers later does not change the cases the earlier routines get)
+BASE_BUFFERS = (("redbuf", 30), ("wipebuf", 30), ("whitebuf", 30), ("topbuf", 10))
+OTHER_REDRAW = (("fredbuf", 30), ("movebuf", 30), ("halfbuf", 30), ("floorbuf", 30),
+                ("objbuf", 30))
+BUFFERS = BASE_BUFFERS + CD_BUFFERS + SN_BUFFERS + OTHER_REDRAW + TROB_LISTS + MOB_LISTS
 IN_MODULE = {"tempobjid": "COLL"}          # a COLL local, not in the shared equates
 
 # routine -> (module, label, results compared: any of "a", "x", "y", "c")
@@ -104,6 +114,48 @@ ROUTINES = {
     "checkslice": ("COLL", "CHECKSLICE", ""), "checkslice2": ("COLL", "CHECKSLICE2", "c"),
     "enemycoll": ("COLL", "ENEMYCOLL", ""), "goneupstairs": ("COLL", "GoneUpstairs", ""),
 }
+MOVER = {
+    # moving objects (MOVER.S and the routines that set them off)
+    "rnd": ("GRAFIX", "RND", "a"), "addtrob": ("MOVER", "addtrob", ""),
+    "animtrans": ("MOVER", "ANIMTRANS", ""), "animmobs": ("MOVER", "ANIMMOBS", ""),
+    "trigslicer": ("MOVER", "TRIGSLICER", ""), "closeexit": ("MOVER", "CLOSEEXIT", ""),
+    "smashmirror": ("MOVER", "SMASHMIRROR", ""), "trigflask": ("MOVER", "TRIGFLASK", ""),
+    "trigsword": ("MOVER", "TRIGSWORD", ""), "trigtorch": ("MOVER", "TRIGTORCH", ""),
+    "trigspikes": ("MOVER", "TRIGSPIKES", ""), "jamspikes": ("MOVER", "JAMSPIKES", ""),
+    "breakloose": ("MOVER", "BREAKLOOSE", ""), "breakloose1": ("MOVER", "BREAKLOOSE1", ""),
+    "pushpp": ("MOVER", "PUSHPP", ""), "jampp": ("MOVER", "JAMPP", ""),
+    "getflameframe": ("MOVER", "GETFLAMEFRAME", "a"),
+    "getflaskframe": ("MOVER", "GETFLASKFRAME", "a"),
+    "shakem": ("MOVER", "SHAKEM", ""), "checkpress": ("CTRL", "CHECKPRESS", ""),
+    "checkspikes": ("CTRLSUBS", "CHECKSPIKES", ""), "shakeloose": ("TOPCTRL", "shakeloose", ""),
+    "addslicers": ("SUBS", "ADDSLICERS", ""), "addtorches": ("SUBS", "ADDTORCHES", ""),
+    "crumble": ("SUBS", "CRUMBLE", ""), "mirappear": ("SUBS", "MIRAPPEAR", ""),
+    "addlowersound": ("SUBS", "ADDLOWERSOUND", ""),
+}
+ROUTINES.update(MOVER)
+# routines that take the block just read (Y, BlueSpec): the piece the test
+# puts there, and states worth trying
+TAKES_BLOCK = {
+    "trigslicer": (18, (0, 1, 2, 5, 6, 7, 15, 0x82, 0x86, 0x80)),
+    "closeexit": (16, (0, 4, 172)), "smashmirror": (13, (0, 5)),
+    "trigflask": (10, (0, 0x20, 0x40, 0xA0, 0xE7)), "trigsword": (22, (0, 1, 40)),
+    "trigtorch": (19, (0, 5, 17)),
+    "trigspikes": (2, (0, 0, 1, 4, 5, 8, 0x80, 0x81, 0x8F, 0xFF)),
+    "jamspikes": (2, (0, 3, 0x85, 0xFF)),
+    "breakloose": (11, (0, 0, 1, 5, 0x80, 0x82)), "breakloose1": (11, (0, 0, 1, 5, 0x80, 0x82)),
+    "pushpp": (6, None), "jampp": (6, None),
+}
+ANIMATED = {  # piece -> states for objects on the transition list
+    19: (0, 5, 16, 17, 18, 200), 6: None, 15: None,
+    2: (0, 1, 4, 5, 6, 8, 9, 10, 0x80, 0x81, 0x82, 0x8F, 143, 0xFF),
+    11: (0, 1, 8, 9, 10, 0x80, 0x82, 0x83, 0x84, 0xF5, 0xFF), 0: (0, 1),
+    18: (0, 1, 2, 5, 6, 14, 15, 0x81, 0x82, 0x85, 0x8F, 0x86),
+    4: (0, 1, 2, 4, 19, 20, 21, 40, 60, 80, 100, 120, 184, 185, 187, 188, 189, 237, 238,
+        0xFF),
+    16: (0, 4, 19, 20, 40, 60, 80, 100, 120, 164, 167, 168, 171, 172),
+    10: (0, 7, 8, 0x28, 0xE8, 0x41), 22: (0, 1, 2, 40), 1: (0, 3), 20: (0,),
+}
+
 COLLISION = ("checkbarr", "collisions", "checkcoll", "checkgate", "checkslice",
              "checkslice2", "enemycoll", "goneupstairs")
 
@@ -280,7 +332,7 @@ def random_state(rng, level, routine):
         i = (scrn - 1) * 30 + (rowi - 1) * 10 + col
         pokes.update({i: 4, 720 + i: rng.choice((0, 20, 23, 24, 27, 28, 188))})
     bufs = {}
-    for name, size in BUFFERS:
+    for name, size in BASE_BUFFERS:
         bufs[name] = bytes(rng.choice((0, 0, 0, 2, rng.randrange(256))) for _ in range(size))
     return s, pokes, bufs
 
@@ -389,6 +441,200 @@ def collision_state(rng, s, pokes, bufs, routine):
         s["level"] = rng.choice((1, 4, 4, 12, 13, 13, 14))
 
 
+def put_links(rng, pokes, scrn, first, count):
+    """Link entries first..first+count-1 pointing at gates and exits (and
+    sometimes at nothing in particular), as PUSHPP's chain expects."""
+    for k in range(count):
+        target = scrn if rng.random() < 0.7 else rng.randint(1, 24)
+        loc = rng.randrange(30)
+        last = 0x80 if k == count - 1 else 0
+        x = (first + k) & 0xFF
+        pokes[1440 + x] = loc | ((target & 3) << 5) | last
+        pokes[1696 + x] = ((target >> 2) << 5) | rng.choice((0, 0, 1, 2, 4, 5, 31))
+        piece = rng.choice((4, 4, 4, 16, 1))
+        pokes[(target - 1) * 30 + loc] = piece
+        pokes[720 + (target - 1) * 30 + loc] = rng.choice(ANIMATED[piece])
+    if rng.random() < 0.15:
+        pokes[1440 + first] = 0xFF                           # linked to nothing
+
+
+def mover_state(rng, s, pokes, bufs, routine):
+    """The transition and falling-floor lists and their variables; for the
+    moving-object routines also the pieces and states they exist for."""
+    scrn = s["CharScrn"]
+    s["numtrans"] = rng.choice((0, 0, 1, 2, 3, 5, 30, 31))
+    s["nummob"] = rng.choice((0, 0, 1, 2, 3, 14, 15))
+    s["trobcount"], s["tempnt"] = rng.randrange(256), rng.randrange(256)
+    s["exitopen"] = rng.choice((0, 1))
+    s["RNDseed"] = rng.randrange(256)
+    s["scrnAbove"], s["scrnBelow"] = rng.randint(0, 24), rng.randint(0, 24)
+    s["BGset1"] = rng.choice((0, 0, 1, 2))
+    vis = s["VisScrn"]
+    near = (vis, vis, vis, scrn, s["scrnLeft"] or 1, s["scrnAbove"] or 1, s["scrnBelow"] or 1,
+            s["scrnBelowL"] or 1)
+    bufs["trloc"] = bytes(rng.randrange(30) if rng.random() < 0.95 else rng.choice((30, 31))
+                          for _ in range(32))
+    bufs["trscrn"] = bytes(rng.choice(near) if rng.random() < 0.8 else rng.randint(1, 24)
+                           for _ in range(32))
+    bufs["trdirec"] = bytes(rng.choice((0, 1, 1, 2, 3, 4, 7, 8, 0xFF)) for _ in range(32))
+    bufs["mobx"] = bytes(4 * rng.randrange(10) for _ in range(16))
+    # (179-206: reaches line 209, where a floor leaves the null screen, after
+    # the speeds below are added; 196-223: reaches 226, the "still above the
+    # screen" limit)
+    bufs["moby"] = bytes(rng.choice((rng.randrange(256), 60, 62, 65, 125, 128, 185, 188, 191,
+                                     208, 209, 240, 179, 180, 194, 203, 206, 196, 197, 211,
+                                     220, 223)) for _ in range(16))
+    bufs["mobscrn"] = bytes(rng.choice((scrn, scrn, scrn, 0, rng.randint(1, 24)))
+                            for _ in range(16))
+    bufs["mobvel"] = bytes(rng.choice((0, 3, 12, 27, 29, 30, 0xFE, 0xFF)) for _ in range(16))
+    bufs["mobtype"] = bytes(rng.choice((0, 0, 0, 0, 1)) for _ in range(16))
+    bufs["moblevel"] = bytes(rng.choice((0, 1, 2, 2)) for _ in range(16))
+    for name, size in OTHER_REDRAW:
+        bufs[name] = bytes(rng.choice((0, 0, 0, 2)) for _ in range(size))
+    if routine not in MOVER:
+        return
+    r = rng.random()
+    s["level"] = rng.choice((1, 3, 3, 4, 4, 12, 13, 13))
+    s["tempscrn"] = scrn if r < 0.8 else rng.randint(0, 24)
+    s["KidLife"] = rng.choice((0xFF, 0xFF, 0))
+    s["KidBlockY"] = rng.choice((0, 1, 2))
+
+    if routine in TAKES_BLOCK:                               # the block "just read"
+        piece, states = TAKES_BLOCK[routine]
+        y = rng.randrange(30)
+        s["_y"], s["_noreread"] = y, 1
+        s["_a"] = rng.choice((0, 1, 15, 0x8F, scrn, vis, rng.randrange(256)))
+        if routine in ("pushpp", "jampp"):
+            piece = rng.choice((6, 6, 15, 15, 14))
+            link = rng.randrange(256)
+            pokes[720 + (scrn - 1) * 30 + y] = link
+            put_links(rng, pokes, scrn, link, rng.choice((1, 2, 3)))
+        else:
+            pokes[720 + (scrn - 1) * 30 + y] = rng.choice(states)
+        pokes[(scrn - 1) * 30 + y] = piece | rng.choice((0, 0, 0, 0x20, 0x40))
+        # is it already on the list?
+        if rng.random() < 0.4 and s["numtrans"]:
+            i = rng.randint(1, s["numtrans"])
+            for name, v in (("trloc", y), ("trscrn", s["tempscrn"])):
+                b = bytearray(bufs[name])
+                b[i] = v
+                bufs[name] = bytes(b)
+    elif routine == "animtrans":
+        s["numtrans"] = rng.choice((0, 1, 2, 3, 3, 5, 8, 31))
+        if rng.random() < 0.3:                               # at a corner of a neighbouring screen
+            b = {n: bytearray(bufs[n]) for n in ("trloc", "trscrn")}
+            b["trscrn"][1] = rng.choice((s["scrnBelowL"], s["scrnLeft"], s["scrnBelow"],
+                                         s["scrnAbove"])) or 1
+            b["trloc"][1] = rng.choice((9, 9, 19, 29, 0, 8, 20, 25))
+            bufs["trloc"], bufs["trscrn"] = bytes(b["trloc"]), bytes(b["trscrn"])
+        for i in range(1, s["numtrans"] + 1):                # something animated at each entry
+            t, loc = bufs["trscrn"][i], bufs["trloc"][i]
+            piece = rng.choice(list(ANIMATED))
+            pokes[(t - 1) * 30 + loc] = piece | rng.choice((0, 0, 0x20))
+            if piece in (6, 15):
+                link = rng.randrange(256)
+                pokes[720 + (t - 1) * 30 + loc] = link
+                pokes[1696 + link] = rng.choice((0, 1, 2, 3, 5, 31)) | (rng.randrange(8) << 5)
+            else:
+                pokes[720 + (t - 1) * 30 + loc] = rng.choice(ANIMATED[piece])
+    elif routine == "animmobs":
+        s["nummob"] = rng.choice((0, 1, 1, 2, 3, 15))
+        if r < 0.5 and s["nummob"]:                          # the kid under the first one
+            if rng.random() < 0.5:                           # ... which has stopped moving
+                b = bytearray(bufs["mobvel"])
+                b[1] = 0xFE
+                bufs["mobvel"] = bytes(b)
+            s.update(KidScrn=bufs["mobscrn"][1], KidBlockX=bufs["mobx"][1] >> 2,
+                     KidBlockY=bufs["moblevel"][1],
+                     KidY=(bufs["moby"][1] + rng.choice((0, 1, 10, 29, 30, 31, 60))) & 0xFF,
+                     KidPosn=rng.choice((4, 5, 9, 14, 15, 15, 109, 109)),
+                     KidAction=rng.choice((0, 1, 1, 2, 4, 7)), KidLife=0xFF,
+                     KidStrength=rng.choice((1, 2, 3)))
+        for i in range(1, s["nummob"] + 1):                  # what it lands on
+            t = bufs["mobscrn"][i]
+            if not t:
+                continue
+            at = (t - 1) * 30 + bufs["moblevel"][i] * 10 + (bufs["mobx"][i] >> 2)
+            piece = rng.choice((0, 0, 1, 1, 2, 6, 15, 10, 11, 11, 19, 4, 20))
+            pokes[at] = piece
+            if piece in (6, 15):
+                link = rng.randrange(256)
+                pokes[720 + at] = link
+                put_links(rng, pokes, t, link, rng.choice((1, 2)))
+            else:
+                pokes[720 + at] = rng.choice((0, 0, 1, 0x80))
+    elif routine in ("checkpress", "shakem", "shakeloose", "crumble"):
+        row = s["CharBlockY"] if s["CharBlockY"] < 3 else 1
+        base = (scrn - 1) * 30 + row * 10
+        for _ in range(rng.choice((1, 2, 3))):               # plates and loose floors about
+            col = rng.randrange(10)
+            piece = rng.choice((6, 15, 11, 11))
+            for b in ((base, (vis - 1) * 30 + rng.choice((0, 10, 20))) if vis else (base,)):
+                pokes[b + col] = piece | rng.choice((0, 0, 0x20))
+                if piece == 11:
+                    pokes[720 + b + col] = rng.choice((0, 0, 0, 1, 0x80))
+                else:
+                    link = rng.randrange(256)
+                    pokes[720 + b + col] = link
+                    put_links(rng, pokes, scrn, link, rng.choice((1, 2)))
+        if routine == "checkpress":
+            s.update(CharPosn=rng.choice((15, 15, 9, 79, 79, 87, 99, 100, 109, 134, 135, 140,
+                                          141, 44)),
+                     CharAction=rng.choice((0, 1, 1, 2, 3, 5, 7)),
+                     CharLife=rng.choice((0xFF, 0xFF, 0xFF, 0)))
+        if routine == "shakeloose":
+            s["jarabove"] = rng.choice((0, 1, 1, 0xFF, 0xFF))
+        if routine == "crumble":
+            s["level"] = rng.choice((13, 13, 13, 12))
+            s["VisScrn"] = rng.choice((23, 16, 16, 5))
+            above = rng.randint(1, 24)
+            s["scrnAbove"] = above
+            for col in range(1, 9):
+                if rng.random() < 0.6:
+                    pokes[(above - 1) * 30 + 20 + col] = 11 | rng.choice((0, 0, 0x20))
+                    pokes[720 + (above - 1) * 30 + 20 + col] = rng.choice((0, 0, 3, 0x80))
+    elif routine == "checkspikes":
+        row = s["CharBlockY"] if s["CharBlockY"] < 3 else 1
+        for _ in range(rng.choice((1, 2, 4))):               # spikes under and below him
+            col, rr = rng.randrange(10), rng.choice((row, row, min(2, row + 1)))
+            at = (scrn - 1) * 30 + rr * 10 + col
+            pokes[at] = 2
+            pokes[720 + at] = rng.choice((0, 0, 0, 3, 0x85, 0xFF))
+            if rr > row and rng.random() < 0.8:
+                pokes[at - 10] = 0
+    elif routine == "addslicers":
+        row = s["CharBlockY"] if s["CharBlockY"] < 3 else 1
+        for _ in range(rng.choice((0, 1, 3, 5))):
+            at = (scrn - 1) * 30 + row * 10 + rng.randrange(10)
+            pokes[at] = 18
+            pokes[720 + at] = rng.choice((0, 0, 1, 5, 6, 9, 0x80, 0x83, 0x8A))
+    elif routine == "addtorches":
+        if vis:
+            for _ in range(rng.choice((0, 2, 5))):
+                at = (vis - 1) * 30 + rng.randrange(30)
+                pokes[at] = rng.choice((19, 10, 22)) | rng.choice((0, 0x20))
+                pokes[720 + at] = rng.choice((0, 0x20, 0xA0))
+    elif routine == "getflameframe" and r < 0.5:
+        # the random number comes out equal to the present frame: the seed
+        # that gives 5*seed + 23 = frame (5 * 205 = 1 mod 256)
+        frame = rng.randrange(18)
+        s["RNDseed"] = ((frame - 23) * 205) & 0xFF
+        s["_a_only"] = frame
+    elif routine == "mirappear":
+        s["level"] = rng.choice((4, 4, 4, 3))
+    elif routine in ("addlowersound", "addtrob"):
+        b = {n: bytearray(bufs[n]) for n in ("trloc", "trscrn", "trdirec")}
+        b["trscrn"][0] = rng.choice((vis, vis, s["scrnLeft"], 2, rng.randint(1, 24)))
+        b["trloc"][0] = rng.choice((9, 19, 29, 9, 3, 14, 28))
+        if routine == "addtrob" and s["numtrans"] and rng.random() < 0.5:
+            i = rng.randint(1, s["numtrans"])                # already listed
+            b["trloc"][0], b["trscrn"][0] = b["trloc"][i], b["trscrn"][i]
+        for n in b:
+            bufs[n] = bytes(b[n])
+        s["level"] = rng.choice((3, 3, 1))
+        s["_noreread"] = 1
+
+
 def random_args(rng, routine, s):
     a, x, y = rng.randrange(256), rng.randrange(256), rng.randrange(30)
     if routine in ("checkledge", "pickitup"):
@@ -413,10 +659,7 @@ class Harness:
         self.stray = False
         cpu = self.oracle.cpu
         cpu.traps[self.oracle.addr("dimchar")] = self.trap_dimchar
-        cpu.traps[self.oracle.addr("addslicers")] = lambda c: self.hooks.append("s")
-        cpu.traps[self.oracle.addr("jamspikes")] = self.trap_jamspikes
         cpu.traps[self.oracle.addr("potioneffect")] = lambda c: self.hooks.append("p")
-        cpu.traps[self.oracle.addr("smashmirror")] = lambda c: self.hooks.append("m")
         cpu.on_read[0xC030] = lambda c: self.hooks.append("k")      # the speaker
         # PLAYERCTRL's input step (LoadSelect, getselect, clrjstk), SaveSelect
         # and the demo's own control: one mark each, nothing done
@@ -434,13 +677,6 @@ class Harness:
             cpu.a = cpu.x = 0
             return
         cpu.a, cpu.x = self.dims[table][image - 1]
-
-    def trap_jamspikes(self, cpu):
-        """JAMSPIKES (MOVER.S 354-358) minus the moving-object list."""
-        o = self.oracle
-        ptr = o.peek("BlueSpec") | (o.peek(o.addr("BlueSpec") + 1) << 8)
-        cpu.mem[(ptr + cpu.y) & 0xFFFF] = 0xFF
-        self.hooks.append("j")
 
     def run(self, level, s, bufs, steps, carry):
         """Run `steps` [(routine, a, x, y)] on state s; return the outcome of
@@ -504,8 +740,10 @@ def main(argv):
     only = argv[6].split(",") if len(argv) > 6 else None
     if only == ["@collision"]:
         only = list(COLLISION)
+    elif only == ["@mover"]:
+        only = list(MOVER)
     elif only == ["@control"]:
-        only = [n for n in ROUTINES if n not in COLLISION]
+        only = [n for n in ROUTINES if n not in COLLISION and n not in MOVER]
 
     h = Harness(source)
     levels = []
@@ -529,12 +767,17 @@ def main(argv):
             s, pokes, bufs = random_state(rng, level, routine)
             collision_state(random.Random("%d/%d/%s/coll" % (seed, round_no, routine)),
                             s, pokes, bufs, routine)
+            mover_state(random.Random("%d/%d/%s/mover" % (seed, round_no, routine)),
+                        s, pokes, bufs, routine)
+            pokes = {i: v for i, v in pokes.items() if 0 <= i < len(level)}
             a, x, y = random_args(rng, routine, s)
             carry = rng.randrange(2)
             if routine in ("markwipe", "markred"):
                 x = carry                            # the runner takes the carry in x
                 if carry and routine == "markred" and rng.random() < 0.5:
                     y = rng.randrange(256)           # with carry set only y < 10 is used
+            if "_a_only" in s:
+                a = s.pop("_a_only")
             noreread = s.pop("_noreread", 0)
             plain = s.pop("_plain", 0)
             fixed_y = s.pop("_y", None)
@@ -545,12 +788,14 @@ def main(argv):
             steps = [(routine, a, x, y)]
             if routine not in ("setupchar", "getedges", "markwipe", "markred", "indexblock",
                                "decstr", "getopdist", "clrall", "facejstk") \
+                    and (routine not in MOVER or routine in ("checkpress", "shakeloose",
+                                                             "addslicers")) \
                     and not noreread and rng.random() < 0.8:
                 steps.insert(0, ("rereadblocks", 0, 0, 0))   # a consistent CharBlockX
             if routine == "getedges":
                 steps.insert(0, ("setupchar", 0, 0, 0))
             if routine in ("checkbarr", "collisions", "checkgate", "checkslice2",
-                           "enemycoll") and not plain and rng.random() < 0.7:
+                           "enemycoll", "checkspikes") and not plain and rng.random() < 0.7:
                 # the character's real edges, as the frame would have them
                 steps = [("setupchar", 0, 0, 0), ("rereadblocks", 0, 0, 0),
                          ("getedges", 0, 0, 0), (routine, a, x, y)]

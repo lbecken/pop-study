@@ -29,17 +29,21 @@ Status of each behaviour in the reconstruction.
 | Player | Gravity and fall movement (`GRAVITY`, `ADDFALL`) | faithful, checked against the original code | same | |
 | Player | Control: dispatch by frame, standing / running / turning / crouching / hanging handlers, jumps, careful steps, pick-up, running-jump take-off adjustment | faithful, checked against the original code | `modern-port/src/core/pop_control.c` | fuzzed against the original routine by routine; calls into unported subsystems are hooks |
 | Player | Sword-fight moves of the controlled character (`FightCtrl`, strike, block, advance, retreat, sheathe) | faithful, checked against the original code | same | the opponent's decisions (`AUTO.S`) are missing |
-| Player | Floor checks, starting to fall, ledge grab, landing and fall damage, impalement | faithful, checked against the original code | same | spikes are jammed in the level data; the moving-object side is a hook |
-| Player | A whole kid frame | approximate | `modern-port/tests/trace_kidstep.py` | the ported steps in the original order, collision included, agree with the original over 60-frame traces; plates, loose floors, spike and slicer triggering, guards, screen changes not in it |
+| Player | Floor checks, starting to fall, ledge grab, landing and fall damage, impalement | faithful, checked against the original code | same | |
+| Player | A whole kid frame | approximate | `modern-port/tests/trace_kidstep.py` | all of `DoKid` except `firstguard`, `unholy` and the death handling, plus the level's moving objects, in the original order: agrees with the original over 60-frame traces; no guards, no screen changes |
 | Player | Input devices, joystick flag upkeep, demo playback | missing | – | hook in `pop_playerctrl`; milestone 9c |
 | Player | Strength changes applied, death sequence and messages | missing | – | `ChgKidStr` is set, nothing consumes it yet |
 | Rendering | Character edges and blocks covered (`GETEDGES`) | faithful, checked against the original code | same | image sizes from a generated table instead of the image data |
 | Rendering | Redraw marks (`MARKRED`, `MARKWIPE`, `INDEXBLOCK`) | faithful, checked against the original code | same | the buffers are filled; nothing draws from them yet |
 | World | Level blueprint and initial states (`SETINITIALS`) | model only | `tools/extract_assets/pop_level.py` | |
-| World | Collision with walls, gates, slicers and the mirror: edge-crossing detection, push-back, soft / hard / air / en-garde bumps, gate knocking a stander aside, being sliced | faithful, checked against the original code | `modern-port/src/core/pop_collide.c` | 8 entry points fuzzed against the original, and inside the kid-frame trace; smashing the mirror is a hook; the end-of-level music is requested (`SongCue`) but nothing plays it |
+| World | Collision with walls, gates, slicers and the mirror: edge-crossing detection, push-back, soft / hard / air / en-garde bumps, gate knocking a stander aside, being sliced | faithful, checked against the original code | `modern-port/src/core/pop_collide.c` | 8 entry points fuzzed against the original, and inside the kid-frame trace; the end-of-level music is requested (`SongCue`) but nothing plays it |
 | World | Kid running into a guard (`firstguard`) | missing | – | with opponents, milestone 9c |
-| World | Moving objects (gates, plates and links, loose floors, spikes, slicers) | missing | – | milestone 9b; until then gates and slicers stay as the level file has them |
-| World | Picking up a flask or sword (`REMOVEOBJ`), level 12's phantom bridge | faithful, checked against the original code | `pop_control.c` | the potion's effect is a hook |
+| World | Gates and the exit: opening, waiting, closing, fast drop, jamming | faithful, checked against the original code | `modern-port/src/core/pop_mover.c` | 27 entry points fuzzed against the original, and inside the kid-frame trace |
+| World | Pressure plates, their timers and link chains | faithful, checked against the original code | same | including a dead body's weight and rubble |
+| World | Spikes, slicers | faithful, checked against the original code | same | |
+| World | Loose floors: shaking, falling, landing as rubble, knocking others loose, crushing the kid | faithful, checked against the original code | same | simulated; not drawn (`ADDMOBS` missing) |
+| World | Torch, flask and sword animation states; random numbers (`RND`) | faithful, checked against the original code | same | the seed's start value and the other callers of `RND` are not ported |
+| World | Picking up a flask or sword (`REMOVEOBJ`), level 12's phantom bridge, level 4's mirror appearing, level 13's collapsing floor | faithful, checked against the original code | `pop_control.c`, `pop_mover.c` | the potion's effect is a hook |
 | Opponents | AI, sword fighting | missing | – | |
 | Audio | Sound-effect queue (`ADDSOUND`, `ZEROSOUND`, play order) | faithful, unverified | `modern-port/src/core/pop_sound.c` | |
 | Audio | Sound-effect waveforms | faithful timing, approximate sound, unverified | `modern-port/src/audio/pop_sfx.c`, generated `sfx.bin` | flip times come from executing the original code; output is the 1-bit signal, not speaker acoustics |

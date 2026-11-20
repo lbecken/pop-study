@@ -49,12 +49,12 @@ Items move to the relevant document once resolved.
 | E17 | How strength changes are applied: the control code only sets `ChgKidStr` / `ChgOppStr` (`DECSTR`); what adds them to `KidStrength` and when is not yet read. | Read `TOPCTRL.S` for `ChgKidStr` (after `NextFrame`) and `MISC.S` around `DECSTR`. |
 | E19 | The fall-height reading of the landing thresholds (one storey safe, two cost a unit, three kill) is inferred from the constants. | Run the kid-frame trace off ledges of each height once collision is in; compare with an emulator when a disk image is available. |
 | E20 | Whether any move is fast enough to arrive inside a barrier that was out of range the frame before, which the edge-crossing scheme would not detect (`docs/port/collision.md` §3.1). | Largest per-frame dx in the sequence table plus the widest image, against the 14-unit column and the one-column margin; then try it in the kid-frame trace. |
-| E21 | Whether it is intended that a slicer with the "blood" bit set is no longer a barrier (`CHECKCOLL` compares its state unmasked; `docs/port/collision.md` §3.3). | Read the slicer state machine in `MOVER.S`: does the bit persist while the blades are shut? |
-| E16 | Level data semantics not yet read: `BLUETYPE` bit 5 (`reqmask`) and bits 6–7 (`secmask`), the guard start arrays in `INFO`, and how the link list is walked when a plate is pressed. | Read `MOVER.S` `PUSHPP` and `AUTO.S` `ADDGUARD`. |
+| E21 | Whether it is intended that a slicer which has cut someone is no longer a barrier. That it is so is confirmed: the "blood" bit persists (`docs/port/moving-objects.md` §6.8) and `CHECKCOLL` compares the state unmasked. | Not answerable from the source; compare behaviour in an emulator when a disk image is available. |
+| E22 | Whether link chain 0 is harmless in the shipped levels: a dead body on an "up" plate triggers it (`docs/port/moving-objects.md` §6.1). | Decode `LINKLOC[0]` / `LINKMAP[0]` of each level and see what, if anything, a rubble trigger of it does. |
+| E16 | Level data semantics not yet read: `BLUETYPE` bits 6–7 (`secmask`, `EQ.S:484`) and the guard start arrays in `INFO`. (Bit 5, `reqmask`, and the link list are resolved: `docs/port/moving-objects.md` §4.) | Read `AUTO.S` `ADDGUARD`; grep `secmask`. |
 | E3 | Opponent AI (`ShadCtrl`, `AutoCtrl`, `guardprog`). | Read `AUTO.S`. |
-| E4 | TROB/MOB state machines. | Read `MOVER.S` with `COMMENTS.S:1-87`. |
 | E5 | Screen-cut logic and neighbouring-screen drawing. | Read `cutcheck`, `PrepCut`, `FRAMEADV.S`. |
-| E6 | Random number generator. | Read `RND` at `GRAFIX.S:1386`. |
+| E6 | What seeds the random number generator and which code calls it besides the moving objects. (`RND` itself is ported: seed ← 5·seed + 23 mod 256.) | Grep `RNDseed` and `jsr rnd` across the modules. |
 | E7 | Input: joystick thresholds, keyboard buffering, the `clr*` flag protocol. | Read `GRAFIX.S` `controller`, `SPECIALK.S` `KEYS`, `CLRJSTK`. |
 | E8 | Demo-level recorded input format (`demo`, `PreRecPtr`). | Read `AUTO.S` `AUTOPLAYBACK`. Useful later as a replay test. |
 | E9 | Copy-protection hooks that alter game state (`yellowflag`, `purpleflag`, `timebomb`, `redherring`). `decodeim` ORs `timebomb` into the image number (`CTRLSUBS.S:1036`). | Catalogue them so the port can treat them as always-passing. |

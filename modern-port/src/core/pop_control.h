@@ -74,6 +74,9 @@ uint8_t pop_getspikes(pop_game *g);                /* 0 safe, 1 sprung, 2 spring
 uint8_t pop_getopdist(pop_game *g);                /* signed distance to the opponent */
 uint8_t pop_checkledge(pop_game *g, uint8_t ledge_id);   /* 1 if it can be grabbed */
 int     pop_indexblock(pop_game *g);               /* sets ry; returns the carry flag */
+/* Byte `y` of the redraw buffer at offset `base` (POP_RB_*), wherever in the
+ * block that lands; beyond the block the port stops (g->unmodelled). */
+uint8_t *pop_rb(pop_game *g, unsigned base, uint8_t y);
 void    pop_markwipe(pop_game *g, uint8_t a, int *carry);
 void    pop_markred(pop_game *g, uint8_t a, int *carry);
 void    pop_removeobj(pop_game *g, uint8_t lastpotion);

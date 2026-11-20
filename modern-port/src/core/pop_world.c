@@ -89,6 +89,14 @@ uint8_t pop_bluespec(const pop_game *g, uint8_t y)
     return (g->blue && i < POP_LEVEL_SIZE) ? g->blueprint[i] : 0;
 }
 
+void pop_set_bluetype(pop_game *g, uint8_t y, uint8_t value)
+{
+    size_t i = POP_BLUETYPE + blue_index(g, y);
+    if (g->blue && i < POP_LEVEL_SIZE) {
+        g->blueprint[i] = value;
+    }
+}
+
 void pop_set_bluespec(pop_game *g, uint8_t y, uint8_t value)
 {
     size_t i = POP_BLUESPEC + blue_index(g, y);
@@ -278,6 +286,25 @@ uint8_t pop_floory(pop_game *g, uint8_t index)
 {
     uint8_t v = 0;
     if (index >= 10 || !edge_tables(30u + index, &v)) {
+        g->unmodelled = 1;
+    }
+    return v;
+}
+
+/* BlockBot,x and BlockAy,x: the tables on either side of FloorY. */
+uint8_t pop_blockbot(pop_game *g, uint8_t index)
+{
+    uint8_t v = 0;
+    if (index >= 15 || !edge_tables(25u + index, &v)) {
+        g->unmodelled = 1;
+    }
+    return v;
+}
+
+uint8_t pop_blockay(pop_game *g, uint8_t index)
+{
+    uint8_t v = 0;
+    if (index >= 5 || !edge_tables(35u + index, &v)) {
         g->unmodelled = 1;
     }
     return v;

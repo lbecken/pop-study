@@ -230,10 +230,9 @@ it, starts `fallhang` and sets `stunned` = 12, which blocks climbing up for
 
 ## 5. Intentional deviations
 
-- **Unported subsystems are hooks** (`pop_game_hooks`): `addslicers`,
-  `jamspikes` (the port does the state write, the hook is for the moving-
-  object list), `potioneffect`, the input step of `PLAYERCTRL`, and
-  `DemoCtrl`. Each is called where the original has its
+- **Unported subsystems are hooks** (`pop_game_hooks`): `potioneffect`, the
+  input step of `PLAYERCTRL`, and `DemoCtrl`. (`addslicers` and `jamspikes`
+  were hooks until the moving objects were ported.) Each is called where the original has its
   `jsr`.
 - **Image sizes come from a generated table.** `GETEDGES` calls `DIMCHAR`,
   which reads the image tables in main memory. The port reads

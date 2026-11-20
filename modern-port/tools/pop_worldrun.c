@@ -19,9 +19,8 @@
  * For each R line one line is printed: "a=<n> <name>=<n> ..." listing the
  * returned value and every state variable, then
  *   snd:<hex>     sounds queued by the routine, in order
- *   hooks:<chars> calls out of the ported code: s addslicers, j jamspikes,
- *                 p potioneffect, m smashmirror, k speaker click, i input
- *                 read, o input saved, d DemoCtrl
+ *   hooks:<chars> calls out of the ported code: p potioneffect, k speaker
+ *                 click, i input read, o input saved, d DemoCtrl
  *   lvl:<i>.<v>,… blueprint bytes the routine changed (then undone, unless
  *                 a "K 1" line asked for changes to persist)
  *   redbuf:<hex> wipebuf:<hex> whitebuf:<hex> topbuf:<hex>, and the eight
@@ -37,6 +36,7 @@
 #include "pop_assets.h"
 #include "pop_collide.h"
 #include "pop_control.h"
+#include "pop_mover.h"
 #include "pop_world.h"
 
 static pop_game g;
@@ -45,10 +45,7 @@ static char hooklog[64];
 static size_t nhooks;
 
 static void log_hook(char c) { if (nhooks < sizeof hooklog - 1) hooklog[nhooks++] = c; }
-static void h_slicers(void *ctx) { (void)ctx; log_hook('s'); }
-static void h_jam(void *ctx) { (void)ctx; log_hook('j'); }
 static void h_potion(void *ctx) { (void)ctx; log_hook('p'); }
-static void h_mirror(void *ctx) { (void)ctx; log_hook('m'); }
 static void h_click(void *ctx) { (void)ctx; log_hook('k'); }
 static void h_input(void *ctx) { (void)ctx; log_hook('i'); }
 static void h_saveinput(void *ctx) { (void)ctx; log_hook('o'); }
@@ -102,6 +99,9 @@ static var vars[] = {
     { "NextLevel", &g.NextLevel }, { "BlockYthis", &g.BlockYthis },
     { "BlockYlast", &g.BlockYlast }, { "SongCue", &g.SongCue },
     { "SongCount", &g.SongCount },
+    { "numtrans", &g.numtrans }, { "nummob", &g.nummob }, { "trobcount", &g.trobcount },
+    { "tempnt", &g.tempnt }, { "exitopen", &g.exitopen }, { "RNDseed", &g.RNDseed },
+    { "scrnAbove", &g.scrnAbove }, { "scrnBelow", &g.scrnBelow }, { "BGset1", &g.BGset1 },
     { "X", &g.rx }, { "Y", &g.ry }, { "blue", &g.blue },
     { "unmodelled", &g.unmodelled },
 };
@@ -116,12 +116,20 @@ static var16 vars16[] = {
 
 typedef struct { const char *name; uint8_t *p; size_t n; } buf;
 static buf bufs[] = {
-    { "redbuf", g.redbuf, sizeof g.redbuf }, { "wipebuf", g.wipebuf, sizeof g.wipebuf },
-    { "whitebuf", g.whitebuf, sizeof g.whitebuf }, { "topbuf", g.topbuf, sizeof g.topbuf },
+    { "redbuf", g.rb + POP_RB_RED, 30 }, { "wipebuf", g.rb + POP_RB_WIPE, 30 },
+    { "whitebuf", g.rb + POP_RB_WHITE, 30 }, { "topbuf", g.rb + POP_RB_TOP, 10 },
     { "CDthisframe", g.CD[POP_CD_THIS], 16 }, { "CDlastframe", g.CD[POP_CD_LAST], 16 },
     { "CDbelow", g.CD[POP_CD_BELOW], 16 }, { "CDabove", g.CD[POP_CD_ABOVE], 16 },
     { "SNthisframe", g.SN[POP_CD_THIS], 16 }, { "SNlastframe", g.SN[POP_CD_LAST], 16 },
     { "SNbelow", g.SN[POP_CD_BELOW], 16 }, { "SNabove", g.SN[POP_CD_ABOVE], 10 },
+    { "fredbuf", g.rb + POP_RB_FRED, 30 }, { "movebuf", g.rb + POP_RB_MOVE, 30 },
+    { "halfbuf", g.rb + POP_RB_HALF, 30 }, { "floorbuf", g.rb + POP_RB_FLOOR, 30 },
+    { "objbuf", g.rb + POP_RB_OBJ, 30 },
+    { "trloc", g.trloc, POP_TROBSPACE }, { "trscrn", g.trscrn, POP_TROBSPACE },
+    { "trdirec", g.trdirec, POP_TROBSPACE },
+    { "mobx", g.mobx, POP_MOBSPACE }, { "moby", g.moby, POP_MOBSPACE },
+    { "mobscrn", g.mobscrn, POP_MOBSPACE }, { "mobvel", g.mobvel, POP_MOBSPACE },
+    { "mobtype", g.mobtype, POP_MOBSPACE }, { "moblevel", g.moblevel, POP_MOBSPACE },
 };
 #define NBUFS (sizeof bufs / sizeof bufs[0])
 #define NVARS16 (sizeof vars16 / sizeof vars16[0])
@@ -248,6 +256,35 @@ static int run(const char *r, uint8_t a, uint8_t x, uint8_t y, int *out)
     if (!strcmp(r, "checkslice2"))  RET(pop_checkslice2(&g));
     if (!strcmp(r, "enemycoll"))    DO(pop_enemycoll(&g));
     if (!strcmp(r, "goneupstairs")) DO(pop_goneupstairs(&g));
+
+    /* moving objects */
+    if (!strcmp(r, "rnd"))          RET(pop_rnd(&g));
+    if (!strcmp(r, "addtrob"))      DO(pop_addtrob(&g));
+    if (!strcmp(r, "animtrans"))    DO(pop_animtrans(&g));
+    if (!strcmp(r, "animmobs"))     DO(pop_animmobs(&g));
+    if (!strcmp(r, "trigslicer"))   { g.ry = y; DO(pop_trigslicer(&g, a)); }
+    if (!strcmp(r, "closeexit"))    { g.ry = y; DO(pop_closeexit(&g, a)); }
+    if (!strcmp(r, "smashmirror"))  { g.ry = y; DO(pop_smashmirror(&g)); }
+    if (!strcmp(r, "trigflask"))    { g.ry = y; DO(pop_trigflask(&g, a)); }
+    if (!strcmp(r, "trigsword"))    { g.ry = y; DO(pop_trigsword(&g, a)); }
+    if (!strcmp(r, "trigtorch"))    { g.ry = y; DO(pop_trigtorch(&g, a)); }
+    if (!strcmp(r, "trigspikes"))   { g.ry = y; DO(pop_trigspikes(&g)); }
+    if (!strcmp(r, "jamspikes"))    { g.ry = y; DO(pop_jamspikes(&g)); }
+    if (!strcmp(r, "breakloose"))   { g.ry = y; DO(pop_breakloose(&g)); }
+    if (!strcmp(r, "breakloose1"))  { g.ry = y; DO(pop_breakloose1(&g, a)); }
+    if (!strcmp(r, "pushpp"))       { g.ry = y; DO(pop_pushpp(&g)); }
+    if (!strcmp(r, "jampp"))        { g.ry = y; DO(pop_jampp(&g)); }
+    if (!strcmp(r, "getflameframe")) RET(pop_getflameframe(&g, a));
+    if (!strcmp(r, "getflaskframe")) RET(pop_getflaskframe(a));
+    if (!strcmp(r, "shakem"))       DO(pop_shakem(&g, a));
+    if (!strcmp(r, "checkpress"))   DO(pop_checkpress(&g));
+    if (!strcmp(r, "checkspikes"))  DO(pop_checkspikes(&g));
+    if (!strcmp(r, "shakeloose"))   DO(pop_shakeloose(&g));
+    if (!strcmp(r, "addslicers"))   DO(pop_addslicers(&g));
+    if (!strcmp(r, "addtorches"))   DO(pop_addtorches(&g));
+    if (!strcmp(r, "crumble"))      DO(pop_crumble(&g));
+    if (!strcmp(r, "mirappear"))    DO(pop_mirappear(&g));
+    if (!strcmp(r, "addlowersound")) DO(pop_addlowersound(&g, a));
     return 0;
 #undef RET
 #undef DO
@@ -296,10 +333,7 @@ int main(int argc, char **argv)
         g.seq = &seq.tab;
         g.dims = &dims.dims;
     }
-    g.hooks.add_slicers = h_slicers;
-    g.hooks.jam_spikes = h_jam;
     g.hooks.potion_effect = h_potion;
-    g.hooks.smash_mirror = h_mirror;
     g.hooks.speaker_click = h_click;
     g.hooks.get_input = h_input;
     g.hooks.save_input = h_saveinput;

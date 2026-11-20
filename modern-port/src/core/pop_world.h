@@ -48,6 +48,7 @@ void pop_calcblue(pop_game *g, uint8_t scrn);
 uint8_t pop_bluetype(const pop_game *g, uint8_t y);
 uint8_t pop_bluespec(const pop_game *g, uint8_t y);
 void    pop_set_bluespec(pop_game *g, uint8_t y, uint8_t value);
+void    pop_set_bluetype(pop_game *g, uint8_t y, uint8_t value);
 
 /* RDBLOCK: piece id of block (x, y) of a screen; x and y may lie outside
  * 0-9 / 0-2 and are then followed onto neighbouring screens.  Screen 0 reads
@@ -80,6 +81,8 @@ uint8_t pop_getblockxp(pop_game *g, uint8_t x);      /* same, for the centre pla
 uint8_t pop_getblocky(uint8_t y);                    /* row 0-3, or $FF above the screen */
 uint8_t pop_getblockyp(uint8_t y);                   /* same, by floor lines */
 uint8_t pop_floory(pop_game *g, uint8_t index);      /* FloorY,x: floor line of row index-1 */
+uint8_t pop_blockbot(pop_game *g, uint8_t index);    /* BlockBot,x: bottom line of row index-1 */
+uint8_t pop_blockay(pop_game *g, uint8_t index);     /* BlockAy,x: bottom line - 3 */
 
 /* --- piece classes ---------------------------------------------------------------- */
 

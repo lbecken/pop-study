@@ -148,26 +148,26 @@ static void test_redraw_marks(void)
     g.height = 20;
     carry = 0;
     pop_markwipe(&g, 2, &carry);
-    CHECK_EQ(g.wipebuf[7], 2);
-    CHECK_EQ(g.whitebuf[7], 20);
+    CHECK_EQ(g.rb[POP_RB_WIPE + 7], 2);
+    CHECK_EQ(g.rb[POP_RB_WHITE + 7], 20);
     g.height = 10;                                 /* a smaller wipe keeps the larger height */
     pop_markwipe(&g, 2, &carry);
-    CHECK_EQ(g.whitebuf[7], 20);
+    CHECK_EQ(g.rb[POP_RB_WHITE + 7], 20);
     g.height = 35;
     pop_markwipe(&g, 2, &carry);
-    CHECK_EQ(g.whitebuf[7], 35);
+    CHECK_EQ(g.rb[POP_RB_WHITE + 7], 35);
     carry = 1;                                     /* off screen: nothing */
     g.ry = 8;
     pop_markwipe(&g, 2, &carry);
-    CHECK_EQ(g.wipebuf[8], 0);
+    CHECK_EQ(g.rb[POP_RB_WIPE + 8], 0);
     CHECK_EQ(carry, 1);
 
     pop_markred(&g, 2, &carry);                    /* MARKRED: carry set -> top line */
-    CHECK_EQ(g.topbuf[8], 2);
-    CHECK_EQ(g.redbuf[8], 0);
+    CHECK_EQ(g.rb[POP_RB_TOP + 8], 2);
+    CHECK_EQ(g.rb[POP_RB_RED + 8], 0);
     carry = 0;
     pop_markred(&g, 3, &carry);
-    CHECK_EQ(g.redbuf[8], 3);
+    CHECK_EQ(g.rb[POP_RB_RED + 8], 3);
 }
 
 static void test_removeobj(void)
@@ -181,9 +181,9 @@ static void test_removeobj(void)
     CHECK_EQ(g.blueprint[POP_BLUESPEC + 12], 0);
     CHECK_EQ(g.lastpotion, 2);
     CHECK_EQ(g.clrbtn, 1);
-    CHECK_EQ(g.wipebuf[12], 2);
-    CHECK_EQ(g.whitebuf[12], 35);
-    CHECK_EQ(g.redbuf[12], 2);
+    CHECK_EQ(g.rb[POP_RB_WIPE + 12], 2);
+    CHECK_EQ(g.rb[POP_RB_WHITE + 12], 35);
+    CHECK_EQ(g.rb[POP_RB_RED + 12], 2);
     CHECK_EQ(g.unmodelled, 0);
 }
 
@@ -325,7 +325,6 @@ static void test_walking_off_an_edge(void)
     CHECK_EQ(g.ch.posn, POP_SQ_STEPFALL);          /* one frame into the made-up sequence */
     CHECK_EQ(g.rjumpflag, 9);
     CHECK_EQ(g.ch.sword, 0);                       /* hands free to grab */
-    CHECK(strcmp(hooklog, "s") == 0);
     CHECK_EQ(g.unmodelled, 0);
 
     setup(3, POP_FACE_RIGHT);                      /* floor underfoot: nothing happens */
@@ -358,7 +357,6 @@ static void test_landing(void)
     CHECK_EQ(g.ch.y_vel, 0);
     CHECK_EQ(g.ChgKidStr, 0);
     CHECK_EQ(g.sq.count, 0);
-    CHECK(strcmp(hooklog, "s") == 0);
 
     land(22, 0);                                   /* OofVelocity: costs one unit */
     CHECK_EQ(g.ch.posn, POP_SQ_MEDLAND);
@@ -404,10 +402,13 @@ static void test_spikes(void)
     g.ch.posn = 9;                                 /* running over them */
     pop_checkimpale(&g);
     CHECK_EQ(g.blueprint[POP_BLUESPEC + 13], 0xFF);/* jammed */
-    CHECK(strcmp(hooklog, "j") == 0);
+    CHECK_EQ(g.numtrans, 1);                       /* listed as stopped, to be redrawn */
+    CHECK_EQ(g.trloc[1], 13);
+    CHECK_EQ(g.trdirec[1], 0xFF);
     CHECK_EQ(g.ch.posn, POP_SQ_IMPALE);
     CHECK_EQ(g.ChgKidStr, 0xFD);
-    CHECK_EQ(g.sq.items[0], POP_SND_IMPALED);
+    CHECK_EQ(g.sq.count, 2);
+    CHECK_EQ(g.sq.items[1], POP_SND_IMPALED);
     CHECK_EQ(g.ch.y, 118);
     /* centred on the block: left edge 100, + 10, then 8 further "forward",
      * which for a character facing left is towards smaller x */

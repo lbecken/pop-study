@@ -8,6 +8,7 @@
 #include "pop_control.h"
 
 #include "pop_collide.h"
+#include "pop_mover.h"
 #include "pop_world.h"
 
 #define NEG(v) (((v) & 0x80u) != 0)        /* bmi / "fresh press" / pressed */
@@ -30,11 +31,7 @@ enum { THINNER = 3, GATE_MARGIN = 6, EST_WIDTH = 13, SPIKE_EXT = 5, FCHECKMARK =
 /* --- helpers ---------------------------------------------------------------------- */
 
 static void anim_sound(void *ctx, uint8_t s) { pop_addsound(&((pop_game *)ctx)->sq, s); }
-static void anim_slicers(void *ctx)
-{
-    pop_game *g = ctx;
-    if (g->hooks.add_slicers) g->hooks.add_slicers(g->hooks.ctx);
-}
+static void anim_slicers(void *ctx) { pop_addslicers(ctx); }
 static void anim_upstairs(void *ctx) { pop_goneupstairs(ctx); }
 static void anim_potion(void *ctx)
 {
@@ -59,10 +56,7 @@ void pop_g_animchar(pop_game *g)
 
 void pop_g_addsound(pop_game *g, uint8_t sound) { pop_addsound(&g->sq, sound); }
 
-static void addslicers(pop_game *g)
-{
-    if (g->hooks.add_slicers) g->hooks.add_slicers(g->hooks.ctx);
-}
+static void addslicers(pop_game *g) { pop_addslicers(g); }
 
 /* clrall, CTRL.S 625-632: clrbtn is not touched; returns A = 1. */
 uint8_t pop_clrall(pop_game *g)
@@ -161,16 +155,26 @@ int pop_indexblock(pop_game *g)
     return 0;
 }
 
+uint8_t *pop_rb(pop_game *g, unsigned base, uint8_t y)
+{
+    static uint8_t sink;
+    if (base + y >= POP_RB_SIZE) {
+        g->unmodelled = 1;
+        sink = 0;
+        return &sink;
+    }
+    return &g->rb[base + y];
+}
+
 /* MARKWIPE, CTRLSUBS.S 1744-1757.  A, Y and a set carry are preserved. */
 void pop_markwipe(pop_game *g, uint8_t a, int *carry)
 {
     uint8_t y = g->ry;
     if (*carry) return;
-    if (y >= 30) { g->unmodelled = 1; return; }
-    if (g->wipebuf[y] == 0 || g->height >= g->whitebuf[y]) {
-        g->whitebuf[y] = g->height;            /* keep the larger wipe height */
+    if (*pop_rb(g, POP_RB_WIPE, y) == 0 || g->height >= *pop_rb(g, POP_RB_WHITE, y)) {
+        *pop_rb(g, POP_RB_WHITE, y) = g->height;   /* keep the larger wipe height */
     }
-    g->wipebuf[y] = a;
+    *pop_rb(g, POP_RB_WIPE, y) = a;
     *carry = 0;
 }
 
@@ -179,11 +183,10 @@ void pop_markred(pop_game *g, uint8_t a, int *carry)
 {
     uint8_t y = g->ry;
     if (*carry) {                              /* ]os: top line from the screen above? */
-        if (y < 10) g->topbuf[y] = a;
+        if (y < 10) g->rb[POP_RB_TOP + y] = a;
         return;
     }
-    if (y >= 30) { g->unmodelled = 1; return; }
-    g->redbuf[y] = a;
+    *pop_rb(g, POP_RB_RED, y) = a;
 }
 
 /* REMOVEOBJ, SUBS.S 1415-1432.  In: ry / blueprint from rdblock. */
@@ -953,9 +956,7 @@ uint8_t pop_insideblock(pop_game *g)
 
 void pop_doimpale(pop_game *g)
 {
-    /* jamspikes: the spikes' state becomes $FF; the rest is MOVER's business */
-    pop_set_bluespec(g, g->ry, 0xFF);
-    if (g->hooks.jam_spikes) g->hooks.jam_spikes(g->hooks.ctx);
+    pop_jamspikes(g);
 
     g->ch.y = floor_under(g);                  /* align with the floor */
     g->ch.x = u8(pop_getblockej(g, g->tempblockx) + 10);

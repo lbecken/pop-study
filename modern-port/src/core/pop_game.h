@@ -66,10 +66,7 @@ typedef struct pop_imgdims {
  * original has its `jsr`.  Any pointer may be NULL. */
 typedef struct pop_game_hooks {
     void *ctx;
-    void (*add_slicers)(void *ctx);      /* addslicers,   SUBS.S 250  */
-    void (*jam_spikes)(void *ctx);       /* jamspikes,    MOVER.S 354 (after the spec write) */
     void (*potion_effect)(void *ctx);    /* potioneffect, MISC.S      */
-    void (*smash_mirror)(void *ctx);     /* smashmirror,  MOVER.S 259 */
     void (*speaker_click)(void *ctx);    /* a read of $C030, COLL.S 403 */
     /* PLAYERCTRL's input step: LoadSelect, getselect, clrjstk (CTRL.S
      * 573-577).  Expected to set JSTKX, JSTKY, btn and the clr* flags. */
@@ -77,6 +74,19 @@ typedef struct pop_game_hooks {
     void (*save_input)(void *ctx);       /* SaveSelect,   CTRL.S 582  */
     void (*demo_ctrl)(void *ctx);        /* DemoCtrl,     CTRL.S 587: the demo level's kid */
 } pop_game_hooks;
+
+/* The redraw buffers are one block of memory (EQ.S 218-229): 30 bytes each,
+ * one per block of the screen, and 10 for the top line.  They are kept as
+ * one array because the original indexes them with unchecked 8-bit values:
+ * index 30 of one buffer is index 0 of the next. */
+enum {
+    POP_RB_HALF = 60, POP_RB_RED = 90, POP_RB_FRED = 120, POP_RB_FLOOR = 150,
+    POP_RB_WIPE = 180, POP_RB_MOVE = 210, POP_RB_OBJ = 240, POP_RB_WHITE = 270,
+    POP_RB_TOP = 300, POP_RB_SIZE = 310
+};
+
+#define POP_TROBSPACE 32                 /* GAMEEQ.S 48 */
+#define POP_MOBSPACE  16                 /* GAMEEQ.S 49 */
 
 /* Order of the collision buffers in memory. */
 enum { POP_CD_THIS = 0, POP_CD_LAST = 1, POP_CD_BELOW = 2, POP_CD_ABOVE = 3 };
@@ -156,8 +166,25 @@ typedef struct pop_game {
      * it must start (CUESONG, SPECIALK.S 1332-1335) */
     uint8_t  SongCue, SongCount;
 
+    /* --- moving level objects (MOVER.S; GAMEEQ.S 46-65) ---
+     * TROBs ("transitional objects": gates, plates, spikes, slicers, loose
+     * floors before they drop, torches, flasks, the sword) are a list of
+     * (block, screen, direction); MOBs are falling floors.  In both, entry 0
+     * is the working copy the routines operate on and the list is 1..count. */
+    uint8_t  trloc[POP_TROBSPACE], trscrn[POP_TROBSPACE], trdirec[POP_TROBSPACE];   /* $B600 */
+    uint8_t  mobx[POP_MOBSPACE], moby[POP_MOBSPACE], mobscrn[POP_MOBSPACE];        /* $B660 */
+    uint8_t  mobvel[POP_MOBSPACE], mobtype[POP_MOBSPACE], moblevel[POP_MOBSPACE];
+    uint8_t  numtrans, nummob;           /* $95, $30D */
+    uint8_t  trobcount, tempnt;          /* $B6E0, $96 */
+    uint8_t  exitopen;                   /* $86 */
+    uint8_t  RNDseed;                    /* $9E */
+    uint8_t  scrnAbove, scrnBelow;       /* $33, $34 */
+    uint8_t  BGset1;                     /* $303: background set, 1 = palace */
+    /* scratch that carries values between MOVER routines (its `locals`) */
+    uint8_t  mv_state, linkindex, pptype, underFF;
+
     /* --- redraw marks (CTRLSUBS.S 1734-1757) --- */
-    uint8_t  redbuf[30], wipebuf[30], whitebuf[30], topbuf[10];
+    uint8_t  rb[POP_RB_SIZE];            /* $5E00: the redraw buffers, see POP_RB_* */
     uint8_t  height;                     /* $04: wipe height for MARKWIPE */
 
     pop_soundq sq;                       /* soundtable, $B6C0 */

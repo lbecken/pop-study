@@ -174,9 +174,10 @@ are unconditional, so the port keeps them; nothing in the port sets
 
 ## 5. Intentional deviations
 
-- **Hooks** for what is not ported: `smashmirror` (`MOVER.S:259`) and the
-  speaker read at line 403. `CUESONG` (`SPECIALK.S:1332-1335`) only stores
-  the request in `SongCue` / `SongCount`, and is ported as that.
+- **A hook** for the speaker read at line 403. `CUESONG`
+  (`SPECIALK.S:1332-1335`) only stores the request in `SongCue` /
+  `SongCount` and is ported as that; `smashmirror` is ported with the moving
+  objects.
 - **`GoneUpstairs` is ported**, so the sequence interpreter's level-exit
   instruction now runs it instead of calling out.
 - **Buffers as arrays.** The eight buffers are 16 bytes apart in memory with
@@ -197,8 +198,8 @@ are unconditional, so the port keeps them; nothing in the port sets
 
 Limits:
 
-- Gates do not move and slicers do not run yet (`MOVER.S`), so in the trace
-  they are as the level file has them.
+- (Gates and slicers were static when this was written; they move since
+  milestone 9b.)
 - `firstguard` (kid running into a guard, `MISC.S`) is not ported.
 - The screen-change code is not ported. The trace keeps `VisScrn` and the
   neighbour variables pointing at the kid's screen itself; a trace in which

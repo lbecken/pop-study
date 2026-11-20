@@ -9,22 +9,28 @@ of a real level and plays several hundred frames of random joystick input,
 running, for each frame, the part of the original's per-frame kid update that
 has been ported, in the original's order (TOPCTRL.S 635-690):
 
+    animmobs, animtrans,
     LoadKidwOp, rereadblocks, PlayerCtrl, animchar, gravity, addfall,
     setupchar, rereadblocks, getedges, checkbarr, collisions, checkgate,
-    checkfloor, checkimpale, checkslice, SaveKid
+    checkfloor, checkpress, checkspikes, checkimpale, checkslice, shakeloose,
+    SaveKid
 
 The same list of calls is made on the original code in the 6502 simulator
 and on the C port, and after every call the whole tracked state, the sounds,
 the level changes, the redraw buffers and the calls to unported subsystems
 must agree.  Level changes persist from frame to frame.
 
-What is NOT in the frame, because it is not ported yet: guards (firstguard),
-pressure plates and loose floors (checkpress, shakeloose), spike triggering
-(checkspikes), everything that moves in the level (gates stay as the level
-file has them, slicers do not start), screen changes and drawing.  The
-joystick flags are set by the test, standing in for the input code, and so
-are VisScrn and the neighbouring-screen variables, which the test keeps
-pointing at the kid's screen as the screen-change code would.
+So within a trace gates open and close when plates are stepped on, spikes
+spring, slicers run, loose floors shake, fall and crush, in both
+implementations alike.
+
+What is NOT in the frame, because it is not ported yet: guards (firstguard,
+DoShad), strength changes and death handling, screen changes and drawing.
+The joystick flags are set by the test, standing in for the input code, and
+so are VisScrn and the neighbouring-screen variables, which the test keeps
+pointing at the kid's screen as the screen-change code would.  When the
+visible screen changes the test also calls addtorches, as the original does
+on entering a screen (TOPCTRL.S 1061).
 
 Usage:
     trace_kidstep.py <pop_worldrun> <data dir> <original checkout> [traces] [seed]
@@ -41,14 +47,18 @@ sys.path.insert(0, HERE)
 import fuzz_control as fc  # noqa: E402
 from fuzz_control import BLUEPRINT, BUFFERS, BYTES, WORDS, CpuError  # noqa: E402
 
-FRAME = [("loadkidwop", "CTRLSUBS", "LOADKIDWOP"), ("rereadblocks", "CTRL", "REREADBLOCKS"),
+# NextFrame (TOPCTRL.S 503-506) updates the level's moving objects first
+FRAME = [("animmobs", "MOVER", "ANIMMOBS"), ("animtrans", "MOVER", "ANIMTRANS"),
+         ("loadkidwop", "CTRLSUBS", "LOADKIDWOP"), ("rereadblocks", "CTRL", "REREADBLOCKS"),
          ("playerctrl", "CTRL", "PLAYERCTRL"), ("animchar", "COLL", "ANIMCHAR"),
          ("gravity", "SUBS", "GRAVITY"), ("addfall", "SUBS", "ADDFALL"),
          ("setupchar", "CTRLSUBS", "SETUPCHAR"), ("rereadblocks", "CTRL", "REREADBLOCKS"),
          ("getedges", "CTRLSUBS", "GETEDGES"), ("checkbarr", "COLL", "CHECKBARR"),
          ("collisions", "COLL", "COLLISIONS"), ("checkgate", "COLL", "CHECKGATE"),
-         ("checkfloor", "CTRL", "CHECKFLOOR"), ("checkimpale", "CTRL", "CHECKIMPALE"),
-         ("checkslice", "COLL", "CHECKSLICE"), ("savekid", "CTRLSUBS", "SAVEKID")]
+         ("checkfloor", "CTRL", "CHECKFLOOR"), ("checkpress", "CTRL", "CHECKPRESS"),
+         ("checkspikes", "CTRLSUBS", "CHECKSPIKES"), ("checkimpale", "CTRL", "CHECKIMPALE"),
+         ("checkslice", "COLL", "CHECKSLICE"), ("shakeloose", "TOPCTRL", "shakeloose"),
+         ("savekid", "CTRLSUBS", "SAVEKID")]
 FRAMES_PER_TRACE = 60
 INPUT_VARS = ("JSTKX", "JSTKY", "btn", "clrF", "clrB", "clrU", "clrD", "clrbtn")
 FLOORS = (1, 2, 4, 6, 10, 11, 14, 15, 22)         # pieces to stand on at the start
@@ -117,8 +127,10 @@ def start_state(rng, level):
                     spots.append((scrn, row, col))
     scrn, row, col = rng.choice(spots)
     s = fc.fw.random_state(rng)
-    for n in fc.EXTRA + fc.COLL_VARS:
+    for n in fc.EXTRA + fc.COLL_VARS + fc.MOVER_VARS:
         s[n] = 0
+    s["RNDseed"] = rng.randrange(256)
+    s["BGset1"] = rng.choice((0, 0, 1))
     s["collideL"] = s["collideR"] = 0xFF
     s["FCharX"] = 0
     for rec in ("Kid", "Char", "Shad", "Op"):
@@ -140,6 +152,7 @@ def screen_vars(level, scrn):
         return level[1952 + (s - 1) * 4 + which] if 1 <= s <= 24 else 0
     below = link(scrn, 3)
     return {"VisScrn": scrn, "scrnLeft": link(scrn, 0), "scrnRight": link(scrn, 1),
+            "scrnAbove": link(scrn, 2), "scrnBelow": below,
             "scrnBelowL": link(below, 0), "scrnBelowR": link(below, 1)}
 
 
@@ -169,6 +182,7 @@ def main(argv):
 
     commands, expected = ["K 1"], []
     seen_frames, seen_actions, ended_early, frames_run = set(), set(), 0, 0
+    sounds, busiest_list, falling_floors, level_changes = set(), 0, 0, 0
     for trace in range(traces):
         level = levels[rng.randrange(1, 15)]
         s = start_state(rng, level)
@@ -182,6 +196,7 @@ def main(argv):
         prelude = [("loadkid", "CTRLSUBS", "LOADKID", 0), ("jumpseq", "CTRLSUBS", "JUMPSEQ", stand),
                    ("savekid", "CTRLSUBS", "SAVEKID", 0)]
         held, prev, alive = None, {"JSTKX": 0, "JSTKY": 0, "btn": 0}, True
+        vis_before = 0
         for name, module, label, a in prelude:
             want = h.step(module, label, a)
             commands.append("R %s %d 0 0" % (name, a))
@@ -200,22 +215,32 @@ def main(argv):
                     flags[flag] = 0xFF
             values = dict(held, **flags)
             prev = held
-            values.update(screen_vars(h.level, h.oracle.peek(h.addr["KidScrn"])))
+            scrn_now = h.oracle.peek(h.addr["KidScrn"])
+            values.update(screen_vars(h.level, scrn_now))
             h.set(values)
             commands.append("S " + " ".join("%s=%d" % kv for kv in values.items()))
-            for name, module, label in FRAME:
+            steps = list(FRAME)
+            if scrn_now != vis_before and 1 <= scrn_now <= 24:
+                steps.insert(0, ("addtorches", "SUBS", "ADDTORCHES"))
+            vis_before = scrn_now
+            for name, module, label in steps:
                 want = h.step(module, label)
                 commands.append("R %s 0 0 0" % name)
                 expected.append((trace, frame, name, want))
                 if isinstance(want, str):
                     alive = False
                     break
+                if want["snd"] != "-":
+                    sounds.update(want["snd"][i:i + 2] for i in range(0, len(want["snd"]), 2))
+                level_changes += want["lvl"] != "-"
             if not alive:
                 ended_early += 1
                 break
             frames_run += 1
             seen_frames.add(want["vars"]["KidPosn"])
             seen_actions.add(want["vars"]["KidAction"])
+            busiest_list = max(busiest_list, want["vars"]["numtrans"])
+            falling_floors += want["vars"]["nummob"] > 0
 
     argv_c = [runner, os.path.join(data, "framedef.bin"), os.path.join(data, "seqtable.bin"),
               os.path.join(data, "imgdims.bin")]
@@ -288,6 +313,9 @@ def main(argv):
           "(a read outside the modelled tables)"
           % (traces, compared, len(seen_frames), sorted(seen_actions),
              ended_early + off_model))
+    print("   in the original's run: %d calls changed the level, sounds %s were queued, "
+          "up to %d objects in transition at once, a floor was falling in %d frames"
+          % (level_changes, sorted(int(x, 16) for x in sounds), busiest_list, falling_floors))
     return 0
 
 

@@ -29,7 +29,7 @@ licensing position this policy is based on.
 | `docs/port/` | Per-subsystem port notes: interface, pseudocode, pitfalls, tests |
 | `docs/verification.md` | Test commands, recorded results, what has not been verified |
 | `docs/compatibility-matrix.md` | Which behaviours are faithful, approximate, missing or unverified |
-| `modern-port/` | The C17 port (see its README): animation, level queries, player control, falling and landing, collision, sound effects; no window yet |
+| `modern-port/` | The C17 port (see its README): animation, level queries, player control, falling and landing, collision, moving level objects, sound effects; no window yet |
 | `docs/unknowns.md` | Open questions, each with the next inspection step |
 | `docs/milestones.md` | Milestone plan, directory layout, decisions awaiting input |
 | `assets/manifest.json` | Hashed inventory of all 582 original files (metadata only) |
@@ -102,10 +102,11 @@ simulator, with a C queue and renderer) and milestone 8 (the level-reading,
 frame-lookup and gravity routines, then player control, floor checks, falling
 and landing in C; every routine is compared with the original code on random
 inputs, and the ported part of a whole kid frame is compared with the original
-over many consecutive frames) and the first part of milestone 9 (collision
-with walls, gates, slicers and the mirror, verified the same way). Moving
-level objects, opponents, screen changes and drawing are not ported, so there
-is no runnable game yet. See
+over many consecutive frames) and the first two parts of milestone 9
+(collision, then everything in the level that moves: gates, plates and their
+links, spikes, slicers, loose and falling floors; verified the same way).
+Opponents, screen changes and drawing are not ported, so there is no runnable
+game yet. See
 `docs/milestones.md`.
 
 ## Conventions

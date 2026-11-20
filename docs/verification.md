@@ -90,6 +90,14 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | 2026-11-20 | `trace_kidstep.py` with the collision steps, 500 traces, seed 42 | same | 466,489 calls agree; 167 distinct frames; 46 traces cut short when the kid ran off the screen edge (no screen changes yet) |
 | 2026-11-20 | `mutation_check.py`, 400 rounds, seed 1989 | – | `pop_control.c`: 35 errors, 31 noticed, 4 without effect. `pop_collide.c`: 24 errors, 23 noticed, 1 without effect (dead code in the original). Three collision errors were missed by earlier versions of the generator; directed cases were added for them |
 | 2026-11-20 | gcov on `pop_collide.c` under `fuzz_control.py @collision` (600 rounds) | GCC 13.3 | 97 % of lines, 94 % of branch directions |
+| 2026-11-20 | pytest, with original (after milestone 9b) | Python 3.13, Linux | 140 passed |
+| 2026-11-20 | CTest, with original | GCC 13.3, `-Werror`, ASan + UBSan | 15 of 15 passed |
+| 2026-11-20 | CTest, with original | Clang 18.1, `-Werror`; `test_mover` under valgrind | 15 of 15 passed, no valgrind errors |
+| 2026-11-20 | CTest, without original | GCC 13.3, `-Werror` | 7 of 7 passed |
+| 2026-11-20 | `fuzz_control.py @mover`, 1,000 rounds, seed 42 | ASan build of the runner | 26,952 cases over the 27 moving-object routines agree; 48 skipped |
+| 2026-11-20 | `trace_kidstep.py` with moving objects, 500 traces, seed 42 | same | 617,880 calls agree; 170 distinct frames. In the original's run 26,180 calls changed the level, 12 different sounds were queued, up to 9 objects were in transition at once, and a floor was falling in 1,277 frames; 33 traces cut short (kid off the screen edge) |
+| 2026-11-20 | `mutation_check.py`, all three files, 400 rounds, seed 1989 | – | 104 deliberate errors: 98 noticed, 6 without effect (each listed with its reason), 0 missed. For `pop_mover.c`: 45 errors, 44 noticed, 1 without effect; its first run missed 7, of which 5 were boundary values since added to the generator, 1 turned out to have no effect, and 1 was hidden by the comparison itself (see below) |
+| 2026-11-20 | gcov on `pop_mover.c` under `fuzz_control.py @mover` (400 rounds) | GCC 13.3 | 99.7 % of lines, 97 % of branch directions |
 
 ## Kinds of evidence
 
@@ -104,11 +112,26 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | Two implementations | C interpreter vs Python decoder, 45,600 ticks identical; C effect renderer vs Python, 26,204 samples | catches slips, not a shared misreading |
 | Executing the original | sound effects obtained by running the assembled `SOUND.S` in a 6502 simulator; timing equals the hand-derived loop formula | strong for behaviour; depends on the simulator's cycle table |
 | Differential fuzzing | each ported C routine against the original routine in the simulator, on random states wider than valid ones (`docs/oracle.md`) | strong: independent of my reading of the code; depends on the assembler and simulator being right |
-| Mutation check | 59 deliberately wrong builds of the control and collision code, each run against the comparison (`modern-port/tests/mutation_check.py`) | shows the comparison has teeth, and where its inputs were thin: the first version missed six boundary values, since added |
+| Mutation check | 104 deliberately wrong builds of the control, collision and moving-object code, each run against the comparison (`modern-port/tests/mutation_check.py`) | shows the comparison has teeth, and where its inputs were thin: the first version missed six boundary values, since added |
 | Multi-frame trace | the ported per-frame steps run for 60 frames with state carried over, C against the original after each call | strong for how the routines work together; says nothing about the steps not yet ported |
 | Coverage | gcov on the C under the fuzz inputs | shows which branches the comparison reached at all |
 | Cross-screen continuity | rendered screens placed by the level map line up at their edges | moderate: wrong piece offsets or neighbour rules would show as seams |
 | Visual inspection | contact sheets, run-cycle sheets, rendered rooms | weak, by eye |
+
+## A weakness the mutation check found in the comparison
+
+Cases in which the port reports "unmodelled" (the original would read or
+write outside the tables the port has) are skipped, not compared. One
+injected error made the port compute a redraw-buffer index of 30 where the
+original computes none; the port's bounds check then reported "unmodelled"
+and the case was skipped, hiding the error. The remedy was to remove the
+reason for skipping: the redraw buffers are now one contiguous array, as in
+the original's memory, so index 30 of one buffer is byte 0 of the next and
+the stray write is compared like any other. The same idea (model the memory,
+not the intent) already applied to the collision buffers. Skipped cases
+remain for reads beyond tables whose neighbours are not modelled; they are
+counted in every run (well under 1 % outside the collision group, where
+random frames without images account for about 7 %).
 
 ## Not verified
 

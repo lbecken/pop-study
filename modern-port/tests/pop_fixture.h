@@ -32,12 +32,9 @@ static char hooklog[32];
 static size_t nhooks;
 
 static void hook(char c) { if (nhooks + 1 < sizeof hooklog) { hooklog[nhooks++] = c; hooklog[nhooks] = 0; } }
-static void h_slicers(void *c) { (void)c; hook('s'); }
-static void h_jam(void *c) { (void)c; hook('j'); }
 static void h_input(void *c) { (void)c; hook('i'); }
 static void h_save(void *c) { (void)c; hook('o'); }
 static void h_demo(void *c) { (void)c; hook('d'); }
-static void h_mirror(void *c) { (void)c; hook('m'); }
 static void h_click(void *c) { (void)c; hook('k'); }
 
 /* Address of made-up sequence n: its only frame is number n, repeated. */
@@ -91,12 +88,9 @@ static void setup(int col, uint8_t face)
     dims.wh[0] = dims0;
     g.dims = &dims;
 
-    g.hooks.add_slicers = h_slicers;
-    g.hooks.jam_spikes = h_jam;
     g.hooks.get_input = h_input;
     g.hooks.save_input = h_save;
     g.hooks.demo_ctrl = h_demo;
-    g.hooks.smash_mirror = h_mirror;
     g.hooks.speaker_click = h_click;
 
     for (c = 0; c <= 6; c++) put(1, 1, c, POP_FLOOR, 0);

@@ -223,7 +223,7 @@ static void test_checkcoll(void)
     g.ch.posn = 41;                                /* running jump, facing left */
     CHECK_EQ(pop_checkcoll(&g, POP_MIRROR), 0);
     CHECK_EQ(g.createshad, 0xFF);
-    CHECK(strcmp(hooklog, "m") == 0);
+    CHECK_EQ(g.blueprint[POP_BLUESPEC + 13], 86);  /* SMASHMIRROR's mark on the piece */
     g.ch.face = POP_FACE_RIGHT;                    /* not from the other side */
     CHECK_EQ(pop_checkcoll(&g, POP_MIRROR), 1);
     g.ch.face = POP_FACE_LEFT;

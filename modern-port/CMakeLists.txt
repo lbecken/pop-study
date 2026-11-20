@@ -39,7 +39,8 @@ endif()
 
 # Game rules: no I/O, no SDL.
 add_library(pop_core STATIC src/core/pop_seq.c src/core/pop_sound.c src/core/pop_world.c
-            src/core/pop_control.c src/core/pop_collide.c)
+            src/core/pop_control.c src/core/pop_collide.c
+            src/core/pop_mover.c)
 target_include_directories(pop_core PUBLIC src/core)
 
 # Sound: effect data to PCM.  No I/O, no SDL (the SDL3 backend comes later).
@@ -88,6 +89,10 @@ add_test(NAME control_unit COMMAND test_control)
 add_executable(test_collide tests/test_collide.c)
 target_link_libraries(test_collide PRIVATE pop_core)
 add_test(NAME collide_unit COMMAND test_collide)
+
+add_executable(test_mover tests/test_mover.c)
+target_link_libraries(test_mover PRIVATE pop_core)
+add_test(NAME mover_unit COMMAND test_mover)
 
 # --- tests on the original data (optional) -----------------------------------
 if(POP_SOURCE_DIR)
