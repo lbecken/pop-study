@@ -183,9 +183,12 @@ it, starts `fallhang` and sets `stunned` = 12, which blocks climbing up for
    (`CTRLSUBS.S:1836-1842`). `bit` ANDs A with the operand, and A is the piece
    id `loose` = 11 = `%1011`. A loose floor is therefore refused as a ledge
    when bits 0, 1 or 3 of its state are set, not whenever its state is
-   non-zero. State 4, or `$84`, still counts as grabbable. Whether such
-   states occur in play depends on `MOVER.S` (not yet ported); the port keeps
-   the test as written.
+   non-zero. Such states do occur (`MOVER.S:389-415`, `1176-1236`,
+   `2152-2168`): a floor that has been stepped on counts 1, 2, … 9 and
+   detaches at 10, so in the one frame its state is 4 it can still be
+   grabbed; a floor that is only wiggling holds `$80`, `$81`, `$82`, `$83`,
+   so it is refused as a ledge in three of its four frames although it is
+   not going to fall. The port keeps the test as written.
 2. **`FloorY` is indexed with a wrapped 8-bit `CharBlockY + 1`**
    (`ldx CharBlockY / inx / lda FloorY,x`, five places). Row −1 (`$FF`) gives
    index 0. Rows 4–8 read the next table, `BlockAy`; the port reproduces that
@@ -229,8 +232,8 @@ it, starts `fallhang` and sets `stunned` = 12, which blocks climbing up for
 
 - **Unported subsystems are hooks** (`pop_game_hooks`): `addslicers`,
   `jamspikes` (the port does the state write, the hook is for the moving-
-  object list), `potioneffect`, `GoneUpstairs`, the input step of
-  `PLAYERCTRL`, and `DemoCtrl`. Each is called where the original has its
+  object list), `potioneffect`, the input step of `PLAYERCTRL`, and
+  `DemoCtrl`. Each is called where the original has its
   `jsr`.
 - **Image sizes come from a generated table.** `GETEDGES` calls `DIMCHAR`,
   which reads the image tables in main memory. The port reads
@@ -256,7 +259,7 @@ it, starts `fallhang` and sets `stunned` = 12, which blocks climbing up for
 | --- | --- |
 | `control_unit` (`tests/test_control.c`, 143 checks, synthetic data) | Hand-derived expectations for the helpers and one or two paths through each handler; builds without the original |
 | `control_original` (`tests/test_control_original.c`) | The 59 sequence numbers and 2 sound numbers in `pop_control.h` equal the original's (compile-time); on `LEVEL1`, holding forward gives frames 1–6 then the run cycle, and releasing returns to frame 15, facing either way |
-| `control_c_vs_original` (`tests/fuzz_control.py`) | 52 routines, each on 400 random states, against the original routine in the 6502 simulator: all tracked variables, A/X/Y/carry where defined, queued sounds, level bytes changed, redraw buffers, hook calls in order |
+| `control_c_vs_original` (`tests/fuzz_control.py`) | The 52 routines of this subsystem (and since milestone 9a the collision ones), each on 400 random states, against the original routine in the 6502 simulator: all tracked variables, A/X/Y/carry where defined, queued sounds, level bytes changed, redraw buffers, hook calls in order |
 | `kidstep_c_vs_original` (`tests/trace_kidstep.py`) | The ported part of the per-frame kid update, in the original's order, for 60 consecutive frames of random input per trace, state carried from frame to frame, compared after every call |
 
 Recorded runs are in `docs/verification.md`.
@@ -281,7 +284,7 @@ How the comparison was itself checked:
   even before its increment), a block row the clamp above excludes, and a
   value `DoRunjump`'s arithmetic cannot produce. Finding those four is itself
   information about the original: each is a dead case in the 6502 code too.
-  (`BarL`'s own comment, `COLL.S:46-47`, calls entry 2 "flask"; `CMPBARR` no
+  (`BarL`'s own comment, `COLL.S:51-53`, calls entry 2 "flask"; `CMPBARR` no
   longer returns that code.) A run of 150 rounds per routine missed two of
   the other 31, different ones for different seeds; 400 rounds caught all of
   them, which is why the CTest run uses 400.
@@ -293,10 +296,10 @@ Limits:
   under 1 %).
 - `DIMCHAR` and the hooks are stand-ins on the original's side too, so what is
   compared is the control logic given the same answers from them.
-- In `kidstep` the kid walks through walls, in both implementations alike:
-  collision (`checkbarr`, `collisions`, `checkgate`) is milestone 9. Pressure
-  plates, loose floors, spike triggering, slicers, guards and screen changes
-  are also absent from the frame.
+- When this was written the `kidstep` frame had no collision; it has since
+  been added (`docs/port/collision.md`). Pressure plates, loose floors, spike
+  triggering, moving gates and slicers, guards and screen changes are still
+  absent from the frame.
 - Nothing here has been compared with the running game.
 
 ## 7. Not ported yet
@@ -306,4 +309,5 @@ Limits:
 - `ctrlplayer`'s death handling (`TOPCTRL.S:1095` on), `kill0`, `unholy`.
 - `CHECKPRESS`, `checkspikes`, `checkslice`, `shakeloose` and all of
   `MOVER.S`.
-- Collision: `COLL.S` up to `GETFWDDIST`.
+- (Collision, `COLL.S` up to `GETFWDDIST`, was ported next:
+  `docs/port/collision.md`.)

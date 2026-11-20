@@ -7,6 +7,7 @@
 
 #include "pop_control.h"
 
+#include "pop_collide.h"
 #include "pop_world.h"
 
 #define NEG(v) (((v) & 0x80u) != 0)        /* bmi / "fresh press" / pressed */
@@ -34,11 +35,7 @@ static void anim_slicers(void *ctx)
     pop_game *g = ctx;
     if (g->hooks.add_slicers) g->hooks.add_slicers(g->hooks.ctx);
 }
-static void anim_upstairs(void *ctx)
-{
-    pop_game *g = ctx;
-    if (g->hooks.gone_upstairs) g->hooks.gone_upstairs(g->hooks.ctx);
-}
+static void anim_upstairs(void *ctx) { pop_goneupstairs(ctx); }
 static void anim_potion(void *ctx)
 {
     pop_game *g = ctx;

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Differential test: C player-control and floor routines against the original.
+"""Differential test: C player-control, floor and collision routines against
+the original.
 
 New code for the pop-study project.
 
@@ -15,7 +16,7 @@ C port (through pop_worldrun), and compares:
   * the level bytes changed,
   * the redraw buffers,
   * the calls made to subsystems that are not ported yet (slicers, spikes,
-    potions, level exit, the input devices), in order.
+    potions, the mirror, the input devices), in order.
 
 The original's DIMCHAR reads image tables that live in main memory; here it
 is replaced by a trap that answers from the same image files.  Cases in which
@@ -24,7 +25,10 @@ table does not hold, an index beyond a table) are counted and skipped, never
 compared.
 
 Usage:
-    fuzz_control.py <pop_worldrun> <data dir> <original checkout> [cases] [seed]
+    fuzz_control.py <pop_worldrun> <data dir> <original checkout> [cases] [seed] [only]
+
+`only` limits the run to some routines: a comma-separated list of names, or
+@control or @collision for those groups.
 """
 
 import os
@@ -50,9 +54,17 @@ EXTRA = ["jarabove", "alertguard", "JSTKX", "JSTKY", "btn", "clrF", "clrB", "clr
          "FCharCL", "FCharCR", "FCharTable", "imwidth", "imheight", "leftej", "rightej",
          "topej", "leftblock", "rightblock", "topblock", "bottomblock", "CDLeftEj",
          "CDRightEj", "blockedge", "tempobjid", "height"]
-BYTES = fw.BYTES + EXTRA
+# collision variables (added later; generated from their own random stream so
+# that the control cases stayed what they were)
+COLL_VARS = ["blocky", "collideL", "collideR", "collX", "begrange", "endrange", "AMtimer",
+             "VisScrn", "scrnLeft", "scrnRight", "scrnBelowL", "scrnBelowR", "createshad",
+             "NextLevel", "BlockYthis", "BlockYlast", "SongCue", "SongCount"]
+BYTES = fw.BYTES + EXTRA + COLL_VARS
 WORDS = fw.WORDS + ["FCharX"]
-BUFFERS = (("redbuf", 30), ("wipebuf", 30), ("whitebuf", 30), ("topbuf", 10))
+CD_BUFFERS = (("CDthisframe", 16), ("CDlastframe", 16), ("CDbelow", 16), ("CDabove", 16))
+SN_BUFFERS = (("SNthisframe", 16), ("SNlastframe", 16), ("SNbelow", 16), ("SNabove", 10))
+BUFFERS = (("redbuf", 30), ("wipebuf", 30), ("whitebuf", 30), ("topbuf", 10)) \
+    + CD_BUFFERS + SN_BUFFERS
 IN_MODULE = {"tempobjid": "COLL"}          # a COLL local, not in the shared equates
 
 # routine -> (module, label, results compared: any of "a", "x", "y", "c")
@@ -86,7 +98,14 @@ ROUTINES = {
     "onground": ("CTRL", "onground", ""), "startfall": ("CTRL", "startfall", ""),
     "cdpatch": ("CTRL", "CDpatch", ""), "insideblock": ("CTRL", "InsideBlock", "a"),
     "checkimpale": ("CTRL", "CHECKIMPALE", ""), "doimpale": ("CTRL", "DOIMPALE", ""),
+    # collision (COLL.S)
+    "checkbarr": ("COLL", "CHECKBARR", ""), "collisions": ("COLL", "COLLISIONS", ""),
+    "checkcoll": ("COLL", "CHECKCOLL", "c"), "checkgate": ("COLL", "CHECKGATE", ""),
+    "checkslice": ("COLL", "CHECKSLICE", ""), "checkslice2": ("COLL", "CHECKSLICE2", "c"),
+    "enemycoll": ("COLL", "ENEMYCOLL", ""), "goneupstairs": ("COLL", "GoneUpstairs", ""),
 }
+COLLISION = ("checkbarr", "collisions", "checkcoll", "checkgate", "checkslice",
+             "checkslice2", "enemycoll", "goneupstairs")
 
 # Frames the handlers test for, so that every branch is reached often.
 KEY_FRAMES = ([15] * 6 + [48, 50, 51, 52, 1, 2, 3, 67, 68, 69, 4, 7, 7, 9, 11, 11, 13, 14, 26,
@@ -266,12 +285,118 @@ def random_state(rng, level, routine):
     return s, pokes, bufs
 
 
+def collision_state(rng, s, pokes, bufs, routine):
+    """Values for the collision variables and buffers; for the collision
+    routines also the situations they exist for."""
+    for n in COLL_VARS:
+        s[n] = rng.randrange(256)
+    scrn = s["CharScrn"]
+    s["AMtimer"] = rng.choice((0, 0, 0, 0, 0, 3))
+    s["VisScrn"] = scrn if rng.random() < 0.7 else rng.randint(0, 24)
+    for n in ("scrnLeft", "scrnRight", "scrnBelowL", "scrnBelowR"):
+        s[n] = rng.randint(0, 24)
+    s["collideL"] = rng.choice((0xFF, 0xFF) + tuple(range(10)))
+    s["collideR"] = rng.choice((0xFF, 0xFF) + tuple(range(10)))
+    s["BlockYthis"] = s["CharBlockY"]
+    s["BlockYlast"] = (s["CharBlockY"] + rng.choice((0, 0, 0, 1, -1, 3, -3, -2, 2, 7))) & 0xFF
+    for name, size in CD_BUFFERS:
+        bufs[name] = bytes(rng.choice((0x00, 0x00, 0x0F, 0xF0, 0xFF, 0xFF)) for _ in range(size))
+    for name, size in SN_BUFFERS:
+        bufs[name] = bytes(rng.choice((scrn, scrn, scrn, scrn, 0xFF, 0, rng.randint(0, 24)))
+                           for _ in range(size))
+    if routine not in COLLISION:
+        return
+    r = rng.random()
+    row = s["CharBlockY"] if s["CharBlockY"] < 3 else 1
+    base = (scrn - 1) * 30 + row * 10
+    if routine in ("checkslice", "checkslice2", "checkcoll", "collisions") and r < 0.6:
+        for _ in range(rng.choice((1, 2, 4))):               # slicers on his row
+            col = rng.randrange(10)
+            pokes[base + col] = 18
+            pokes[720 + base + col] = rng.choice((2, 2, 2, 0x82, 0, 1, 3, 0x81))
+    if routine in ("checkgate", "enemycoll", "collisions", "checkcoll") and 0.3 <= r:
+        for _ in range(rng.choice((1, 2, 3))):               # gates, mostly nearly shut
+            col = rng.randrange(10)
+            pokes[base + col] = 4
+            pokes[720 + base + col] = rng.choice((0, 0, 4, 40, 60, 100, 120, 140, 188))
+    if routine == "checkgate":
+        s["CharPosn"] = rng.choice((15, 15, 15, 107, 108, 109, 110, 111, 7, 50))
+        s["CharAction"] = rng.choice((0, 1, 7))
+        if rng.random() < 0.7:                               # inside the gate's column
+            for name in ("CDthisframe", "CDlastframe"):
+                bufs[name] = bytes(rng.choice((0xFF, 0xFF, 0xFF, 0xFF, 0x0F)) for _ in range(16))
+    if routine == "checkslice" and rng.random() < 0.7:
+        bufs["CDthisframe"] = bytes(rng.choice((0xFF, 0xFF, 0x0F, 0xF0, 0)) for _ in range(16))
+    if routine == "enemycoll" and rng.random() < 0.8:
+        s.update(CharAction=1, CharLife=0xFF, CharSword=2, AMtimer=0,
+                 CharID=rng.choice((0, 1, 2, 4)), CharPosn=rng.choice((150, 158, 161, 170, 171)))
+        for _ in range(rng.choice((1, 2))):                  # walls to back into
+            col = rng.randrange(10)
+            pokes[base + col] = rng.choice((20, 7, 7, 12))
+    if routine == "collisions" and rng.random() < 0.8:
+        s.update(AMtimer=rng.choice((0, 0, 0, 0, 0, 0, 2)), CharLife=rng.choice((0xFF,) * 5 + (0, 3)),
+                 CharAction=rng.choice((0, 1, 1, 3, 4, 4, 5, 2, 6, 7)),
+                 CharPosn=rng.choice((7, 9, 11, 15, 23, 24, 25, 26, 39, 39, 40, 41, 42, 43, 43,
+                                      43, 44, 101, 102, 106, 107, 107, 134, 135, 148, 149,
+                                      158, 171, 177)),
+                 CharYVel=rng.choice((0, 0, 3, 21, 22, 30)))
+        if rng.random() < 0.5:                               # exactly one side hit
+            s["collideL" if rng.random() < 0.5 else "collideR"] = 0xFF
+        for _ in range(rng.choice((1, 2, 3))):               # barriers on his row
+            col = rng.randrange(10)
+            pokes[base + col] = rng.choice((20, 20, 7, 12, 13, 4, 18))
+            if rng.random() < 0.4 and row < 2:               # sometimes nothing under it
+                pokes[base + col + 10] = 0
+        row_y = FLOOR_Y[row]
+        s["CharY"] = (row_y - rng.choice((0, 0, 0, 5, 14, 15, 16, 40))) & 0xFF
+    if routine == "collisions" and rng.random() < 0.3:
+        # a plain hit: floor under him, a wall in the next column, facing it
+        col = rng.randint(1, 8)
+        right = rng.random() < 0.5
+        wall = col + 1 if right else col - 1
+        pokes[base + col] = 1
+        pokes[base + wall] = rng.choice((20, 20, 7, 12))
+        s.update(CharBlockY=row, CharY=FLOOR_Y[row], CharYVel=rng.choice((0, 0, 21, 22)),
+                 CharLife=0xFF, CharSword=rng.choice((0, 0, 0, 2)), AMtimer=0,
+                 CharAction=rng.choice((0, 1)), CharFace=0x00 if right else 0xFF,
+                 CharX=58 + 14 * col + rng.randint(0, 13),
+                 CharPosn=rng.choice((15, 23, 24, 25, 26, 39, 40, 42, 43, 44, 101, 102, 106,
+                                      107)))
+        s["collideL"], s["collideR"] = (wall, 0xFF) if right else (0xFF, wall)
+        bufs["SNthisframe"] = bytes([scrn] * 16)
+    if routine == "checkcoll" and rng.random() < 0.4:
+        # a gate or slicer in each kind of state, read directly
+        y = rng.randrange(30)
+        piece = rng.choice((4, 18))
+        s["_y"], s["_a"], s["_noreread"] = y, piece, 1
+        s["imheight"] = rng.choice((20, 34, 39, 40, 41, 45))
+        pokes[(scrn - 1) * 30 + y] = piece
+        pokes[720 + (scrn - 1) * 30 + y] = rng.choice(
+            (0, 132, 136, 140, 156, 160, 188) if piece == 4 else (0, 1, 2, 2, 3, 0x82, 0x82, 0x81))
+    elif routine == "checkcoll" and rng.random() < 0.4:      # the mirror, mid running jump
+        s.update(CharID=rng.choice((0, 0, 0, 1)), CharPosn=rng.choice((38, 39, 41, 43, 44)),
+                 CharFace=rng.choice((0xFF, 0xFF, 0x00)))
+    if routine == "checkslice2" and rng.random() < 0.35:
+        # edges given directly, at and around a shut slicer's own edges
+        col = rng.randrange(10)
+        edge = 58 + 14 * col + 7                             # blades occupy edge..edge+2
+        pokes[base + col] = 18
+        pokes[720 + base + col] = rng.choice((2, 2, 0x82, 3))
+        s.update(CharBlockX=(col - rng.choice((0, 0, 1))) & 0xFF, CharBlockY=row,
+                 CDRightEj=edge + rng.choice((-1, 0, 1, 5)),
+                 CDLeftEj=edge + 2 + rng.choice((-5, -1, 0, 1)), _noreread=1, _plain=1)
+    if routine == "goneupstairs":
+        s["level"] = rng.choice((1, 4, 4, 12, 13, 13, 14))
+
+
 def random_args(rng, routine, s):
     a, x, y = rng.randrange(256), rng.randrange(256), rng.randrange(30)
     if routine in ("checkledge", "pickitup"):
         a = rng.choice(PIECES + [10, 22, 22])
     if routine == "dostrike":
         x = s["CharPosn"] if rng.random() < 0.5 else rng.choice(KEY_FRAMES)
+    if routine == "checkcoll":
+        a = rng.choice((4, 4, 18, 18, 13, 13, 10, 20, 7, 12, 1, 0))
     if routine == "decstr":
         a = rng.choice((0, 1, 1, 2, 3, 100))
     return a, x, y
@@ -291,7 +416,8 @@ class Harness:
         cpu.traps[self.oracle.addr("addslicers")] = lambda c: self.hooks.append("s")
         cpu.traps[self.oracle.addr("jamspikes")] = self.trap_jamspikes
         cpu.traps[self.oracle.addr("potioneffect")] = lambda c: self.hooks.append("p")
-        cpu.traps[self.oracle.addr("GoneUpstairs", "COLL")] = lambda c: self.hooks.append("u")
+        cpu.traps[self.oracle.addr("smashmirror")] = lambda c: self.hooks.append("m")
+        cpu.on_read[0xC030] = lambda c: self.hooks.append("k")      # the speaker
         # PLAYERCTRL's input step (LoadSelect, getselect, clrjstk), SaveSelect
         # and the demo's own control: one mark each, nothing done
         cpu.traps[self.oracle.addr("LoadSelect")] = lambda c: self.hooks.append("i")
@@ -376,6 +502,10 @@ def main(argv):
     per_routine = int(argv[4]) if len(argv) > 4 else 400
     seed = int(argv[5]) if len(argv) > 5 else 1989
     only = argv[6].split(",") if len(argv) > 6 else None
+    if only == ["@collision"]:
+        only = list(COLLISION)
+    elif only == ["@control"]:
+        only = [n for n in ROUTINES if n not in COLLISION]
 
     h = Harness(source)
     levels = []
@@ -397,6 +527,8 @@ def main(argv):
             # routine's cases are made leaves the others' cases as they were
             rng = random.Random("%d/%d/%s" % (seed, round_no, routine))
             s, pokes, bufs = random_state(rng, level, routine)
+            collision_state(random.Random("%d/%d/%s/coll" % (seed, round_no, routine)),
+                            s, pokes, bufs, routine)
             a, x, y = random_args(rng, routine, s)
             carry = rng.randrange(2)
             if routine in ("markwipe", "markred"):
@@ -404,9 +536,10 @@ def main(argv):
                 if carry and routine == "markred" and rng.random() < 0.5:
                     y = rng.randrange(256)           # with carry set only y < 10 is used
             noreread = s.pop("_noreread", 0)
+            plain = s.pop("_plain", 0)
             fixed_y = s.pop("_y", None)
-            if fixed_y is not None:                  # the loose-floor ledge case
-                a, y = 11, fixed_y
+            if fixed_y is not None:                  # a piece poked at a chosen block
+                a, y = s.pop("_a", 11), fixed_y
             for i, v in pokes.items():
                 level[i] = v
             steps = [(routine, a, x, y)]
@@ -416,7 +549,13 @@ def main(argv):
                 steps.insert(0, ("rereadblocks", 0, 0, 0))   # a consistent CharBlockX
             if routine == "getedges":
                 steps.insert(0, ("setupchar", 0, 0, 0))
-            if routine in ("getspikes", "checkledge", "pickitup", "removeobj", "doimpale") \
+            if routine in ("checkbarr", "collisions", "checkgate", "checkslice2",
+                           "enemycoll") and not plain and rng.random() < 0.7:
+                # the character's real edges, as the frame would have them
+                steps = [("setupchar", 0, 0, 0), ("rereadblocks", 0, 0, 0),
+                         ("getedges", 0, 0, 0), (routine, a, x, y)]
+            if routine in ("getspikes", "checkledge", "pickitup", "removeobj", "doimpale",
+                           "checkcoll") \
                     and fixed_y is None and rng.random() < 0.8:
                 # these take "rdblock results": read a block first
                 steps.insert(len(steps) - 1, (rng.choice(("getunderft", "getinfront",
@@ -460,8 +599,10 @@ def main(argv):
     compared = dict.fromkeys(names, 0)
     stray = dict.fromkeys(names, 0)
     changed = dict.fromkeys(names, 0)
+    chain_unmodelled = False
     for line, exp in zip(lines, expected):
-        if exp is None:
+        if exp is None:                              # an earlier step of a chain
+            chain_unmodelled = chain_unmodelled or " unmodelled=1 " in line
             continue
         routine, steps, before, want = exp
         got, extra = {}, {}
@@ -472,6 +613,8 @@ def main(argv):
             else:
                 k, v = tok.split(":")
                 extra[k] = v
+        got["unmodelled"] = int(bool(got["unmodelled"]) or chain_unmodelled)
+        chain_unmodelled = False
         if isinstance(want, str) or got["unmodelled"]:
             # Outside the tables on either side: nothing to compare.  The one
             # thing that can be checked is that the port noticed too when the

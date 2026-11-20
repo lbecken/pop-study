@@ -51,7 +51,8 @@ the port does not have yet (`modern-port/tests/fuzz_control.py`):
 | --- | --- | --- |
 | `dimchar` (`GRAFIX.S:879-883`) | reads image tables in main memory | answers width and height from the same image files |
 | `jamspikes` (`MOVER.S:354-358`) | goes on into the moving-object list | writes `$FF` to the spikes' state, as the first two instructions do; records the call |
-| `addslicers`, `potioneffect`, `GoneUpstairs` | unported subsystems | records the call |
+| `addslicers`, `potioneffect`, `smashmirror` | unported subsystems | records the call |
+| a read of `$C030` | the speaker | recorded through `on_read` |
 | `LoadSelect`, `getselect`, `clrjstk`, `SaveSelect`, `DemoCtrl` | input devices, demo | records the call; the test supplies the joystick variables |
 
 A trapped routine is not being tested; what is compared is the caller's
@@ -88,5 +89,5 @@ behaviour given the same answers on both sides.
 | Geometry tables | byte/offset, block edges, floor lines as loaded in memory | agree |
 | Sound effects | `PLAYBACK`, `ADDSOUND` | source of the effect data (`docs/audio-analysis.md`) |
 | World queries, gravity (C) | 39 routines on random states, 15,600 cases per test run | C port and original agree |
-| Player control, floor, landing (C) | 52 routines on random states, about 20,700 cases per test run: variables, registers, sounds, level changes, redraw buffers, calls out | C port and original agree |
-| A kid frame over time (C) | the ported steps of `DoKid` in order, 60 traces of 60 frames of random input per test run, compared after each call | C port and original agree |
+| Player control, floor, landing, collision (C) | 60 routines on random states, about 23,700 cases per test run: variables, registers, sounds, level changes, redraw buffers, calls out | C port and original agree |
+| A kid frame over time (C) | the ported steps of `DoKid` in order, collision included, 60 traces of 60 frames of random input per test run, compared after each call | C port and original agree |

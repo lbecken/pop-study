@@ -3,18 +3,19 @@
 
 New code for the pop-study project.  Not part of CTest (it takes minutes).
 
-Each entry below is one small deliberate error in pop_control.c: a threshold
-off by one, a comparison changed, a statement removed.  The script builds the
+Each entry below is one small deliberate error in pop_control.c or
+pop_collide.c: a threshold off by one, a comparison changed, a statement
+removed.  The script builds the
 runner with that one change and runs fuzz_control.py, which must then report
 a mismatch.  A change the comparison does not notice is either a gap in the
-test's inputs or a change that makes no difference; the four of the second
+test's inputs or a change that makes no difference; those of the second
 kind are marked with the reason.
 
 Usage:
     mutation_check.py <data dir> <original checkout> [cases per routine] [seed] [only]
 
-`only` is a comma-separated list of substrings; just the changes whose
-replacement text contains one of them are tried.
+`only` is a comma-separated list; just the changes in a file named there, or
+whose replacement text contains one of the entries, are tried.
 
 Needs a C compiler as `cc`.
 """
@@ -81,6 +82,47 @@ MUTANTS = [
 ]
 
 
+# The same for pop_collide.c.
+COLLIDE_MUTANTS = [
+    ("    if (a >= 11) a = 11;", "    if (a >= 12) a = 12;", None),
+    ("v = (a < g->CDRightEj) ? 0x0F : 0x00;", "v = (a <= g->CDRightEj) ? 0x0F : 0x00;", None),
+    ("if (a > g->CDLeftEj) v |= 0xF0;", "if (a >= g->CDLeftEj) v |= 0xF0;", None),
+    ("u8(this_y - 2) == last_y", "u8(this_y - 1) == last_y", None),
+    ("u8(this_y + 3) == last_y", "u8(this_y + 2) == last_y", None),
+    ("if (g->ch.posn >= 135 && g->ch.posn < 149) return;",
+     "if (g->ch.posn >= 135 && g->ch.posn < 148) return;", None),
+    ("u8(floor - g->ch.y) >= 15", "u8(floor - g->ch.y) >= 16", None),
+    ("    if (g->ch.y_vel >= OOF_VELOCITY) {", "    if (g->ch.y_vel > OOF_VELOCITY) {", None),
+    ("(posn >= 40 && posn < 43)", "(posn >= 40 && posn < 44)", None),
+    ("    g->ch.x = pop_add_char_x(&g->ch, 0xFC);", "    g->ch.x = pop_add_char_x(&g->ch, 0xFD);",
+     None),
+    ("if (pop_bluespec(g, g->ry) != POP_SLICER_EXT) return 0;",
+     "if ((pop_bluespec(g, g->ry) & 0x7Fu) != POP_SLICER_EXT) return 0;", None),
+    ("g->ch.posn >= 39 && g->ch.posn < 44", "g->ch.posn >= 39 && g->ch.posn < 43", None),
+    ("(g->tempblockx > g->collX ? 5 : 0xFB)", "(g->tempblockx >= g->collX ? 5 : 0xFB)", None),
+    ("(*cd_at(g, POP_CD_THIS, x) & *cd_at(g, POP_CD_LAST, x)) != 0xFF",
+     "(*cd_at(g, POP_CD_THIS, x) | *cd_at(g, POP_CD_LAST, x)) != 0xFF", None),
+    (">= g->CDRightEj) {\n        return 0;", "> g->CDRightEj) {\n        return 0;", None),
+    ("<= g->CDLeftEj) {\n        return 0;", "< g->CDLeftEj) {\n        return 0;", None),
+    ("    if (NEG(g->ch.face)) {                     /* :checkR", "    if (!NEG(g->ch.face)) {  /*",
+     None),
+    ("    if (g->ch.sword < 2) return;", "    if (g->ch.sword < 3) return;", None),
+    ("if (s == g->scrnLeft || s == g->scrnBelowL) return", "if (s == g->scrnLeft) return", None),
+    ("(g->level == 4) ? POP_SONG_SHADOW", "(g->level == 5) ? POP_SONG_SHADOW", None),
+    ("    if (g->ch.posn == 177) return;", "    if (g->ch.posn == 178) return;", None),
+    ("        if (id == POP_BLOCK) {                 /* no floor", "        if (id == POP_GATE) {  /*",
+     None),
+    ("    if (g->ch.life == 0) return;               /* :deadbump */", "    ;",
+     "collide has already returned for every CharLife >= 0, so :deadbump is never reached"),
+    ("        if (coll_face != g->ch.face) {", "        if (coll_face == g->ch.face) {", None),
+]
+
+# file, its deliberate errors, and the group of routines whose comparison
+# should notice them (running only that group keeps the check short)
+FILES = (("pop_control.c", MUTANTS, "@control"),
+         ("pop_collide.c", COLLIDE_MUTANTS, "@collision"))
+
+
 def main(argv):
     if len(argv) < 3:
         print(__doc__)
@@ -89,45 +131,51 @@ def main(argv):
     cases = argv[3] if len(argv) > 3 else "400"
     seed = argv[4] if len(argv) > 4 else "1989"
     only = argv[5].split(",") if len(argv) > 5 else None
-    mutants = [m for m in MUTANTS if only is None or any(k in m[1] for k in only)]
-    with open(os.path.join(PORT, "src", "core", "pop_control.c")) as f:
-        text = f.read()
+    core = ("pop_control.c", "pop_collide.c", "pop_seq.c", "pop_sound.c", "pop_world.c")
     others = [os.path.join(PORT, *p) for p in (
-        ("src", "core", "pop_seq.c"), ("src", "core", "pop_sound.c"),
-        ("src", "core", "pop_world.c"), ("src", "assets", "pop_assets.c"),
-        ("src", "audio", "pop_sfx.c"), ("tools", "pop_worldrun.c"))]
+        ("src", "assets", "pop_assets.c"), ("src", "audio", "pop_sfx.c"),
+        ("tools", "pop_worldrun.c"))]
     includes = ["-I" + os.path.join(PORT, "src", d) for d in ("core", "assets", "audio")]
     work = tempfile.mkdtemp()
-    caught = same = wrong = 0
+    total = caught = same = wrong = 0
     try:
-        for old, new, why in mutants:
-            if text.count(old) != 1:
-                print("STALE   pattern occurs %d times: %s" % (text.count(old), old.strip()))
-                wrong += 1
-                continue
-            mutant = os.path.join(work, "pop_control.c")
-            with open(mutant, "w") as f:
-                f.write(text.replace(old, new))
-            exe = os.path.join(work, "run")
-            subprocess.run(["cc", "-std=c17", "-O1"] + includes + [mutant] + others
-                           + ["-o", exe, "-lm"], check=True)
-            r = subprocess.run([sys.executable, os.path.join(HERE, "fuzz_control.py"), exe,
-                                data, source, cases, seed], capture_output=True, text=True)
-            noticed = r.returncode != 0
-            label = new.strip() or "(removed) " + old.strip()
-            if noticed and why is None:
-                caught += 1
-                print("caught  " + label)
-            elif not noticed and why is not None:
-                same += 1
-                print("same    %s   [%s]" % (label, why))
-            else:
-                wrong += 1
-                print("%s  %s" % ("MISSED" if why is None else "UNEXPECTEDLY CAUGHT", label))
+        for name, mutants, group in FILES:
+            with open(os.path.join(PORT, "src", "core", name)) as f:
+                text = f.read()
+            sources = [os.path.join(PORT, "src", "core", c) for c in core if c != name]
+            for old, new, why in mutants:
+                if only is not None and name not in only and not any(k in new for k in only):
+                    continue
+                total += 1
+                if text.count(old) != 1:
+                    print("STALE   pattern occurs %d times: %s" % (text.count(old), old.strip()))
+                    wrong += 1
+                    continue
+                mutant = os.path.join(work, name)
+                with open(mutant, "w") as f:
+                    f.write(text.replace(old, new))
+                exe = os.path.join(work, "run")
+                subprocess.run(["cc", "-std=c17", "-O1"] + includes + [mutant] + sources
+                               + others + ["-o", exe, "-lm"], check=True)
+                r = subprocess.run([sys.executable, os.path.join(HERE, "fuzz_control.py"), exe,
+                                    data, source, cases, seed, group],
+                                   capture_output=True, text=True)
+                noticed = r.returncode != 0
+                label = "%s: %s" % (name, new.strip().replace("\n", " ") or "(removed) "
+                                    + old.strip())
+                if noticed and why is None:
+                    caught += 1
+                    print("caught  " + label)
+                elif not noticed and why is not None:
+                    same += 1
+                    print("same    %s   [%s]" % (label, why))
+                else:
+                    wrong += 1
+                    print("%s  %s" % ("MISSED" if why is None else "UNEXPECTEDLY CAUGHT", label))
     finally:
         shutil.rmtree(work)
     print("%d changes: %d caught, %d make no difference, %d unexpected"
-          % (len(mutants), caught, same, wrong))
+          % (total, caught, same, wrong))
     return 1 if wrong else 0
 
 

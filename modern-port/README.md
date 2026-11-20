@@ -12,9 +12,10 @@ checkout of the original source and is never stored in this repository.
 | World queries: block reading across screens, foot position, distances, coordinates, piece classes, frame lookup, `GRAVITY`, `ADDFALL` | ported; each routine compared with the original code on random inputs |
 | Player control: `PLAYERCTRL` (input is a hook), `GENCTRL` and its handlers (standing, running, turning, crouching, hanging, sword moves), all `Do…` actions, pick-up | ported; each routine compared with the original code on random inputs |
 | Floor: `CHECKFLOOR`, starting to fall, ledge grab, landing and fall damage, spikes | ported; same, plus multi-frame traces against the original |
+| Collision with walls, gates, slicers, the mirror (`CHECKBARR`, `COLLISIONS`, bumps, `CHECKGATE`, `CHECKSLICE`, `ENEMYCOLL`) | ported; same |
 | Sound-effect queue (`ADDSOUND`, `ZEROSOUND`, play order) | ported, tested |
 | Sound-effect rendering (speaker flip list to PCM) | written, tested against the Python renderer; no output device yet |
-| Collision with walls and gates, moving level objects, opponents, input devices, drawing, SDL3 shell | not started |
+| Moving level objects, opponents, input devices, screen changes, drawing, SDL3 shell | not started |
 
 There is no runnable game yet and no SDL3 dependency yet. The nearest thing
 is `tests/test_control_original.c`, which stands the kid on a floor of level 1
@@ -65,6 +66,6 @@ Options: `-DPOP_WERROR=ON` (warnings as errors), `-DPOP_SANITIZE=ON`
 
 | Platform | Compiler | Result |
 | --- | --- | --- |
-| Linux x86-64 (Ubuntu 24.04) | GCC 13.3, with `-Werror` and ASan/UBSan | all 13 tests pass |
-| Linux x86-64 (Ubuntu 24.04) | Clang 18.1, with `-Werror`; unit test programs also run under valgrind with no errors | all 13 tests pass |
+| Linux x86-64 (Ubuntu 24.04) | GCC 13.3, with `-Werror` and ASan/UBSan | all 14 tests pass |
+| Linux x86-64 (Ubuntu 24.04) | Clang 18.1, with `-Werror`; unit test programs also run under valgrind with no errors | all 14 tests pass |
 | macOS, Windows | – | **not tested**. The code is plain C17 with no platform calls, and the CMake file has an MSVC branch, but neither has been built. |

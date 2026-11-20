@@ -12,18 +12,20 @@
  *   S <name>=<n> ...              set state variables (decimal)
  *   P <index>=<n> ...             change blueprint bytes
  *   K <0|1>                       keep (1) or undo (0, default) level changes
- *   H <buffer> <hex digits>       set redbuf, wipebuf, whitebuf or topbuf
+ *   H <buffer> <hex digits>       set a buffer: redbuf, wipebuf, whitebuf, topbuf,
+ *                                 CDthisframe ... SNabove
  *   R <routine> <a> <x> <y>       run a routine with those register values
  *
  * For each R line one line is printed: "a=<n> <name>=<n> ..." listing the
  * returned value and every state variable, then
  *   snd:<hex>     sounds queued by the routine, in order
  *   hooks:<chars> calls out of the ported code: s addslicers, j jamspikes,
- *                 p potioneffect, u GoneUpstairs, i input read, o input
- *                 saved, d DemoCtrl
+ *                 p potioneffect, m smashmirror, k speaker click, i input
+ *                 read, o input saved, d DemoCtrl
  *   lvl:<i>.<v>,… blueprint bytes the routine changed (then undone, unless
  *                 a "K 1" line asked for changes to persist)
- *   redbuf:<hex> wipebuf:<hex> whitebuf:<hex> topbuf:<hex>
+ *   redbuf:<hex> wipebuf:<hex> whitebuf:<hex> topbuf:<hex>, and the eight
+ *   collision buffers
  * ("-" for an empty list).  The sound queue and hook list start empty for
  * every R line.
  */
@@ -33,6 +35,7 @@
 #include <string.h>
 
 #include "pop_assets.h"
+#include "pop_collide.h"
 #include "pop_control.h"
 #include "pop_world.h"
 
@@ -45,7 +48,8 @@ static void log_hook(char c) { if (nhooks < sizeof hooklog - 1) hooklog[nhooks++
 static void h_slicers(void *ctx) { (void)ctx; log_hook('s'); }
 static void h_jam(void *ctx) { (void)ctx; log_hook('j'); }
 static void h_potion(void *ctx) { (void)ctx; log_hook('p'); }
-static void h_upstairs(void *ctx) { (void)ctx; log_hook('u'); }
+static void h_mirror(void *ctx) { (void)ctx; log_hook('m'); }
+static void h_click(void *ctx) { (void)ctx; log_hook('k'); }
 static void h_input(void *ctx) { (void)ctx; log_hook('i'); }
 static void h_saveinput(void *ctx) { (void)ctx; log_hook('o'); }
 static void h_demo(void *ctx) { (void)ctx; log_hook('d'); }
@@ -90,6 +94,14 @@ static var vars[] = {
     { "bottomblock", &g.bottomblock }, { "CDLeftEj", &g.CDLeftEj },
     { "CDRightEj", &g.CDRightEj }, { "blockedge", &g.blockedge },
     { "tempobjid", &g.tempobjid }, { "height", &g.height },
+    { "blocky", &g.blocky }, { "collideL", &g.collideL }, { "collideR", &g.collideR },
+    { "collX", &g.collX }, { "begrange", &g.begrange }, { "endrange", &g.endrange },
+    { "AMtimer", &g.AMtimer }, { "VisScrn", &g.VisScrn }, { "scrnLeft", &g.scrnLeft },
+    { "scrnRight", &g.scrnRight }, { "scrnBelowL", &g.scrnBelowL },
+    { "scrnBelowR", &g.scrnBelowR }, { "createshad", &g.createshad },
+    { "NextLevel", &g.NextLevel }, { "BlockYthis", &g.BlockYthis },
+    { "BlockYlast", &g.BlockYlast }, { "SongCue", &g.SongCue },
+    { "SongCount", &g.SongCount },
     { "X", &g.rx }, { "Y", &g.ry }, { "blue", &g.blue },
     { "unmodelled", &g.unmodelled },
 };
@@ -106,6 +118,10 @@ typedef struct { const char *name; uint8_t *p; size_t n; } buf;
 static buf bufs[] = {
     { "redbuf", g.redbuf, sizeof g.redbuf }, { "wipebuf", g.wipebuf, sizeof g.wipebuf },
     { "whitebuf", g.whitebuf, sizeof g.whitebuf }, { "topbuf", g.topbuf, sizeof g.topbuf },
+    { "CDthisframe", g.CD[POP_CD_THIS], 16 }, { "CDlastframe", g.CD[POP_CD_LAST], 16 },
+    { "CDbelow", g.CD[POP_CD_BELOW], 16 }, { "CDabove", g.CD[POP_CD_ABOVE], 16 },
+    { "SNthisframe", g.SN[POP_CD_THIS], 16 }, { "SNlastframe", g.SN[POP_CD_LAST], 16 },
+    { "SNbelow", g.SN[POP_CD_BELOW], 16 }, { "SNabove", g.SN[POP_CD_ABOVE], 10 },
 };
 #define NBUFS (sizeof bufs / sizeof bufs[0])
 #define NVARS16 (sizeof vars16 / sizeof vars16[0])
@@ -222,6 +238,16 @@ static int run(const char *r, uint8_t a, uint8_t x, uint8_t y, int *out)
     if (!strcmp(r, "insideblock"))  RET(pop_insideblock(&g));
     if (!strcmp(r, "checkimpale"))  DO(pop_checkimpale(&g));
     if (!strcmp(r, "doimpale"))     { g.ry = y; DO(pop_doimpale(&g)); }
+
+    /* collision */
+    if (!strcmp(r, "checkbarr"))    DO(pop_checkbarr(&g));
+    if (!strcmp(r, "collisions"))   DO(pop_collisions(&g));
+    if (!strcmp(r, "checkcoll"))    { g.ry = y; RET(pop_checkcoll(&g, a)); }
+    if (!strcmp(r, "checkgate"))    DO(pop_checkgate(&g));
+    if (!strcmp(r, "checkslice"))   DO(pop_checkslice(&g));
+    if (!strcmp(r, "checkslice2"))  RET(pop_checkslice2(&g));
+    if (!strcmp(r, "enemycoll"))    DO(pop_enemycoll(&g));
+    if (!strcmp(r, "goneupstairs")) DO(pop_goneupstairs(&g));
     return 0;
 #undef RET
 #undef DO
@@ -273,7 +299,8 @@ int main(int argc, char **argv)
     g.hooks.add_slicers = h_slicers;
     g.hooks.jam_spikes = h_jam;
     g.hooks.potion_effect = h_potion;
-    g.hooks.gone_upstairs = h_upstairs;
+    g.hooks.smash_mirror = h_mirror;
+    g.hooks.speaker_click = h_click;
     g.hooks.get_input = h_input;
     g.hooks.save_input = h_saveinput;
     g.hooks.demo_ctrl = h_demo;

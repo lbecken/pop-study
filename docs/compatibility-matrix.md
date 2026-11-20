@@ -27,16 +27,18 @@ Status of each behaviour in the reconstruction.
 | World | Block reading across screens, foot position, distances, coordinate conversion, piece classes | faithful, checked against the original code | `modern-port/src/core/pop_world.c` | 39 routines fuzzed against the original in the simulator; not compared with a running game |
 | Animation | Frame lookup incl. alternate sets (`GETFRAMEINFO`) | faithful, checked against the original code | same | |
 | Player | Gravity and fall movement (`GRAVITY`, `ADDFALL`) | faithful, checked against the original code | same | |
-| Player | Control: dispatch by frame, standing / running / turning / crouching / hanging handlers, jumps, careful steps, pick-up, running-jump take-off adjustment | faithful, checked against the original code | `modern-port/src/core/pop_control.c` | 52 routines fuzzed against the original; calls into unported subsystems are hooks |
+| Player | Control: dispatch by frame, standing / running / turning / crouching / hanging handlers, jumps, careful steps, pick-up, running-jump take-off adjustment | faithful, checked against the original code | `modern-port/src/core/pop_control.c` | fuzzed against the original routine by routine; calls into unported subsystems are hooks |
 | Player | Sword-fight moves of the controlled character (`FightCtrl`, strike, block, advance, retreat, sheathe) | faithful, checked against the original code | same | the opponent's decisions (`AUTO.S`) are missing |
 | Player | Floor checks, starting to fall, ledge grab, landing and fall damage, impalement | faithful, checked against the original code | same | spikes are jammed in the level data; the moving-object side is a hook |
-| Player | A whole kid frame | approximate | `modern-port/tests/trace_kidstep.py` | the ported steps in the original order agree with the original over 60-frame traces; collision, plates, loose floors, slicers, guards, screen changes not in it |
+| Player | A whole kid frame | approximate | `modern-port/tests/trace_kidstep.py` | the ported steps in the original order, collision included, agree with the original over 60-frame traces; plates, loose floors, spike and slicer triggering, guards, screen changes not in it |
 | Player | Input devices, joystick flag upkeep, demo playback | missing | – | hook in `pop_playerctrl`; milestone 9c |
 | Player | Strength changes applied, death sequence and messages | missing | – | `ChgKidStr` is set, nothing consumes it yet |
 | Rendering | Character edges and blocks covered (`GETEDGES`) | faithful, checked against the original code | same | image sizes from a generated table instead of the image data |
 | Rendering | Redraw marks (`MARKRED`, `MARKWIPE`, `INDEXBLOCK`) | faithful, checked against the original code | same | the buffers are filled; nothing draws from them yet |
 | World | Level blueprint and initial states (`SETINITIALS`) | model only | `tools/extract_assets/pop_level.py` | |
-| World | Collisions, moving objects, pressure-plate links | missing | – | milestones 9a, 9b |
+| World | Collision with walls, gates, slicers and the mirror: edge-crossing detection, push-back, soft / hard / air / en-garde bumps, gate knocking a stander aside, being sliced | faithful, checked against the original code | `modern-port/src/core/pop_collide.c` | 8 entry points fuzzed against the original, and inside the kid-frame trace; smashing the mirror is a hook; the end-of-level music is requested (`SongCue`) but nothing plays it |
+| World | Kid running into a guard (`firstguard`) | missing | – | with opponents, milestone 9c |
+| World | Moving objects (gates, plates and links, loose floors, spikes, slicers) | missing | – | milestone 9b; until then gates and slicers stay as the level file has them |
 | World | Picking up a flask or sword (`REMOVEOBJ`), level 12's phantom bridge | faithful, checked against the original code | `pop_control.c` | the potion's effect is a hook |
 | Opponents | AI, sword fighting | missing | – | |
 | Audio | Sound-effect queue (`ADDSOUND`, `ZEROSOUND`, play order) | faithful, unverified | `modern-port/src/core/pop_sound.c` | |

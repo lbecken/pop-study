@@ -69,13 +69,17 @@ typedef struct pop_game_hooks {
     void (*add_slicers)(void *ctx);      /* addslicers,   SUBS.S 250  */
     void (*jam_spikes)(void *ctx);       /* jamspikes,    MOVER.S 354 (after the spec write) */
     void (*potion_effect)(void *ctx);    /* potioneffect, MISC.S      */
-    void (*gone_upstairs)(void *ctx);    /* GoneUpstairs, COLL.S 1162 */
+    void (*smash_mirror)(void *ctx);     /* smashmirror,  MOVER.S 259 */
+    void (*speaker_click)(void *ctx);    /* a read of $C030, COLL.S 403 */
     /* PLAYERCTRL's input step: LoadSelect, getselect, clrjstk (CTRL.S
      * 573-577).  Expected to set JSTKX, JSTKY, btn and the clr* flags. */
     void (*get_input)(void *ctx);
     void (*save_input)(void *ctx);       /* SaveSelect,   CTRL.S 582  */
     void (*demo_ctrl)(void *ctx);        /* DemoCtrl,     CTRL.S 587: the demo level's kid */
 } pop_game_hooks;
+
+/* Order of the collision buffers in memory. */
+enum { POP_CD_THIS = 0, POP_CD_LAST = 1, POP_CD_BELOW = 2, POP_CD_ABOVE = 3 };
 
 typedef struct pop_game {
     uint8_t blueprint[POP_LEVEL_SIZE];   /* $B700 */
@@ -91,7 +95,7 @@ typedef struct pop_game {
     uint8_t  Fsword;                     /* $D9 */
 
     /* block-reading variables */
-    uint8_t  blockx, blocky;             /* (not yet used) */
+    uint8_t  blockx, blocky;             /* $8C, $8D */
     uint8_t  infrontx, behindx, abovey;  /* $81-$83 */
     uint8_t  tempblockx, tempblocky, tempscrn;  /* $84-$86 */
     uint8_t  OFFSET;                     /* $03: pixel within block from GETBLOCKX */
@@ -131,6 +135,26 @@ typedef struct pop_game {
     uint8_t  leftblock, rightblock, topblock, bottomblock;
     uint8_t  CDLeftEj, CDRightEj;
     uint8_t  blockedge, tempobjid;
+
+    /* --- collision detection (COLL.S; GAMEEQ.S 405-469, 545-554) ---
+     * CD: per column 0-9, low nybble $F = the character's right edge is past
+     * the barrier's left edge, high nybble $F = his left edge is short of
+     * its right edge; $FF = overlapping it.  SN: the screen the column's
+     * data came from, $FF = none.  Kept for this frame, the last frame, and
+     * the rows below and above. */
+    uint8_t  CD[4][16], SN[4][16];       /* $320-$399; see POP_CD_* */
+    uint8_t  BlockYthis, BlockYlast;     /* $39A, $39B */
+    uint8_t  collideL, collideR;         /* $C3, $C4: column, or $FF for none */
+    uint8_t  collX;                      /* $87 */
+    uint8_t  begrange, endrange;         /* $C8, $C0 */
+    uint8_t  AMtimer;                    /* $C7: frames of walking through walls */
+    uint8_t  VisScrn;                    /* $CB: the screen being shown */
+    uint8_t  scrnLeft, scrnRight, scrnBelowL, scrnBelowR;   /* $31, $32, $35, $38 */
+    uint8_t  createshad;                 /* $E5: set when the mirror is smashed */
+    uint8_t  NextLevel;                  /* $31C */
+    /* music request: song number, and the number of frames within which
+     * it must start (CUESONG, SPECIALK.S 1332-1335) */
+    uint8_t  SongCue, SongCount;
 
     /* --- redraw marks (CTRLSUBS.S 1734-1757) --- */
     uint8_t  redbuf[30], wipebuf[30], whitebuf[30], topbuf[10];

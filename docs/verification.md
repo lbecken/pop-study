@@ -82,6 +82,14 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | 2026-11-20 | `trace_kidstep.py`, 500 traces, seed 42 | same | 30,000 frames, 361,500 calls agree; 163 distinct frames, every `CharAction` 0–7 seen; no trace ended early |
 | 2026-11-20 | gcov on `pop_control.c` under `fuzz_control.py` (600 rounds, seed 42) | GCC 13.3, `-O0 --coverage` | 96.9 % of lines, 94.9 % of branch directions; under `trace_kidstep.py` alone (200 traces) 67.6 % and 55.1 % |
 | 2026-11-20 | `mutation_check.py`, 400 rounds, seed 1989 | – | 35 deliberate errors: 31 noticed, 4 make no difference (listed in the script with the reason), 0 missed. At 150 rounds 2 of the 31 were missed, which ones depending on the seed, so the CTest run uses 400 |
+| 2026-11-20 | pytest, with original (after milestone 9a) | Python 3.13, Linux | 140 passed |
+| 2026-11-20 | CTest, with original | GCC 13.3, `-Werror`, ASan + UBSan | 14 of 14 passed |
+| 2026-11-20 | CTest, with original | Clang 18.1, `-Werror`; `test_collide` under valgrind | 14 of 14 passed, no valgrind errors |
+| 2026-11-20 | CTest, without original | GCC 13.3, `-Werror` | 6 of 6 passed |
+| 2026-11-20 | `fuzz_control.py @collision`, 1,000 rounds, seed 42 | ASan build of the runner | 7,415 cases over the 8 collision routines agree; 585 skipped (stray reads: random frames whose image the tables do not hold) |
+| 2026-11-20 | `trace_kidstep.py` with the collision steps, 500 traces, seed 42 | same | 466,489 calls agree; 167 distinct frames; 46 traces cut short when the kid ran off the screen edge (no screen changes yet) |
+| 2026-11-20 | `mutation_check.py`, 400 rounds, seed 1989 | – | `pop_control.c`: 35 errors, 31 noticed, 4 without effect. `pop_collide.c`: 24 errors, 23 noticed, 1 without effect (dead code in the original). Three collision errors were missed by earlier versions of the generator; directed cases were added for them |
+| 2026-11-20 | gcov on `pop_collide.c` under `fuzz_control.py @collision` (600 rounds) | GCC 13.3 | 97 % of lines, 94 % of branch directions |
 
 ## Kinds of evidence
 
@@ -96,7 +104,7 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | Two implementations | C interpreter vs Python decoder, 45,600 ticks identical; C effect renderer vs Python, 26,204 samples | catches slips, not a shared misreading |
 | Executing the original | sound effects obtained by running the assembled `SOUND.S` in a 6502 simulator; timing equals the hand-derived loop formula | strong for behaviour; depends on the simulator's cycle table |
 | Differential fuzzing | each ported C routine against the original routine in the simulator, on random states wider than valid ones (`docs/oracle.md`) | strong: independent of my reading of the code; depends on the assembler and simulator being right |
-| Mutation check | 35 deliberately wrong builds of the control code, each run against the comparison (`modern-port/tests/mutation_check.py`) | shows the comparison has teeth, and where its inputs were thin: the first version missed six boundary values, since added |
+| Mutation check | 59 deliberately wrong builds of the control and collision code, each run against the comparison (`modern-port/tests/mutation_check.py`) | shows the comparison has teeth, and where its inputs were thin: the first version missed six boundary values, since added |
 | Multi-frame trace | the ported per-frame steps run for 60 frames with state carried over, C against the original after each call | strong for how the routines work together; says nothing about the steps not yet ported |
 | Coverage | gcov on the C under the fuzz inputs | shows which branches the comparison reached at all |
 | Cross-screen continuity | rendered screens placed by the level map line up at their edges | moderate: wrong piece offsets or neighbour rules would show as seams |

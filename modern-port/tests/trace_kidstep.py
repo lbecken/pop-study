@@ -10,18 +10,21 @@ running, for each frame, the part of the original's per-frame kid update that
 has been ported, in the original's order (TOPCTRL.S 635-690):
 
     LoadKidwOp, rereadblocks, PlayerCtrl, animchar, gravity, addfall,
-    setupchar, rereadblocks, getedges, checkfloor, checkimpale, SaveKid
+    setupchar, rereadblocks, getedges, checkbarr, collisions, checkgate,
+    checkfloor, checkimpale, checkslice, SaveKid
 
 The same list of calls is made on the original code in the 6502 simulator
 and on the C port, and after every call the whole tracked state, the sounds,
 the level changes, the redraw buffers and the calls to unported subsystems
 must agree.  Level changes persist from frame to frame.
 
-What is NOT in the frame, because it is not ported yet: collision with walls
-and gates (checkbarr, collisions, checkgate), guards, pressure plates, loose
-floors, spike triggering, slicers, screen changes and drawing.  The kid
-therefore runs through walls here, in both implementations alike.  The
-joystick flags are set by the test, standing in for the input code.
+What is NOT in the frame, because it is not ported yet: guards (firstguard),
+pressure plates and loose floors (checkpress, shakeloose), spike triggering
+(checkspikes), everything that moves in the level (gates stay as the level
+file has them, slicers do not start), screen changes and drawing.  The
+joystick flags are set by the test, standing in for the input code, and so
+are VisScrn and the neighbouring-screen variables, which the test keeps
+pointing at the kid's screen as the screen-change code would.
 
 Usage:
     trace_kidstep.py <pop_worldrun> <data dir> <original checkout> [traces] [seed]
@@ -42,8 +45,10 @@ FRAME = [("loadkidwop", "CTRLSUBS", "LOADKIDWOP"), ("rereadblocks", "CTRL", "RER
          ("playerctrl", "CTRL", "PLAYERCTRL"), ("animchar", "COLL", "ANIMCHAR"),
          ("gravity", "SUBS", "GRAVITY"), ("addfall", "SUBS", "ADDFALL"),
          ("setupchar", "CTRLSUBS", "SETUPCHAR"), ("rereadblocks", "CTRL", "REREADBLOCKS"),
-         ("getedges", "CTRLSUBS", "GETEDGES"), ("checkfloor", "CTRL", "CHECKFLOOR"),
-         ("checkimpale", "CTRL", "CHECKIMPALE"), ("savekid", "CTRLSUBS", "SAVEKID")]
+         ("getedges", "CTRLSUBS", "GETEDGES"), ("checkbarr", "COLL", "CHECKBARR"),
+         ("collisions", "COLL", "COLLISIONS"), ("checkgate", "COLL", "CHECKGATE"),
+         ("checkfloor", "CTRL", "CHECKFLOOR"), ("checkimpale", "CTRL", "CHECKIMPALE"),
+         ("checkslice", "COLL", "CHECKSLICE"), ("savekid", "CTRLSUBS", "SAVEKID")]
 FRAMES_PER_TRACE = 60
 INPUT_VARS = ("JSTKX", "JSTKY", "btn", "clrF", "clrB", "clrU", "clrD", "clrbtn")
 FLOORS = (1, 2, 4, 6, 10, 11, 14, 15, 22)         # pieces to stand on at the start
@@ -112,8 +117,9 @@ def start_state(rng, level):
                     spots.append((scrn, row, col))
     scrn, row, col = rng.choice(spots)
     s = fc.fw.random_state(rng)
-    for n in fc.EXTRA:
+    for n in fc.EXTRA + fc.COLL_VARS:
         s[n] = 0
+    s["collideL"] = s["collideR"] = 0xFF
     s["FCharX"] = 0
     for rec in ("Kid", "Char", "Shad", "Op"):
         for f in fc.fw.CHAR_FIELDS:
@@ -125,6 +131,16 @@ def start_state(rng, level):
     s.update(level=rng.choice((1, 2, 3, 12)), KidStrength=3, OppStrength=3,
              gotsword=rng.choice((0, 1)), weightless=0, timebomb=0, blue=scrn)
     return s
+
+
+def screen_vars(level, scrn):
+    """VisScrn and its neighbours, from the level map (4 bytes per screen:
+    left, right, up, down)."""
+    def link(s, which):
+        return level[1952 + (s - 1) * 4 + which] if 1 <= s <= 24 else 0
+    below = link(scrn, 3)
+    return {"VisScrn": scrn, "scrnLeft": link(scrn, 0), "scrnRight": link(scrn, 1),
+            "scrnBelowL": link(below, 0), "scrnBelowR": link(below, 1)}
 
 
 def next_input(rng, held):
@@ -184,6 +200,7 @@ def main(argv):
                     flags[flag] = 0xFF
             values = dict(held, **flags)
             prev = held
+            values.update(screen_vars(h.level, h.oracle.peek(h.addr["KidScrn"])))
             h.set(values)
             commands.append("S " + " ".join("%s=%d" % kv for kv in values.items()))
             for name, module, label in FRAME:
@@ -212,7 +229,7 @@ def main(argv):
         print("expected %d result lines, got %d" % (len(expected), len(lines)))
         return 1
 
-    failures, compared, dead_trace = 0, 0, -1
+    failures, compared, dead_trace, off_model = 0, 0, -1, 0
     for line, (trace, frame, name, want) in zip(lines, expected):
         if trace == dead_trace:
             continue
@@ -231,9 +248,15 @@ def main(argv):
                       "image, the port did not" % (trace, frame, name))
             dead_trace = trace
             continue
-        problems = []
         if got["unmodelled"]:
-            problems.append("the port left its model, the original did not notice")
+            # The port reached a table index the original has no entry for
+            # (the kid has run off the screen: nothing changes screens yet).
+            # The original went on with whatever memory holds there; nothing
+            # further in this trace can be compared.
+            dead_trace = trace
+            off_model += 1
+            continue
+        problems = []
         if got["blue"] != want["vars"]["blue"]:
             problems.append("blueprint screen: C %d, original %d"
                             % (got["blue"], want["vars"]["blue"]))
@@ -257,11 +280,14 @@ def main(argv):
     if failures:
         print("%d traces differ" % failures)
         return 1
-    print("%d traces, %d frames, %d calls: C port and original code agree; "
-          "%d distinct frames and actions %s seen; %d traces ended early "
-          "(the original read outside the modelled tables)"
-          % (traces, frames_run, compared, len(seen_frames),
-             sorted(seen_actions), ended_early))
+    if (ended_early + off_model) * 4 > traces:
+        print("too many traces cut short: %d of %d" % (ended_early + off_model, traces))
+        return 1
+    print("%d traces, %d calls compared: C port and original code agree; "
+          "%d distinct frames and actions %s seen; %d traces cut short "
+          "(a read outside the modelled tables)"
+          % (traces, compared, len(seen_frames), sorted(seen_actions),
+             ended_early + off_model))
     return 0
 
 
