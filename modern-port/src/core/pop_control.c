@@ -10,6 +10,7 @@
 #include "pop_auto.h"
 #include "pop_collide.h"
 #include "pop_mover.h"
+#include "pop_top.h"
 #include "pop_world.h"
 
 #define NEG(v) (((v) & 0x80u) != 0)        /* bmi / "fresh press" / pressed */
@@ -920,7 +921,7 @@ void pop_playerctrl(pop_game *g)
     if (NEG(g->ch.life) && g->KidStrength == 0) g->ch.life = 0;   /* out of strength: dead */
     if (g->stunned != 0) g->stunned--;
     if (g->level == 0) {                       /* the demo plays itself */
-        if (g->hooks.demo_ctrl) g->hooks.demo_ctrl(g->hooks.ctx);
+        pop_democtrl(g);
         pop_genctrl(g);
         return;
     }

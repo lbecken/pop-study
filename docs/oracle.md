@@ -53,11 +53,20 @@ the port does not have yet (`modern-port/tests/fuzz_control.py`):
 | `inverty`, `addreflobj`, `attractmode` | drawing and game flow | records the call |
 | `LoadDesel`, `getdesel`, `SaveDesel` | the second input device | records the call |
 | a read of `$C030` | the speaker | recorded through `on_read` |
-| `LoadSelect`, `getselect`, `clrjstk`, `SaveSelect`, `DemoCtrl` | input devices, demo | records the call; the test supplies the joystick variables |
+| `LoadSelect`, `getselect`, `clrjstk`, `SaveSelect` | input devices | records the call; the test supplies the joystick variables |
+| `GOATTRACT`, `YouLose`, `YouWin`, `LoadNext1`, `RESTART`, `MainLoop` | jumps that abandon the frame and reset the stack | records the call and returns to the test |
+| `DoCleanCut`, `zeropeels`, `initinput` | drawing and input set-up | records the call |
+| `keeptime`, `showtime` | the clock: not ported yet | records the call |
 
 (Earlier milestones also trapped `jamspikes`, `addslicers`, `smashmirror`,
-`GoneUpstairs`, `cuesong` and `potioneffect`; those now run for real, since their ports
-exist.)
+`GoneUpstairs`, `cuesong`, `potioneffect` and `DemoCtrl`; those now run for real, since
+their ports exist.)
+
+`RESTART` cannot be entered at its label, because it begins by loading the
+level from disk. The level-start comparison writes the level into memory and
+enters at the `jsr setinitials` inside it, an address found by searching the
+assembled routine for that instruction (`Harness.restart_level` in
+`fuzz_control.py`).
 
 A trapped routine is not being tested; what is compared is the caller's
 behaviour given the same answers on both sides.
@@ -93,5 +102,6 @@ behaviour given the same answers on both sides.
 | Geometry tables | byte/offset, block edges, floor lines as loaded in memory | agree |
 | Sound effects | `PLAYBACK`, `ADDSOUND` | source of the effect data (`docs/audio-analysis.md`) |
 | World queries, gravity (C) | 39 routines on random states, 15,600 cases per test run | C port and original agree |
-| Player control, floor, landing, collision, moving objects, opponents (C) | 116 routines on random states, about 45,900 cases per test run: variables, registers, sounds, level changes, redraw buffers, calls out | C port and original agree |
-| A game frame over time (C) | the ported part of `NextFrame`: moving objects, the kid, the opponent, sword contact, strength, screen change; 60 traces of 60 frames of random input per test run, compared after each call | C port and original agree |
+| Player control, floor, landing, collision, moving objects, opponents, frame and level top level (C) | 134 routines on random states, about 53,000 cases per test run: variables, registers, sounds, level changes, redraw buffers, calls out | C port and original agree |
+| A game frame over time (C) | the original's level start, then `rnd`, `misctimers`, `NextFrame`, `REFLECTION`, `zerosound` per frame; 60 traces of 60 frames of random input per test run, compared after each call | C port and original agree |
+| The demo (C) | level 0 from its start to `GOATTRACT` with the demo's own script as input: 393 frames, 1,966 calls | C port and original agree at every call |

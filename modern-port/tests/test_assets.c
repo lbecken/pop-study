@@ -108,7 +108,7 @@ static void test_dimfile(void)
 
 static void test_autofile(void)
 {
-    uint8_t bytes[16 + POP_FT_SIZE + POP_SHADPOS_SIZE + 4];
+    uint8_t bytes[16 + POP_FT_SIZE + POP_SHADPOS_SIZE + 4 + 6];
     pop_autofile f;
     const char *err = NULL;
     size_t i;
@@ -117,6 +117,7 @@ static void test_autofile(void)
     bytes[8] = POP_FT_SIZE;
     bytes[10] = POP_SHADPOS_SIZE;
     bytes[12] = 4;
+    bytes[14] = 6;
     for (i = 16; i < sizeof bytes; i++) bytes[i] = (uint8_t)i;
     CHECK(write_file("pop_test_auto.bin", bytes, sizeof bytes) != NULL);
     CHECK_EQ(pop_autofile_load("pop_test_auto.bin", &f, &err), 0);
@@ -124,7 +125,9 @@ static void test_autofile(void)
     CHECK_EQ(f.data.fight[POP_FT_BASICCOLOR], 16 + 110);
     CHECK_EQ(f.data.shadpos[POP_SHADPOS_12], 16 + POP_FT_SIZE + 16);
     CHECK_EQ(f.data.shadprog5_len, 4);
-    CHECK_EQ(f.data.shadprog5[3], (uint8_t)(sizeof bytes - 1));
+    CHECK_EQ(f.data.shadprog5[3], (uint8_t)(sizeof bytes - 7));
+    CHECK_EQ(f.data.demoprog_len, 6);
+    CHECK_EQ(f.data.demoprog[5], (uint8_t)(sizeof bytes - 1));
     pop_autofile_free(&f);
     CHECK(f.storage == NULL);
 

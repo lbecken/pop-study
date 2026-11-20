@@ -308,10 +308,11 @@ static void test_playerctrl(void)
     CHECK_EQ(g.ch.life, 0);
     CHECK_EQ(g.ch.seq, seq_addr(POP_SQ_DROPDEAD));
 
-    setup(3, POP_FACE_LEFT);                       /* level 0 is the self-playing demo */
-    g.level = 0;
+    setup(3, POP_FACE_LEFT);                       /* level 0 is the self-playing demo: */
+    g.level = 0;                                   /* the script moves the stick, no input is read */
     pop_playerctrl(&g);
-    CHECK(strcmp(hooklog, "d") == 0);
+    CHECK_EQ(g.PlayCount, 1);
+    CHECK(hooklog[0] == 0);
 }
 
 static void test_walking_off_an_edge(void)

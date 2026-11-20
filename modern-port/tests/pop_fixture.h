@@ -49,7 +49,12 @@ static size_t nhooks;
 static void hook(char c) { if (nhooks + 1 < sizeof hooklog) { hooklog[nhooks++] = c; hooklog[nhooks] = 0; } }
 static void h_input(void *c) { (void)c; hook('i'); }
 static void h_save(void *c) { (void)c; hook('o'); }
-static void h_demo(void *c) { (void)c; hook('d'); }
+static void h_goattract(void *c) { (void)c; hook('A'); }
+static void h_youlose(void *c) { (void)c; hook('L'); }
+static void h_youwin(void *c) { (void)c; hook('W'); }
+static void h_loadnext(void *c) { (void)c; hook('N'); }
+static void h_restart(void *c) { (void)c; hook('R'); }
+static void h_cleancut(void *c) { (void)c; hook('C'); }
 static void h_click(void *c) { (void)c; hook('k'); }
 static void h_attract(void *c) { (void)c; hook('a'); }
 static void h_refl(void *c) { (void)c; hook('r'); }
@@ -117,6 +122,8 @@ static void setup(int col, uint8_t face)
     fx_auto.shadpos = fx_shadpos;
     fx_auto.shadprog5 = fx_script;
     fx_auto.shadprog5_len = sizeof fx_script;
+    fx_auto.demoprog = fx_script;
+    fx_auto.demoprog_len = sizeof fx_script;
     g.autodata = &fx_auto;
 
     dims.count[0] = 1;
@@ -125,7 +132,12 @@ static void setup(int col, uint8_t face)
 
     g.hooks.get_input = h_input;
     g.hooks.save_input = h_save;
-    g.hooks.demo_ctrl = h_demo;
+    g.hooks.go_attract = h_goattract;
+    g.hooks.you_lose = h_youlose;
+    g.hooks.you_win = h_youwin;
+    g.hooks.load_next = h_loadnext;
+    g.hooks.restart = h_restart;
+    g.hooks.clean_cut = h_cleancut;
     g.hooks.speaker_click = h_click;
     g.hooks.attract_mode = h_attract;
     g.hooks.add_refl_obj = h_refl;

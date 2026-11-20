@@ -160,8 +160,18 @@ def build_autodata(source):
         prog += asm.image[start + len(prog):start + len(prog) + 2]
         if prog[-1] in (0xFE, 0xFF) or len(prog) > 254:
             break
-    return (b"POPAUTO1" + struct.pack("<HHHH", len(fight), len(shadpos), len(prog), 0)
-            + fight + shadpos + bytes(prog))
+    # the demo level's script for the kid is in SUBS.S, in the same format
+    with open(os.path.join(src, "SUBS.S"), encoding="ascii") as f:
+        subs = assemble_6502(f.read(), include_resolver(
+            src, os.path.join(source, "02 POP Disk Routines", "CP.525")))
+    start = subs.symbols["DemoProg1"] - subs.origin
+    demo = bytearray()
+    while True:
+        demo += subs.image[start + len(demo):start + len(demo) + 2]
+        if demo[-1] in (0xFE, 0xFF) or len(demo) > 254:
+            break
+    return (b"POPAUTO1" + struct.pack("<HHHH", len(fight), len(shadpos), len(prog), len(demo))
+            + fight + shadpos + bytes(prog) + bytes(demo))
 
 
 def build_sfx(source):

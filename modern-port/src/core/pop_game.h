@@ -68,12 +68,15 @@ typedef struct pop_imgdims {
  *          two per-level tables (14 each), contiguous as in memory;
  *   shadpos: 3 x 8 bytes (Posn, X, Y, Face, BlockX, BlockY, Action, sequence)
  *          for levels 6, 5 and 12;
- *   shadprog5: (frame, command) pairs for the shadow's theft on level 5. */
+ *   shadprog5: (frame, command) pairs for the shadow's theft on level 5;
+ *   demoprog:  the same for the kid in the self-running demo (from SUBS.S). */
 typedef struct pop_autodata {
     const uint8_t *fight;
     const uint8_t *shadpos;
     const uint8_t *shadprog5;
     size_t         shadprog5_len;
+    const uint8_t *demoprog;             /* the demo level's script for the kid (SUBS.S 1194) */
+    size_t         demoprog_len;
 } pop_autodata;
 
 enum {
@@ -97,6 +100,18 @@ typedef struct pop_game_hooks {
     void (*invert_y)(void *ctx);         /* inverty: the upside-down potion's redraw */
     void (*add_refl_obj)(void *ctx);     /* addreflobj: draw the kid's reflection */
     void (*attract_mode)(void *ctx);     /* attractmode: a scripted demo has ended */
+    /* Where the original leaves the level it is playing (TOPCTRL.S): each
+     * is a jump there, so the port's routine returns right after the call. */
+    void (*go_attract)(void *ctx);       /* GOATTRACT: back to the title sequence */
+    void (*you_lose)(void *ctx);         /* YouLose: time is up */
+    void (*you_win)(void *ctx);          /* YouWin: the princess's room */
+    void (*load_next)(void *ctx);        /* LoadNext1: start the next level now */
+    void (*restart)(void *ctx);          /* RESTART: start this level again */
+    void (*clean_cut)(void *ctx);        /* DoCleanCut: draw the new screen */
+    void (*keep_time)(void *ctx);        /* keeptime: the 60-minute clock */
+    void (*show_time)(void *ctx);        /* showtime */
+    void (*init_input)(void *ctx);       /* initinput */
+    void (*zero_peels)(void *ctx);       /* zeropeels: forget what was drawn */
     void (*desel_input)(void *ctx);      /* LoadDesel, getdesel, clrjstk: opponent played by hand */
     void (*save_desel)(void *ctx);       /* SaveDesel */
     void (*speaker_click)(void *ctx);    /* a read of $C030, COLL.S 403 */
@@ -104,7 +119,6 @@ typedef struct pop_game_hooks {
      * 573-577).  Expected to set JSTKX, JSTKY, btn and the clr* flags. */
     void (*get_input)(void *ctx);
     void (*save_input)(void *ctx);       /* SaveSelect,   CTRL.S 582  */
-    void (*demo_ctrl)(void *ctx);        /* DemoCtrl,     CTRL.S 587: the demo level's kid */
 } pop_game_hooks;
 
 /* The redraw buffers are one block of memory (EQ.S 218-229): 30 bytes each,
@@ -232,6 +246,18 @@ typedef struct pop_game {
     uint8_t  timerequest;                /* ask for the time-left message */
     uint8_t  mirrx, dmirr;               /* $B0, $B1: mirror x, distance from it (REFLECTION) */
     const struct pop_autodata *autodata; /* fight tables and scripted positions (generated) */
+
+    /* --- the frame and the level as a whole (TOPCTRL.S) --- */
+    uint8_t  skipmessage;                /* $218 */
+    uint8_t  cutplan;                    /* $A3: 1 = the next frame is drawn from scratch */
+    uint8_t  cutorder;                   /* $C6 */
+    uint8_t  message;                    /* $30B: 1 level, 2 "press button", 3 time left */
+    uint8_t  MinLeft, SecLeft;           /* $300, $302 */
+    uint8_t  BTN0, BTN1;                 /* $1A, $1B: the two buttons, negative = down */
+    uint8_t  waitingtojump;              /* $A7 */
+    uint8_t  yellowflag;                 /* $7C: copy protection result; negative = passed */
+    uint8_t  scrnAboveL, scrnAboveR;     /* $36, $37 */
+    uint8_t  SCRNUM;                     /* $23 */
 
     /* --- redraw marks (CTRLSUBS.S 1734-1757) --- */
     uint8_t  rb[POP_RB_SIZE];            /* $5E00: the redraw buffers, see POP_RB_* */

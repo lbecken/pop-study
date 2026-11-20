@@ -263,7 +263,7 @@ int pop_autofile_load(const char *path, pop_autofile *out, const char **err)
 {
     uint8_t header[16];
     uint8_t *mem;
-    size_t fight, shadpos, prog, total;
+    size_t fight, shadpos, prog, demo, total;
     FILE *fp;
 
     memset(out, 0, sizeof *out);
@@ -276,9 +276,11 @@ int pop_autofile_load(const char *path, pop_autofile *out, const char **err)
     fight = u16le(header + 8);
     shadpos = u16le(header + 10);
     prog = u16le(header + 12);
-    if (fight != POP_FT_SIZE || shadpos != POP_SHADPOS_SIZE || prog < 2 || (prog & 1u))
+    demo = u16le(header + 14);
+    if (fight != POP_FT_SIZE || shadpos != POP_SHADPOS_SIZE || prog < 2 || (prog & 1u)
+        || demo < 2 || (demo & 1u))
         return fail(err, "unexpected table sizes", fp, NULL);
-    total = fight + shadpos + prog;
+    total = fight + shadpos + prog + demo;
     mem = malloc(total + 1u);
     if (!mem) return fail(err, "out of memory", fp, NULL);
     if (fread(mem, 1, total + 1u, fp) != total)
@@ -289,6 +291,8 @@ int pop_autofile_load(const char *path, pop_autofile *out, const char **err)
     out->data.shadpos = mem + fight;
     out->data.shadprog5 = mem + fight + shadpos;
     out->data.shadprog5_len = prog;
+    out->data.demoprog = mem + fight + shadpos + prog;
+    out->data.demoprog_len = demo;
     return 0;
 }
 

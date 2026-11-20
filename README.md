@@ -29,7 +29,7 @@ licensing position this policy is based on.
 | `docs/port/` | Per-subsystem port notes: interface, pseudocode, pitfalls, tests |
 | `docs/verification.md` | Test commands, recorded results, what has not been verified |
 | `docs/compatibility-matrix.md` | Which behaviours are faithful, approximate, missing or unverified |
-| `modern-port/` | The C17 port (see its README): animation, level queries, player control, falling and landing, collision, moving level objects, opponents and sword fighting, sound effects; no window yet |
+| `modern-port/` | The C17 port (see its README): animation, level queries, player control, falling and landing, collision, moving level objects, opponents and sword fighting, a whole game frame and level start, sound effects; no window yet |
 | `docs/unknowns.md` | Open questions, each with the next inspection step |
 | `docs/milestones.md` | Milestone plan, directory layout, decisions awaiting input |
 | `assets/manifest.json` | Hashed inventory of all 582 original files (metadata only) |
@@ -72,7 +72,7 @@ python3 tools/extract_assets/make_manifest.py --source ../pop-original --out ass
 POP_SOURCE_DIR=../pop-original python3 -m pytest tests -q
 ```
 
-Without `POP_SOURCE_DIR` the 26 integration tests are skipped and only the
+Without `POP_SOURCE_DIR` the 27 integration tests are skipped and only the
 synthetic-data unit tests run. `build/` is git-ignored.
 
 The C port:
@@ -102,11 +102,14 @@ simulator, with a C queue and renderer) and milestone 8 (the level-reading,
 frame-lookup and gravity routines, then player control, floor checks, falling
 and landing in C; every routine is compared with the original code on random
 inputs, and the ported part of a whole kid frame is compared with the original
-over many consecutive frames) and the first three parts of milestone 9
-(collision; everything in the level that moves; then the opponents: guards
+over many consecutive frames) and milestone 9 as far as part 1 of 9d
+(collision; everything in the level that moves; the opponents: guards
 and the shadow, sword fighting, strength, and passing from screen to screen;
-all verified the same way). The top level of the game loop, input and drawing
-are not ported, so there is no runnable game yet. See
+then the routine that produces a whole frame, the kid's death, and the start
+of a level; all verified the same way, and the original's demo level now
+replays in the C port with the same result as the original code at every
+step). Input devices, the clock and messages, and drawing are not ported, so
+there is no runnable game yet. See
 `docs/milestones.md`.
 
 ## Conventions

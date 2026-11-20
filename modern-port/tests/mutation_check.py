@@ -4,18 +4,21 @@
 New code for the pop-study project.  Not part of CTest (it takes minutes).
 
 Each entry below is one small deliberate error in pop_control.c,
-pop_collide.c, pop_mover.c or pop_auto.c: a threshold off by one, a comparison changed, a statement
+pop_collide.c, pop_mover.c, pop_auto.c or pop_top.c: a threshold off by one, a comparison changed, a statement
 removed.  The script builds the
 runner with that one change and runs fuzz_control.py, which must then report
 a mismatch.  A change the comparison does not notice is either a gap in the
 test's inputs or a change that makes no difference; those of the second
-kind are marked with the reason.
+kind are marked with the reason.  A third kind is hidden from the comparison
+by its own rule of skipping cases the port cannot model; for those (marked
+"unit:<test file>") the named unit test is built with the error instead and
+must fail.
 
 Usage:
     mutation_check.py <data dir> <original checkout> [cases per routine] [seed] [only]
 
 `only` is a comma-separated list; just the changes in a file named there, or
-whose replacement text contains one of the entries, are tried.
+whose original or replacement text contains one of the entries, are tried.
 
 Needs a C compiler as `cc`.  The changes are tried in parallel, one per
 processor.
@@ -311,12 +314,125 @@ AUTO_MUTANTS = [
     ("        *gd(g, POP_GD_SEQH, scrn) = 0;\n    }\n}", "    }\n}", None),
 ]
 
+# The same for pop_top.c.
+TOP_MUTANTS = [
+    ("return (posn == 185 || posn == 177 || posn == 178) ? 0 : 1;",
+     "return (posn == 185 || posn == 177) ? 0 : 1;", None),
+    ("posn == 229 || posn == 109 || posn == 171", "posn == 229 || posn == 110 || posn == 171", None),
+    ("    for (x = 0; x < 10; x++) {\n        g->SN[POP_CD_LAST]",
+     "    for (x = 0; x < 9; x++) {\n        g->SN[POP_CD_LAST]", None),
+    ("    g->BlockYlast = 0xFF;\n", "", None),
+    ("    g->scrnBelowL = pop_getleft(g, g->scrnBelow);", "    g->scrnBelowL = pop_getleft(g, g->scrnAbove);", None),
+    ("    g->scrnAboveR = pop_getright(g, g->scrnAbove);", "    g->scrnAboveR = pop_getleft(g, g->scrnAbove);", None),
+    ("        if (a < POP_WTLFLASH) x = g->vibes ^ 0xFF;", "        if (a <= POP_WTLFLASH) x = g->vibes ^ 0xFF;", None),
+    ("    if (a != 0) {\n        x = 0xFF;", "    if (a != 1) {\n        x = 0xFF;", None),
+    ("        if (g->mergetimer == 0) g->mergetimer = 0xFF;", "", None),
+    ("    if (g->mergetimer != 0 && !NEG(g->mergetimer)) {", "    if (g->mergetimer != 0) {", None),
+    ("    if (g->level == 8 && g->ch.scrn == 16 && g->exitopen != 0) {",
+     "    if (g->level == 8 && g->ch.scrn == 15 && g->exitopen != 0) {", None),
+    ("        if (g->exitopen < POP_MOUSETIMER) {", "        if (g->exitopen <= POP_MOUSETIMER) {", None),
+    ("            pop_mouserescue(g);\n            g->exitopen++;", "            pop_mouserescue(g);", None),
+    ("    if (g->kid.posn == 167) pop_g_addsound(g, POP_SND_SWORDCLASH1);",
+     "    if (g->kid.posn == 168) pop_g_addsound(g, POP_SND_SWORDCLASH1);", None),
+    ("    else if (g->shad.posn == 167)", "    if (g->shad.posn == 167)", None),
+    ("        g->clrF = 0xFF;\n        g->JSTKX = 0xFF;", "        g->clrF = 0xFF;\n        g->JSTKX = 1;", None),
+    ("        g->guardprog = 10;\n", "        g->guardprog = 9;\n", None),
+    ("        pop_autoctrl(g);\n        g->guardprog = 11;", "        pop_autoctrl(g);", None),
+    ("    if (g->cutscrn == 0 || g->cutscrn == g->VisScrn) return;",
+     "    if (g->cutscrn == g->VisScrn) return;",
+     "unit:test_top.c: the wrong port goes on to read screen 0, which is outside the"
+     " modelled memory, so the comparison skips the case"),
+    ("    if (g->VisScrn == 5 && g->level == 14) {", "    if (g->VisScrn == 5 && g->level == 13) {", None),
+    ("    g->cutplan = 1;\n", "", None),
+    ("    pop_addtorches(g);\n    pop_crumble(g);", "    pop_addtorches(g);", None),
+    ("    pop_crumble(g);\n    pop_addguard(g);", "    pop_crumble(g);", None),
+    ("    g->cutscrn = g->kid.scrn;\n    pop_prepcut(g);", "    g->cutscrn = g->ch.scrn;\n    pop_prepcut(g);", None),
+    ("    pop_kill0(g);\n    pop_playerctrl(g);", "    pop_playerctrl(g);", None),
+    ("    if (pop_cold(g->ch.posn) != 0) return;", "    if (pop_static(g->ch.posn) != 0) return;", None),
+    ("    if (g->ch.life == 0) pop_deathsong(g);", "    if (g->ch.life == 1) pop_deathsong(g);", None),
+    ("    if (g->ch.life < POP_DEADENOUGH) {", "    if (g->ch.life <= POP_DEADENOUGH) {", None),
+    ("    if (g->level == 0) { HOOK(go_attract); return; }         /* his death",
+     "    if (g->level == 1) { HOOK(go_attract); return; }  /*", None),
+    ("    if (g->SongCue != 0) return;               /* let the song", "    /*", None),
+    ("    if ((g->MinLeft | g->SecLeft) == 0) { HOOK(you_lose); return; }",
+     "    if ((g->MinLeft & g->SecLeft) == 0) { HOOK(you_lose); return; }", None),
+    ("    if (g->message == POP_MSG_CONT && g->msgtimer != 0) {", "    if (g->msgtimer != 0) {", None),
+    ("        g->msgtimer = 255;\n        a = 255;", "        g->msgtimer = 254;\n        a = 255;", None),
+    ("    if (a == 1) { HOOK(go_attract); return; }", "    if (a == 2) { HOOK(go_attract); return; }", None),
+    ("    if (!NEG(g->BTN0 | g->BTN1)) return;", "    if (!NEG(g->BTN0)) return;", None),
+    ("    pop_unholy(g);\n    pop_ctrlplayer(g);", "    pop_ctrlplayer(g);", None),
+    ("    if (g->invert != 0 && !NEG(g->ch.life)) {", "    if (g->invert != 0) {", None),
+    ("        g->redrawflg = 2;\n        g->invert = 0;", "        g->redrawflg = 1;\n        g->invert = 0;", None),
+    ("        HOOK(invert_y);\n        return;", "        HOOK(invert_y);", None),
+    ("    pop_wtlessflash(g);\n    if (g->ch.scrn != 0) {", "    if (g->ch.scrn != 0) {", None),
+    ("        pop_firstguard(g);\n", "", None),
+    ("        pop_checkgate(g);\n        pop_checkfloor(g);", "        pop_checkfloor(g);\n        pop_checkgate(g);", None),
+    ("        pop_checkimpale(g);\n        pop_checkslice(g);", "        pop_checkslice(g);\n        pop_checkimpale(g);", None),
+    ("        pop_shakeloose(g);\n    }\n    pop_savekid(g);", "    }\n    pop_savekid(g);", None),
+    ("    pop_animmobs(g);\n    pop_animtrans(g);", "    pop_animtrans(g);\n    pop_animmobs(g);", None),
+    ("    pop_bonesrise(g);\n    pop_checkalert(g);", "    pop_checkalert(g);", None),
+    ("    pop_dokid(g);\n    pop_doshad(g);", "    pop_doshad(g);\n    pop_dokid(g);", None),
+    ("    pop_checkstab(g);\n    pop_addsfx(g);\n    pop_chgmeters(g);",
+     "    pop_checkstab(g);\n    pop_chgmeters(g);", None),
+    ("    pop_cutcheck(g);\n    pop_prepcut(g);\n    pop_cutguard(g);",
+     "    pop_cutcheck(g);\n    pop_cutguard(g);\n    pop_prepcut(g);", None),
+    ("        if (g->kid.scrn == 24) { HOOK(go_attract); return; }",
+     "        if (g->kid.scrn == 23) { HOOK(go_attract); return; }", None),
+    ("        if (g->kid.scrn == 1 && g->kid.y < 20) {", "        if (g->kid.scrn == 1 && g->kid.y < 21) {", None),
+    ("            g->kid.y = 0xFF;\n", "", None),
+    ("        if (g->kid.scrn == 23) {\n            g->NextLevel++;",
+     "        if (g->kid.scrn == 22) {\n            g->NextLevel++;", None),
+    ("            g->skipmessage = 1;", "            g->skipmessage = 0;", None),
+    ("    if (g->level < 13 || (g->level == 13 && g->exitopen == 0)) HOOK(keep_time);",
+     "    if (g->level < 13 || g->level == 13) HOOK(keep_time);", None),
+    ("    if (g->level >= 13) return;                /* one chance", "    if (g->level > 13) return;  /*", None),
+    ("    if ((g->MinLeft | g->SecLeft) != 0) return;\n    HOOK(you_lose);",
+     "    if (g->MinLeft != 0) return;\n    HOOK(you_lose);", None),
+    ("initsettings[2] = { POP_GMAXVAL, 0 };", "initsettings[2] = { POP_GMAXVAL, 1 };", None),
+    ("uint8_t scrn = u8(g->blueprint[POP_INFO] - 1);", "uint8_t scrn = u8(g->blueprint[POP_INFO]);", None),
+    ("            } else if (id == POP_LOOSE) {\n                pop_set_bluespec(g, u8(y), 0);",
+     "            } else if (id == POP_LOOSE) {", None),
+    ("pop_set_bluespec(g, u8(y), u8(spec << 5));", "pop_set_bluespec(g, u8(y), u8(spec << 4));", None),
+    ("    g->ch.y = pop_floory(g, u8(g->ch.block_y + 1));", "    g->ch.y = pop_floory(g, g->ch.block_y);", None),
+    ("    g->ch.life = 0xFF;\n    g->ch.id = 0;", "    g->ch.life = 0xFF;", None),
+    ("    g->droppedout = 0;\n    g->ch.sword = 0;", "    g->droppedout = 0;", None),
+    ("    g->offguard = 0;\n    pop_g_animchar(g);", "    g->offguard = 0;", None),
+    ("        if (!NEG(g->yellowflag)) g->timebomb = 0x40;", "        if (NEG(g->yellowflag)) g->timebomb = 0x40;", None),
+    ("        if (g->ch.scrn == 17) pop_cut(g, 3);", "        if (g->ch.scrn == 17) pop_cut(g, 2);", None),
+    ("    if (g->level == 3 && g->milestone != 0) {", "    if (g->level == 3) {", None),
+    ("        g->blueprint[POP_KIDSTART_BLOCK] = 6;", "        g->blueprint[POP_KIDSTART_BLOCK] = 7;", None),
+    ("        (void)pop_rdblock(g, 7, 4, 0);", "        (void)pop_rdblock(g, 7, 5, 0);", None),
+    ("    g->ch.x = u8(pop_getblockej(g, g->ch.block_x) + POP_ANGLE + 7);",
+     "    g->ch.x = u8(pop_getblockej(g, g->ch.block_x) + POP_ANGLE + 6);", None),
+    ("    g->ch.face = g->blueprint[POP_KIDSTART_FACE] ^ 0xFF;", "    g->ch.face = g->blueprint[POP_KIDSTART_FACE];", None),
+    ("(g->level == 0) ? 4 : g->origstrength;", "(g->level == 0) ? 3 : g->origstrength;", None),
+    ("        (void)pop_rdblock(g, 5, 2, 0);\n        pop_pushpp(g);", "        (void)pop_rdblock(g, 5, 2, 0);", None),
+    ("    } else if (g->level == 13) {\n        pop_g_jumpseq(g, POP_SQ_RUNNING);",
+     "    } else if (g->level == 12) {\n        pop_g_jumpseq(g, POP_SQ_RUNNING);", None),
+    ("        if ((pop_bluetype(g, u8(y)) & POP_IDMASK) == POP_EXIT) {",
+     "        if ((pop_bluetype(g, u8(y)) & POP_IDMASK) == POP_EXIT2) {", None),
+    ("    g->exitopen = 0;\n    g->lightning = 0;", "    g->exitopen = 0;", None),
+    ("    g->numtrans = 0;\n    g->nummob = 0;", "    g->numtrans = 0;", None),
+    ("    g->OppStrength = 0;                        /* no opponent */\n", "", None),
+    ("    g->PreRecPtr = 0;\n    g->PlayCount = 0;", "    g->PreRecPtr = 0;", None),
+    ("    if (g->SongCue != POP_SONG_DANGER) g->SongCue = 0;", "    g->SongCue = 0;", None),
+    ("    pop_zerosound(&g->sq);\n", "", None),
+    ("    g->gotsword = 1;\n    g->cutorder = 0xFF;", "    g->gotsword = 1;", None),
+    ("    g->shad.face = POP_NO_CHAR;\n", "", None),
+    ("    if (g->level == 1) g->gotsword = 0;", "    if (g->level == 2) g->gotsword = 0;", None),
+    ("    if (g->level != 0 && g->level != 14) {     /* announce", "    if (g->level != 0) {  /*", None),
+    ("        if (g->level == 13 && g->skipmessage != 0) {", "        if (g->skipmessage != 0) {", None),
+    ("            g->msgtimer = POP_LEVELTIMER;", "            g->msgtimer = POP_LEVELTIMER + 1;", None),
+    ("    pop_entrance(g);\n    pop_firstframe(g);", "    pop_firstframe(g);", None),
+]
+
 # file, its deliberate errors, and the group of routines whose comparison
 # should notice them (running only that group keeps the check short)
 FILES = (("pop_control.c", MUTANTS, "@control"),
          ("pop_collide.c", COLLIDE_MUTANTS, "@collision"),
          ("pop_mover.c", MOVER_MUTANTS, "@mover"),
-         ("pop_auto.c", AUTO_MUTANTS, "@auto"))
+         ("pop_auto.c", AUTO_MUTANTS, "@auto"),
+         ("pop_top.c", TOP_MUTANTS, "@top"))
 
 
 def main(argv):
@@ -327,8 +443,8 @@ def main(argv):
     cases = argv[3] if len(argv) > 3 else "400"
     seed = argv[4] if len(argv) > 4 else "1989"
     only = argv[5].split(",") if len(argv) > 5 else None
-    core = ("pop_control.c", "pop_collide.c", "pop_mover.c", "pop_auto.c", "pop_seq.c",
-            "pop_sound.c", "pop_world.c")
+    core = ("pop_control.c", "pop_collide.c", "pop_mover.c", "pop_auto.c", "pop_top.c",
+            "pop_seq.c", "pop_sound.c", "pop_world.c")
     others = [os.path.join(PORT, *p) for p in (
         ("src", "assets", "pop_assets.c"), ("src", "audio", "pop_sfx.c"),
         ("tools", "pop_worldrun.c"))]
@@ -340,7 +456,8 @@ def main(argv):
         with open(os.path.join(PORT, "src", "core", name)) as f:
             text = f.read()
         for old, new, why in mutants:
-            if only is not None and name not in only and not any(k in new for k in only):
+            if only is not None and name not in only and not any(k in new or k in old
+                                                                  for k in only):
                 continue
             if text.count(old) != 1:
                 print("STALE   pattern occurs %d times: %s" % (text.count(old), old.strip()))
@@ -357,6 +474,11 @@ def main(argv):
                 f.write(mutated)
             sources = [os.path.join(PORT, "src", "core", c) for c in core if c != name]
             exe = os.path.join(work, "run")
+            if why is not None and why.startswith("unit:"):
+                test = os.path.join(HERE, why.split(":")[1])
+                subprocess.run(["cc", "-std=c17", "-O1", "-I" + HERE] + includes
+                               + [test, mutant] + sources + ["-o", exe, "-lm"], check=True)
+                return subprocess.run([exe], capture_output=True).returncode != 0
             subprocess.run(["cc", "-std=c17", "-O1"] + includes + [mutant] + sources
                            + others + ["-o", exe, "-lm"], check=True)
             r = subprocess.run([sys.executable, os.path.join(HERE, "fuzz_control.py"), exe,
@@ -366,13 +488,20 @@ def main(argv):
         finally:
             shutil.rmtree(work)
 
-    caught = same = wrong = 0
+    caught = same = wrong = by_unit = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() or 1) as pool:
         for job, noticed in zip(jobs, pool.map(run, jobs)):
             name, _, _, old, new, why = job
             label = "%s: %s" % (name, new.strip().replace("\n", " ") or "(removed) "
                                 + old.strip())
-            if noticed and why is None:
+            if why is not None and why.startswith("unit:"):
+                if noticed:
+                    by_unit += 1
+                    print("unit    %s   [%s]" % (label, why[5:]), flush=True)
+                else:
+                    wrong += 1
+                    print("MISSED (by the unit test too)  " + label, flush=True)
+            elif noticed and why is None:
                 caught += 1
                 print("caught  " + label, flush=True)
             elif not noticed and why is not None:
@@ -382,8 +511,8 @@ def main(argv):
                 wrong += 1
                 print("%s  %s" % ("MISSED" if why is None else "UNEXPECTEDLY CAUGHT", label),
                       flush=True)
-    print("%d changes: %d caught, %d make no difference, %d unexpected"
-          % (len(jobs) + stale, caught, same, wrong + stale))
+    print("%d changes: %d caught, %d caught by a unit test only, %d make no difference, "
+          "%d unexpected" % (len(jobs) + stale, caught, by_unit, same, wrong + stale))
     return 1 if wrong or stale else 0
 
 

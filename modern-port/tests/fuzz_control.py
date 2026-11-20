@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Differential test: C player-control, floor, collision, moving-object and
-opponent routines against the original.
+"""Differential test: C player-control, floor, collision, moving-object,
+opponent and top-level routines against the original.
 
 New code for the pop-study project.
 
@@ -28,7 +28,7 @@ Usage:
     fuzz_control.py <pop_worldrun> <data dir> <original checkout> [cases] [seed] [only]
 
 `only` limits the run to some routines: a comma-separated list of names, or
-@control, @collision, @mover or @auto for those groups.
+@control, @collision, @mover, @auto or @top for those groups.
 """
 
 import os
@@ -67,7 +67,10 @@ AUTO_VARS = ["guardprog", "justblocked", "shadowaction", "PlayCount", "PreRecPtr
              "cutscrn", "milestone", "MaxKidStr", "MaxOppStr", "origstrength", "GuardColor",
              "lightcolor", "lightning", "ManCtrl", "vibes", "invert", "redrawflg", "msgtimer",
              "mirrx", "dmirr", "timerequest"]
-BYTES = fw.BYTES + EXTRA + COLL_VARS + MOVER_VARS + AUTO_VARS
+# top-level variables (their own random stream)
+TOP_VARS = ["skipmessage", "cutplan", "cutorder", "message", "MinLeft", "SecLeft", "BTN0",
+            "BTN1", "waitingtojump", "yellowflag", "scrnAboveL", "scrnAboveR", "SCRNUM"]
+BYTES = fw.BYTES + EXTRA + COLL_VARS + MOVER_VARS + AUTO_VARS + TOP_VARS
 WORDS = fw.WORDS + ["FCharX"]
 CD_BUFFERS = (("CDthisframe", 16), ("CDlastframe", 16), ("CDbelow", 16), ("CDabove", 16))
 SN_BUFFERS = (("SNthisframe", 16), ("SNlastframe", 16), ("SNbelow", 16), ("SNabove", 10))
@@ -85,6 +88,7 @@ SCRIPT_AT = 0x9000
 BUFFERS = BASE_BUFFERS + CD_BUFFERS + SN_BUFFERS + OTHER_REDRAW + TROB_LISTS + MOB_LISTS \
     + (("script", 32),)
 DEAD_SEQS = []       # sequence addresses one frame before a "dead" frame; set by Harness
+STAND_SEQS = []      # the same for the standing frame
 FDY = {}             # Fdy of a few of the kid's frames; set by Harness
 IN_MODULE = {"tempobjid": "COLL"}          # a COLL local, not in the shared equates
 
@@ -187,6 +191,21 @@ AUTO = {
     "cutchar": ("AUTO", "cutchar", "a"), "cut": ("AUTO", "CUT", ""),
 }
 ROUTINES.update(AUTO)
+TOP = {
+    # the frame and the level as a whole (TOPCTRL.S and what it calls)
+    "nextframe": ("TOPCTRL", "NextFrame", ""), "dokid": ("TOPCTRL", "DoKid", ""),
+    "ctrlplayer": ("TOPCTRL", "ctrlplayer", ""), "misctimers": ("TOPCTRL", "misctimers", ""),
+    "wtlessflash": ("TOPCTRL", "wtlessflash", ""), "addsfx": ("TOPCTRL", "addsfx", ""),
+    "static": ("TOPCTRL", "static?", "a"), "cold": ("TOPCTRL", "cold?", "a"),
+    "getscrns": ("CTRLSUBS", "GETSCRNS", ""), "prepcut": ("TOPCTRL", "PrepCut", ""),
+    "firstframe": ("TOPCTRL", "FirstFrame", ""), "democtrl": ("CTRL", "DemoCtrl", ""),
+    "setinitials": ("SUBS", "SETINITIALS", ""), "startkid": ("SUBS", "STARTKID", ""),
+    "startkid1": ("SUBS", "STARTKID1", ""), "entrance": ("TOPCTRL", "entrance", ""),
+    "initcdbuf": ("TOPCTRL", "initCDbuf", ""),
+    # RESTART from the point where the level has been loaded (no label there)
+    "restartlevel": ("TOPCTRL", None, ""),
+}
+ROUTINES.update(TOP)
 FIGHT_FRAMES = (15, 150, 151, 152, 153, 154, 157, 158, 158, 161, 162, 165, 166, 167, 168, 169,
                 170, 171, 171)
 OTHER_FRAMES = (2, 3, 7, 9, 14, 15, 33, 34, 40, 43, 44, 101, 102, 110, 117, 118, 126, 127, 132,
@@ -717,7 +736,7 @@ def auto_state(rng, s, pokes, bufs, routine):
     s["mirrx"], s["dmirr"] = rng.randrange(256), rng.randrange(256)
     s["timerequest"] = rng.randrange(4)
     bufs["script"] = bytes(32)
-    if routine not in AUTO:
+    if routine not in AUTO and routine not in TOP:
         return
     r = rng.random()
     s["level"] = rng.choice((0, 1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 12, 12, 12, 13, 13))
@@ -972,6 +991,124 @@ def auto_state(rng, s, pokes, bufs, routine):
     s["_noreread"] = 1
 
 
+def top_state(rng, s, pokes, bufs, routine):
+    """Top-level variables; for the top-level routines the situations that
+    end a level, a life or a screen."""
+    s["skipmessage"], s["cutplan"] = rng.choice((0, 0, 1)), rng.choice((0, 1))
+    s["cutorder"], s["SCRNUM"] = rng.randrange(256), rng.randrange(256)
+    s["message"] = rng.choice((0, 1, 2, 2, 3))
+    s["MinLeft"], s["SecLeft"] = rng.choice((0, 0xFF, 0xFF, 5)), rng.choice((0, 0xFF, 0xFF, 9))
+    s["BTN0"], s["BTN1"] = rng.choice((0, 0, 0x80, 0xFF)), rng.choice((0, 0, 0xFF))
+    s["waitingtojump"] = rng.randrange(256)
+    s["yellowflag"] = rng.choice((0x80, 0x80, 0x80, 0))
+    s["scrnAboveL"], s["scrnAboveR"] = rng.randint(0, 24), rng.randint(0, 24)
+    if routine not in TOP:
+        return
+    r = rng.random()
+    if routine in ("ctrlplayer", "dokid", "nextframe") and r < 0.4:      # the kid has died
+        for rec in ("Char", "Kid"):
+            s[rec + "Life"] = rng.choice((0, 1, 2, 3, 4, 5))
+            s[rec + "Posn"] = rng.choice((185, 185, 177, 178, 15, 106))
+            s[rec + "ID"] = 0
+        s.update(level=rng.choice((0, 1, 1, 5)), SongCue=rng.choice((0, 0, 1)),
+                 msgtimer=rng.choice((0, 1, 2, 200, 255)), message=rng.choice((2, 2, 1)),
+                 invert=rng.choice((0, 0, 0xFF)))
+    if routine in ("nextframe", "dokid"):
+        # keep to screens that exist: a whole frame visits every list entry
+        s["cutscrn"] = rng.choice((s["VisScrn"], s["VisScrn"], rng.randint(1, 24)))
+        bufs["trscrn"] = bytes(t if 1 <= t <= 24 else 1 for t in bufs["trscrn"])
+        s["numtrans"] = rng.choice((0, 0, 1, 2, 3, 5))
+        s["nummob"] = rng.choice((0, 0, 1, 2))
+        if rng.random() < 0.9:
+            # No stale "overlapping" marks in the collision data.  With one,
+            # CHECKSLICE looks up a block on screen $FF ("no data"), which the
+            # original turns into a read of unrelated memory
+            # (docs/port/game-frame.md); the port stops there.
+            for name, size in CD_BUFFERS:
+                bufs[name] = bytes(b if b != 0xFF else 0x0F for b in bufs[name])
+    if routine in ("ctrlplayer", "dokid") and 0.4 <= r < 0.5:            # alive, off the map
+        for rec in ("Char", "Kid"):
+            s[rec + "Scrn"], s[rec + "Life"] = 0, 0xFF
+    if routine == "dokid" and 0.5 <= r < 0.7:                # standing where a gate has shut
+        sc, by, bx = rng.randint(1, 24), rng.randint(0, 2), rng.randint(1, 8)
+        at = (sc - 1) * 30 + by * 10 + bx
+        pokes[at], pokes[720 + at] = 4, rng.choice((0, 0, 0, 4, 60))
+        for side in (-1, 1):                                 # with or without floor beside it
+            pokes[at + side] = rng.choice((0, 0, 1))
+        for rec in ("Char", "Kid"):
+            s.update({rec + "Scrn": sc, rec + "BlockY": by, rec + "BlockX": bx,
+                      rec + "Y": (55, 118, 181)[by], rec + "Life": 0xFF, rec + "ID": 0,
+                      rec + "Posn": 15, rec + "Action": rng.choice((0, 1)),
+                      rec + "X": 58 + 14 * bx + rng.randrange(12, 28),
+                      rec + "Face": rng.choice((0, 0xFF)), rec + "Sword": 0})
+        s.update(level=1, cutscrn=sc, VisScrn=sc, KidStrength=3, stunned=0, weightless=0,
+                 JSTKX=0, JSTKY=0, btn=0, invert=0, BlockYthis=by, BlockYlast=by,
+                 clrF=0, clrB=0, clrU=0, clrD=0, clrbtn=0)
+        if STAND_SEQS:
+            s["CharSeq"] = s["KidSeq"] = STAND_SEQS[0]
+        for name in ("CDthisframe", "CDlastframe"):          # he overlapped it last frame too
+            bufs[name] = bytes(0xFF if i == bx else 0x0F for i in range(16))
+    if routine == "nextframe":
+        s["CUTTIMER"] = 0
+        if 0.55 <= r < 0.65:                                 # level 3: the skeleton's cue
+            bx = rng.choice((2, 3, 3, 4))
+            s.update(level=3, VisScrn=1, cutscrn=1, KidScrn=1, KidBlockX=bx, KidBlockY=1,
+                     KidX=58 + 14 * bx + 7, KidY=118, KidLife=0xFF, KidPosn=15, KidAction=0,
+                     ShadFace=rng.choice((86, 86, 86, 0)), exitopen=rng.choice((1, 1, 0)))
+            pokes[15] = rng.choice((21, 21, 21, 1))          # the bones, row 1 column 5
+        if 0.4 <= r < 0.55:                                  # the ways a level ends
+            lvl, sc, y = rng.choice(((0, 24, 118), (6, 1, 10), (6, 1, 19), (6, 1, 20),
+                                     (12, 23, 118), (13, 3, 118), (14, 5, 118)))
+            s.update(level=lvl, KidScrn=sc, KidY=y, KidBlockY=0 if y < 60 else 1,
+                     KidLife=0xFF, KidPosn=15, KidAction=0, cutscrn=sc,
+                     VisScrn=rng.choice((sc, sc, 2)))
+    if routine in ("prepcut", "firstframe"):
+        s["cutscrn"] = rng.choice((0, s["VisScrn"], 5, 5, rng.randint(1, 24), rng.randint(1, 24)))
+        s["level"] = rng.choice((14, 14, 13, 5, 12, 1))
+        s["KidScrn"] = s["cutscrn"] or 1
+    if routine == "misctimers":
+        s.update(level=rng.choice((8, 8, 8, 1)), CharScrn=rng.choice((16, 16, 16, 3)),
+                 exitopen=rng.choice((0, 1, 77, 148, 149, 150, 151, 200)),
+                 mergetimer=rng.choice((0, 1, 2, 42, 0x80, 0xFF)))
+    if routine == "wtlessflash":
+        s["weightless"] = rng.choice((0, 1, 2, 14, 15, 16, 200))
+    if routine == "addsfx":
+        s["KidPosn"], s["ShadPosn"] = rng.choice((167, 166, 15)), rng.choice((167, 168, 15))
+    if routine == "democtrl":
+        s.update(level=0, milestone=rng.choice((0, 0, 0, 1)), CharSword=rng.choice((0, 0, 2)),
+                 PreRecPtr=rng.choice(range(0, 58, 2)), PlayCount=rng.choice((0, 1, 13, 30, 47,
+                 65, 115, 128, 157, 193, 205, 232, 233, 253, 254)), CharID=0)
+    if routine == "getscrns":
+        s["VisScrn"] = rng.randint(0, 24)
+    if routine in ("static", "cold"):
+        s["_a_only"] = rng.choice((0, 15, 229, 109, 171, 166, 185, 177, 178, 9, 150, 186))
+    if routine == "entrance" and r < 0.6:
+        at = (max(1, s["KidScrn"] if 1 <= s["KidScrn"] <= 24 else 1) - 1) * 30 + rng.randrange(30)
+        pokes[at], pokes[720 + at] = 16, rng.choice((0, 172))
+    if routine in ("startkid", "startkid1"):
+        s.update(level=rng.choice((0, 1, 2, 3, 3, 7, 7, 13)), milestone=rng.choice((0, 1)),
+                 origstrength=rng.choice((3, 4, 7)), CharBlockY=rng.choice((0, 1, 2)),
+                 CharScrn=rng.choice((17, 17, 5, 1)))
+        if rng.random() < 0.7:                               # a start place that makes sense
+            pokes[2112] = rng.choice((17, rng.randint(1, 24)))
+            pokes[2113] = rng.randrange(30)
+            pokes[2114] = rng.choice((0x00, 0xFF))
+    if routine in ("setinitials", "restartlevel"):
+        # these read the level as it comes from disk: start from an untouched one
+        pokes.clear()
+        s["_fresh"] = 1
+        s.update(level=rng.choice((0, 1, 1, 3, 7, 13, 14, 12, 5)), milestone=rng.choice((0, 0, 1)),
+                 origstrength=rng.choice((3, 4)), SongCue=rng.choice((0, 3, 5)))
+        if routine == "setinitials" and rng.random() < 0.5:
+            if rng.random() < 0.5:
+                pokes[2048] = rng.choice((2, 3, 8, 12, 20))      # fewer screens
+            for _ in range(rng.randint(1, 6)):
+                at = rng.randrange(720)
+                kind = rng.choice((4, 11, 10))
+                pokes[at] = kind
+                pokes[720 + at] = rng.choice((1, 2)) if kind == 4 else rng.randrange(8)
+
+
 def random_args(rng, routine, s):
     a, x, y = rng.randrange(256), rng.randrange(256), rng.randrange(30)
     if routine in ("checkledge", "pickitup"):
@@ -1016,6 +1153,13 @@ class Harness:
                     if o.peek("CharPosn") in (185, 177, 178):
                         DEAD_SEQS.append(at)
                         break
+            o.reset()
+            o.poke("CharLife", 0xFF)
+            o.call("JUMPSEQ", o.addr("stand"), module="CTRLSUBS")
+            at = o.peek("CharSeq") | (o.peek(o.addr("CharSeq") + 1) << 8)
+            o.call("ANIMCHAR", module="COLL")
+            assert o.peek("CharPosn") == 15
+            STAND_SEQS.append(at)
             for posn in (15, 9, 44, 109):
                 o.reset()
                 o.set_vars({"CharPosn": posn, "CharID": 0})
@@ -1029,7 +1173,21 @@ class Harness:
         cpu.traps[self.oracle.addr("getselect")] = lambda c: None
         cpu.traps[self.oracle.addr("clrjstk")] = lambda c: None
         cpu.traps[self.oracle.addr("SaveSelect")] = lambda c: self.hooks.append("o")
-        cpu.traps[self.oracle.addr("DemoCtrl", "CTRL")] = lambda c: self.hooks.append("d")
+        for label, mark in (("GOATTRACT", "A"), ("YouLose", "L"), ("YouWin", "W"),
+                            ("LoadNext1", "N"), ("RESTART", "R"), ("DoCleanCut", "C")):
+            cpu.traps[self.oracle.addr(label, "TOPCTRL")] = \
+                lambda c, mark=mark: self.hooks.append(mark)
+        for name, mark in (("keeptime", "t"), ("showtime", "T"), ("initinput", "I"),
+                           ("zeropeels", "z")):
+            cpu.traps[self.oracle.addr(name)] = lambda c, mark=mark: self.hooks.append(mark)
+        cpu.traps[self.oracle.addr("MainLoop", "TOPCTRL")] = lambda c: None
+        # RESTART has no label after its disk load: find its `jsr setinitials`
+        top = self.oracle.modules["TOPCTRL"]
+        target = self.oracle.addr("setinitials")
+        code = bytes((0x20, target & 0xFF, target >> 8))
+        at = top.image.find(code, top.symbols["RESTART"] - top.origin)
+        assert at > 0, "RESTART: jsr setinitials not found"
+        self.restart_level = top.origin + at
 
     def trap_dimchar(self, cpu):
         """DIMCHAR: In A = image #, X = table #; out A = width, X = height."""
@@ -1073,7 +1231,16 @@ class Harness:
             elif routine == "playscript":
                 a, x = SCRIPT_AT & 0xFF, SCRIPT_AT >> 8
             try:
-                ra, rx, ry, rp = o.call(label, a, x, y, module=module, max_cycles=400_000)
+                if routine == "restartlevel":
+                    if a & 1:                        # a sound queued before the restart
+                        o.poke(self.soundtable, 1)
+                        o.poke(self.soundtable + 1, 5)
+                    o.cpu.a, o.cpu.x, o.cpu.y, o.cpu.sp = a, x, y, 0xFF
+                    o.cpu.call(self.restart_level, 3_000_000)
+                    ra, rx, ry, rp = o.cpu.a, o.cpu.x, o.cpu.y, o.cpu.p
+                else:
+                    ra, rx, ry, rp = o.call(label, a, x, y, module=module,
+                                            max_cycles=3_000_000)
             except CpuError:
                 return "error"                       # ran into data or never returned
             if self.stray:
@@ -1110,8 +1277,11 @@ def main(argv):
         only = list(MOVER)
     elif only == ["@auto"]:
         only = list(AUTO)
+    elif only == ["@top"]:
+        only = list(TOP)
     elif only == ["@control"]:
-        only = [n for n in ROUTINES if n not in COLLISION and n not in MOVER and n not in AUTO]
+        only = [n for n in ROUTINES if n not in COLLISION and n not in MOVER and n not in AUTO
+                and n not in TOP]
 
     h = Harness(source)
     levels = []
@@ -1140,6 +1310,13 @@ def main(argv):
             pokes = {i: v for i, v in pokes.items() if 0 <= i < len(level)}
             auto_state(random.Random("%d/%d/%s/auto" % (seed, round_no, routine)),
                        s, pokes, bufs, routine)
+            top_state(random.Random("%d/%d/%s/top" % (seed, round_no, routine)),
+                      s, pokes, bufs, routine)
+            if s.pop("_fresh", 0):                           # a level as it is on disk
+                fresh = random.Random("%d/%d/%s/level" % (seed, round_no, routine))
+                number = s["level"] if s["level"] < 15 else fresh.randrange(15)
+                level = bytearray(levels[number])
+                commands.append("L " + level.hex())
             pokes = {i: v for i, v in pokes.items() if 0 <= i < len(level)}
             a, x, y = random_args(rng, routine, s)
             carry = rng.randrange(2)
@@ -1161,7 +1338,7 @@ def main(argv):
                                "decstr", "getopdist", "clrall", "facejstk") \
                     and (routine not in MOVER or routine in ("checkpress", "shakeloose",
                                                              "addslicers")) \
-                    and routine not in AUTO \
+                    and routine not in AUTO and routine not in TOP \
                     and not noreread and rng.random() < 0.8:
                 steps.insert(0, ("rereadblocks", 0, 0, 0))   # a consistent CharBlockX
             if routine == "getedges":
@@ -1215,6 +1392,7 @@ def main(argv):
     failures = 0
     compared = dict.fromkeys(names, 0)
     stray = dict.fromkeys(names, 0)
+    causes = {}
     changed = dict.fromkeys(names, 0)
     chain_unmodelled = False
     for line, exp in zip(lines, expected):
@@ -1243,6 +1421,8 @@ def main(argv):
                           "the port did not" % routine)
                     print("   steps: %r" % (steps,))
             stray[routine] += 1
+            why = want if isinstance(want, str) else "port only"
+            causes[(routine, why)] = causes.get((routine, why), 0) + 1
             continue
         compared[routine] += 1
         problems = []
@@ -1282,6 +1462,8 @@ def main(argv):
     total = sum(compared.values())
     thin = [n for n in names if compared[n] * 2 < per_routine]
     if os.environ.get("POP_FUZZ_VERBOSE"):
+        for (n, why), count in sorted(causes.items()):
+            print("  %-12s skipped %4d: %s" % (n, count, why))
         for n in names:
             print("  %-12s compared %4d  acted %4d  skipped %4d"
                   % (n, compared[n], changed[n], stray[n]))

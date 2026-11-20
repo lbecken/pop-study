@@ -40,7 +40,7 @@ endif()
 # Game rules: no I/O, no SDL.
 add_library(pop_core STATIC src/core/pop_seq.c src/core/pop_sound.c src/core/pop_world.c
             src/core/pop_control.c src/core/pop_collide.c
-            src/core/pop_mover.c src/core/pop_auto.c)
+            src/core/pop_mover.c src/core/pop_auto.c src/core/pop_top.c)
 target_include_directories(pop_core PUBLIC src/core)
 
 # Sound: effect data to PCM.  No I/O, no SDL (the SDL3 backend comes later).
@@ -98,6 +98,10 @@ add_executable(test_auto tests/test_auto.c)
 target_link_libraries(test_auto PRIVATE pop_core)
 add_test(NAME auto_unit COMMAND test_auto)
 
+add_executable(test_top tests/test_top.c)
+target_link_libraries(test_top PRIVATE pop_core)
+add_test(NAME top_unit COMMAND test_top)
+
 # --- tests on the original data (optional) -----------------------------------
 if(POP_SOURCE_DIR)
   if(NOT EXISTS "${POP_SOURCE_DIR}/01 POP Source/Source/SEQTABLE.S")
@@ -127,6 +131,7 @@ if(POP_SOURCE_DIR)
             "${POP_SOURCE_DIR}/01 POP Source/Source/SOUNDNAMES.S"
             "${POP_SOURCE_DIR}/01 POP Source/Source/FRAMEDEF.S"
             "${POP_SOURCE_DIR}/01 POP Source/Source/AUTO.S"
+            "${POP_SOURCE_DIR}/01 POP Source/Source/SUBS.S"
     COMMENT "Generating port data from the original source"
     VERBATIM)
   add_custom_target(pop_data DEPENDS ${POP_DATA_FILES})
@@ -172,6 +177,10 @@ if(POP_SOURCE_DIR)
            COMMAND "${Python3_EXECUTABLE}"
                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/fuzz_control.py"
                    "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}" "${POP_SOURCE_DIR}" 400 1989)
+  add_test(NAME demo_c_vs_original
+           COMMAND "${Python3_EXECUTABLE}"
+                   "${CMAKE_CURRENT_SOURCE_DIR}/tests/replay_demo.py"
+                   "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}" "${POP_SOURCE_DIR}")
   add_test(NAME kidstep_c_vs_original
            COMMAND "${Python3_EXECUTABLE}"
                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/trace_kidstep.py"

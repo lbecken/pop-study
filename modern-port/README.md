@@ -17,11 +17,12 @@ checkout of the original source and is never stored in this repository.
 | Opponents: guard and shadow behaviour, sword contact, strength and potions, guards and the kid changing screens (`AUTO.S`, `MISC.S`) | ported; same. Fight tables are generated data |
 | Sound-effect queue (`ADDSOUND`, `ZEROSOUND`, play order) | ported, tested |
 | Sound-effect rendering (speaker flip list to PCM) | written, tested against the Python renderer; no output device yet |
-| The top level of a frame and a level, death and restart, input devices, the demo, drawing, SDL3 shell | not started |
+| A whole frame (`NextFrame`, `DoKid`), the kid's death, entering a screen, the start of a level, the demo's player (`TOPCTRL.S`, `SUBS.S`) | ported; same, plus a replay of the whole demo level against the original |
+| Input devices, the clock and messages, song cues, drawing, SDL3 shell | not started (hooks) |
 
 There is no runnable game yet and no SDL3 dependency yet. The nearest thing
-is `tests/test_control_original.c`, which stands the kid on a floor of level 1
-and runs him forward and back to a stop through the ported per-frame steps.
+is `tests/replay_demo.py`, which plays the original's demo level in the port,
+frame by frame, next to the original code in a 6502 simulator.
 See `../docs/port/` for per-subsystem notes and `../docs/milestones.md` for the plan.
 
 ## Layout
@@ -32,7 +33,8 @@ src/audio/    effect data to PCM; no I/O, no SDL
 src/assets/   loaders for generated data files
 tools/        command-line helpers (pop_seqdump, pop_sfxdump, pop_worldrun)
 tests/        C tests, C-versus-Python comparisons, and C-versus-original
-              comparisons (fuzz_world.py, fuzz_control.py, trace_kidstep.py)
+              comparisons (fuzz_world.py, fuzz_control.py, trace_kidstep.py,
+              replay_demo.py)
 ```
 
 ## Build and test
@@ -68,6 +70,6 @@ Options: `-DPOP_WERROR=ON` (warnings as errors), `-DPOP_SANITIZE=ON`
 
 | Platform | Compiler | Result |
 | --- | --- | --- |
-| Linux x86-64 (Ubuntu 24.04) | GCC 13.3, with `-Werror` and ASan/UBSan | all 16 tests pass |
-| Linux x86-64 (Ubuntu 24.04) | Clang 18.1, with `-Werror`; unit test programs also run under valgrind with no errors | all 16 tests pass |
+| Linux x86-64 (Ubuntu 24.04) | GCC 13.3, with `-Werror` and ASan/UBSan | all 18 tests pass |
+| Linux x86-64 (Ubuntu 24.04) | Clang 18.1, with `-Werror`; unit test programs also run under valgrind with no errors | all 18 tests pass |
 | macOS, Windows | – | **not tested**. The code is plain C17 with no platform calls, and the CMake file has an MSVC branch, but neither has been built. |

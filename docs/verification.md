@@ -36,6 +36,13 @@ python3 modern-port/tests/fuzz_control.py build/port/pop_worldrun build/port/dat
 python3 modern-port/tests/trace_kidstep.py build/port/pop_worldrun build/port/data ../pop-original 500 42
 ```
 
+The original's demo level, replayed in the port and in the original code side
+by side:
+
+```bash
+python3 modern-port/tests/replay_demo.py build/port/pop_worldrun build/port/data ../pop-original
+```
+
 Whether the first of those would notice a wrong port (takes minutes):
 
 ```bash
@@ -107,6 +114,17 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | 2026-11-20 | `trace_kidstep.py` with opponents, 400 traces, seed 42 | same | 693,798 calls agree; 194 distinct frames, every `CharAction` seen. In the original's run an opponent was present in 12,324 frames and en garde in 7,456, the kid was below full strength in 7,825, 22,257 calls changed the level; 18 traces cut short |
 | 2026-11-20 | `mutation_check.py`, all four files, 400 rounds, seed 1989 | – | 183 deliberate errors: 174 noticed, 9 without effect (each with its reason), 0 missed. `pop_auto.c`: 79 errors, 76 noticed, 3 without effect. Its first run missed 18: most because the test placed the fighters 13 units further apart than intended (the distance measure adds 13 when they face each other), the rest boundary values; all since added |
 | 2026-11-20 | gcov on `pop_auto.c` under `fuzz_control.py @auto` (400 rounds) | GCC 13.3 | 98.8 % of lines, 94 % of branch directions |
+| 2026-11-20 | pytest, with original (after milestone 9d part 1) | Python 3.13, Linux | 141 passed |
+| 2026-11-20 | pytest, without original | Python 3.13, Linux | 114 passed, 27 skipped |
+| 2026-11-20 | CTest, with original | GCC 13.3, `-Werror`, ASan + UBSan | 18 of 18 passed |
+| 2026-11-20 | CTest, with original | Clang 18.1, `-Werror`; `test_top`, `test_control`, `test_assets` under valgrind | 18 of 18 passed, no valgrind errors |
+| 2026-11-20 | CTest, without original | GCC 13.3, `-Werror` | 9 of 9 passed |
+| 2026-11-20 | `fuzz_control.py`, all groups, 400 rounds, seed 1989 (the CTest run) | ASan build of the runner | 53,019 cases over 134 routines agree; 581 skipped |
+| 2026-11-20 | `fuzz_control.py @top`, 1,000 rounds, seed 42 | same | 17,579 cases over the 18 top-level routines agree; 421 skipped |
+| 2026-11-20 | `replay_demo.py` | same | 393 frames, 1,966 calls, agreement at every one. In the original's run the kid passes through screens 1, 2, 4 and 24, shows 114 distinct frames, has his sword out for 150 frames; the guard is present for 214 frames and dies in frame 358; the demo ends by `GOATTRACT` |
+| 2026-11-20 | `trace_kidstep.py` with the whole `NextFrame`, 400 traces, seed 42 | same | 117,988 calls agree; 195 distinct frames, every `CharAction` seen. In the original's run 19,913 calls changed the level, 13 different sounds were queued, an opponent was present in 12,406 frames and en garde in 7,259, the kid was below full strength in 8,463; 15 traces cut short (a read outside the modelled tables) |
+| 2026-11-20 | `mutation_check.py`, `pop_top.c`, 400 rounds, seed 1989 | – | 89 deliberate errors: 88 noticed by the comparison, 1 only by the unit test (hidden by the skip rule, see below), 0 without effect, 0 missed. The first run missed 7: the generator had no kid alive on screen 0, no cue for level 3's skeleton, no kid standing in a shut gate at the edge of its block, no level with fewer screens or with loose floors in editor state, and no sound queued before a restart; all since added. With the earlier four files: 272 errors, 262 noticed, 1 by unit test only, 9 without effect |
+| 2026-11-20 | gcov on `pop_top.c` under `fuzz_control.py @top` (400 rounds, seed 42) | GCC 13.3 | 100 % of lines, 91 % of branch directions |
 
 ## Kinds of evidence
 
@@ -121,8 +139,9 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | Two implementations | C interpreter vs Python decoder, 45,600 ticks identical; C effect renderer vs Python, 26,204 samples | catches slips, not a shared misreading |
 | Executing the original | sound effects obtained by running the assembled `SOUND.S` in a 6502 simulator; timing equals the hand-derived loop formula | strong for behaviour; depends on the simulator's cycle table |
 | Differential fuzzing | each ported C routine against the original routine in the simulator, on random states wider than valid ones (`docs/oracle.md`) | strong: independent of my reading of the code; depends on the assembler and simulator being right |
-| Mutation check | 183 deliberately wrong builds of the control, collision, moving-object and opponent code, each run against the comparison (`modern-port/tests/mutation_check.py`) | shows the comparison has teeth, and where its inputs were thin: the first version missed six boundary values, since added |
-| Multi-frame trace | the ported per-frame steps run for 60 frames with state carried over, C against the original after each call | strong for how the routines work together; says nothing about the steps not yet ported |
+| Mutation check | 272 deliberately wrong builds of the control, collision, moving-object, opponent and top-level code, each run against the comparison (`modern-port/tests/mutation_check.py`) | shows the comparison has teeth, and where its inputs were thin: every first run missed some errors, and the situations that expose them were then added. One error is invisible to the comparison by its own skip rule (below) and is checked against a unit test instead |
+| Multi-frame trace | the original's level start, then its whole `NextFrame` for 60 frames of random input with state carried over, C against the original after each call | strong for how the routines work together; the clock, messages and drawing inside the frame are stand-ins on both sides |
+| Replay of the demo | level 0 driven by the original's own demo script from its first frame to the jump back to the title sequence | strong: a complete, meaningful stretch of play (walking, jumping, a sword fight to the death, three screen changes) with no test-made input; the random generator's seed is fixed, so it is one of the possible demos |
 | Coverage | gcov on the C under the fuzz inputs | shows which branches the comparison reached at all |
 | Cross-screen continuity | rendered screens placed by the level map line up at their edges | moderate: wrong piece offsets or neighbour rules would show as seams |
 | Visual inspection | contact sheets, run-cycle sheets, rendered rooms | weak, by eye |
@@ -142,6 +161,15 @@ remain for reads beyond tables whose neighbours are not modelled; they are
 counted in every run (well under 1 % outside the collision group, where
 random frames without images account for about 7 %).
 
+The same rule hides one of the top-level errors. `PrepCut` must not act when
+the new screen number is 0. With that test removed, the wrong port goes on
+to read screen 0, which lies outside the modelled level; the case is then
+skipped as "unmodelled" instead of being reported. No remodelling helps
+here (what the original would read is unrelated memory), so the script
+builds the unit test `test_top.c` with that error instead and requires it to
+fail, which it does. The general limit stands: an error whose only effect is
+to send the port outside the modelled memory is not seen by the comparison.
+
 ## Not verified
 
 - **Nothing has been compared with the running game.** The repository has no
@@ -152,8 +180,12 @@ random frames without images account for about 7 %).
 - No audio has been compared with a real machine or an emulator.
 - Real frame timing (unknown T1).
 - macOS and Windows builds of the port.
-- Anything involving collision, moving level objects, opponents' decisions,
-  input devices or drawing: not ported, so not compared.
+- Input devices, the clock, messages, song cues and drawing: not ported, so
+  not compared. In the frame comparisons they are stand-ins that record the
+  call, the same on both sides.
+- Levels played through. Only the demo (level 0) has been run from start to
+  end; the other levels' special events are reached by random states and
+  short random play, not by a complete playthrough.
 - Which opponent image set each level uses (unknown G9), which the port will
   need for opponents' collision sizes.
 

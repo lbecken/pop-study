@@ -89,9 +89,9 @@ def test_autodata_bin(tmp_path):
     assert export_port_data.main(["--source", SOURCE, "--out", str(tmp_path)]) == 0
     blob = (tmp_path / "autodata.bin").read_bytes()
     assert blob[:8] == b"POPAUTO1"
-    fight, shadpos, prog, reserved = struct.unpack_from("<HHHH", blob, 8)
-    assert (fight, shadpos, reserved) == (124, 24, 0)
-    assert len(blob) == 16 + fight + shadpos + prog
+    fight, shadpos, prog, demo = struct.unpack_from("<HHHH", blob, 8)
+    assert (fight, shadpos) == (124, 24)
+    assert len(blob) == 16 + fight + shadpos + prog + demo
     tables = blob[16:16 + fight]
     # the two colour tables hold only 0 and 1
     assert set(tables[72:84]) <= {0, 1} and set(tables[110:124]) <= {0, 1}
@@ -101,6 +101,9 @@ def test_autodata_bin(tmp_path):
     pos = blob[16 + fight:16 + fight + shadpos]
     assert [pos[i] for i in (0, 8, 16)] == [15, 15, 15]
     # the script: (frame, command) pairs, frames rising, ending "end of program"
-    script = blob[16 + fight + shadpos:]
+    script = blob[16 + fight + shadpos:16 + fight + shadpos + prog]
     frames = script[0::2]
     assert list(frames) == sorted(frames) and script[-1] == 0xFE and frames[-1] == 255
+    # the demo's script ends with "end of demo"
+    demo_script = blob[16 + fight + shadpos + prog:]
+    assert list(demo_script[0::2]) == sorted(demo_script[0::2]) and demo_script[-1] == 0xFF

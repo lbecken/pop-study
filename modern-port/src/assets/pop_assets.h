@@ -116,8 +116,8 @@ void pop_dimfile_use_opponent(pop_dimfile *f, pop_opponent_set set);
  *   8   u16      length of the fight tables (124)
  *   10  u16      length of the shadow positions (24)
  *   12  u16      length of the level-5 movement script
- *   14  u16      reserved, 0
- *   then the three blocks in that order
+ *   14  u16      length of the demo level's movement script
+ *   then the four blocks in that order
  */
 #define POP_AUTOFILE_MAGIC "POPAUTO1"
 

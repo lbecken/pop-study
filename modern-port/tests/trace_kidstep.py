@@ -1,43 +1,34 @@
 #!/usr/bin/env python3
-"""Differential test: many consecutive kid frames, C port against the original.
+"""Differential test: many consecutive frames of play, C port against the
+original.
 
 New code for the pop-study project.
 
 fuzz_control.py checks single routines on unrelated random states.  This test
-checks that the routines work together over time: it puts the kid on a floor
-of a real level and plays several hundred frames of random joystick input,
-running, for each frame, the part of the original's per-frame kid update that
-has been ported, in the original's order (TOPCTRL.S 635-690):
+checks that they work together over time.  It puts the kid on a floor of a
+real level, half the time on a screen with a guard, and plays 60 frames of
+random joystick input, running each frame as the original's MainLoop does
+(TOPCTRL.S 366-393):
 
-    animmobs, animtrans,
-    LoadKidwOp, rereadblocks, PlayerCtrl, animchar, gravity, addfall,
-    setupchar, rereadblocks, getedges, checkbarr, collisions, checkgate,
-    checkfloor, checkpress, checkspikes, checkimpale, checkslice, shakeloose,
-    SaveKid
+    rnd; clear ChgKidStr / ChgOppStr; misctimers; NextFrame; [draw]; zerosound
 
-The same list of calls is made on the original code in the 6502 simulator
-and on the C port, and after every call the whole tracked state, the sounds,
-the level changes, the redraw buffers and the calls to unported subsystems
-must agree.  Level changes persist from frame to frame.
+NextFrame is the whole of a frame's game logic: the level's moving objects,
+the kid (control, animation, falling, collisions, floor, plates, spikes,
+slicers, death), the opponent, sword contact, strength, and the change to
+another screen.  The same calls are made on the original code in the 6502
+simulator and on the C port, and after each one the whole tracked state, the
+sounds, the level changes, the redraw buffers and the calls out must agree.
+Everything persists from frame to frame.
 
-and around it the rest of the original's NextFrame as far as it is ported:
-bonesrise and checkalert before the kid; the opponent's whole frame (DoShad),
-checkstrike, checkstab, chgmeters, cutcheck and cutguard after him.
+A trace starts with INITIALGUARDS and FirstFrame, which enters the kid's
+screen (neighbouring screens, slicers, torches, the guard).
 
-So within a trace gates open and close when plates are stepped on, spikes
-spring, slicers run, loose floors fall, guards notice the kid, fight him and
-are fought, strength is lost, and the kid passes from screen to screen, in
-both implementations alike.
-
-What is NOT in the frame, because it is not ported yet: firstguard and
-unholy inside the kid's part, the kid's death handling (he lies where he
-fell), strength-meter changes being cleared, sound effects for hits
-(addsfx), and drawing.  The joystick flags are set by the test, standing in
-for the input code.  When the kid has passed to another screen the test does
-what the original's screen-change code does next: it makes that screen the
-visible one, sets the neighbouring-screen variables, and calls addguard and
-addtorches (TOPCTRL.S 1039-1062).  A trace also starts that way, so a guard
-who belongs on the first screen is there.
+Not ported, and so supplied by the test on both sides: the joystick
+variables (in place of the input code, which is a hook), and the three
+things the drawing step does to the game's state: after a screen change it
+clears cutplan and sets CUTTIMER to 2 (drawbg, TOPCTRL.S 918-923), it counts
+`lightning` down (flashoff, 1000-1004), and it calls REFLECTION (through
+addchars, 747-760).  The clock is a hook.
 
 Usage:
     trace_kidstep.py <pop_worldrun> <data dir> <original checkout> [traces] [seed]
@@ -54,27 +45,9 @@ sys.path.insert(0, HERE)
 import fuzz_control as fc  # noqa: E402
 from fuzz_control import BLUEPRINT, BUFFERS, BYTES, WORDS, CpuError  # noqa: E402
 
-# NextFrame (TOPCTRL.S 503-506) updates the level's moving objects first
-FRAME = [("animmobs", "MOVER", "ANIMMOBS"), ("animtrans", "MOVER", "ANIMTRANS"),
-         ("loadkidwop", "CTRLSUBS", "LOADKIDWOP"), ("rereadblocks", "CTRL", "REREADBLOCKS"),
-         ("playerctrl", "CTRL", "PLAYERCTRL"), ("animchar", "COLL", "ANIMCHAR"),
-         ("gravity", "SUBS", "GRAVITY"), ("addfall", "SUBS", "ADDFALL"),
-         ("setupchar", "CTRLSUBS", "SETUPCHAR"), ("rereadblocks", "CTRL", "REREADBLOCKS"),
-         ("getedges", "CTRLSUBS", "GETEDGES"), ("checkbarr", "COLL", "CHECKBARR"),
-         ("collisions", "COLL", "COLLISIONS"), ("checkgate", "COLL", "CHECKGATE"),
-         ("checkfloor", "CTRL", "CHECKFLOOR"), ("checkpress", "CTRL", "CHECKPRESS"),
-         ("checkspikes", "CTRLSUBS", "CHECKSPIKES"), ("checkimpale", "CTRL", "CHECKIMPALE"),
-         ("checkslice", "COLL", "CHECKSLICE"), ("shakeloose", "TOPCTRL", "shakeloose"),
-         ("savekid", "CTRLSUBS", "SAVEKID")]
-# ... and the rest of NextFrame as far as it is ported (TOPCTRL.S 503-526).
-# bonesrise and checkalert come before the kid, the others after.
-BEFORE_KID = [("bonesrise", "MISC", "BONESRISE"), ("checkalert", "MISC", "CHECKALERT")]
-AFTER_KID = [("doshad", "TOPCTRL", "DoShad"), ("checkstrike", "AUTO", "CHECKSTRIKE"),
-             ("checkstab", "AUTO", "CHECKSTAB"), ("chgmeters", "TOPCTRL", "chgmeters"),
-             ("cutcheck", "AUTO", "CUTCHECK"), ("cutguard", "AUTO", "CUTGUARD")]
-# MainLoop (TOPCTRL.S 366-371) draws a random number and clears the strength
-# changes before NextFrame; the test clears them where it sets the joystick.
-FRAME = [("rnd", "GRAFIX", "RND")] + FRAME[:2] + BEFORE_KID + FRAME[2:] + AFTER_KID
+FRAME = [("rnd", "GRAFIX", "RND"), ("misctimers", "TOPCTRL", "misctimers"),
+         ("nextframe", "TOPCTRL", "NextFrame"), ("reflection", "MISC", "REFLECTION"),
+         ("zerosound", "SPECIALK", "ZEROSOUND")]
 FRAMES_PER_TRACE = 60
 INPUT_VARS = ("JSTKX", "JSTKY", "btn", "clrF", "clrB", "clrU", "clrD", "clrbtn")
 FLOORS = (1, 2, 4, 6, 10, 11, 14, 15, 22)         # pieces to stand on at the start
@@ -104,13 +77,22 @@ class TraceHarness(fc.Harness):
         for n, v in values.items():
             self.oracle.poke(self.addr[n], v)
 
-    def step(self, module, label, a=0):
+    def step_at(self, address):
+        """Like step, for a place in the code that has no label."""
+        return self.step(None, None, address=address)
+
+    def step(self, module, label, a=0, address=None):
         o = self.oracle
-        o.poke(self.soundtable, 0)
+        if label != "ZEROSOUND":                     # (the queue is what ZEROSOUND is for)
+            o.poke(self.soundtable, 0)
         self.hooks = []
         self.stray = False
         try:
-            o.call(label, a, 0, 0, module=module, max_cycles=400_000)
+            if address is None:
+                o.call(label, a, 0, 0, module=module, max_cycles=3_000_000)
+            else:
+                o.cpu.sp = 0xFF
+                o.cpu.call(address, 3_000_000)
         except CpuError:
             return "error"
         if self.stray:
@@ -146,8 +128,9 @@ def start_state(rng, level, level_no):
                if level[2119 - 1 + sc] < 30 and level[2119 - 1 + sc] // 10 == r]
     scrn, row, col = rng.choice(guarded if guarded and rng.random() < 0.5 else spots)
     s = fc.fw.random_state(rng)
-    for n in fc.EXTRA + fc.COLL_VARS + fc.MOVER_VARS + fc.AUTO_VARS:
+    for n in fc.EXTRA + fc.COLL_VARS + fc.MOVER_VARS + fc.AUTO_VARS + fc.TOP_VARS:
         s[n] = 0
+    s.update(yellowflag=0x80, MinLeft=0xFF, SecLeft=0xFF, NextLevel=level_no)
     s["MaxKidStr"] = 3
     s["RNDseed"] = rng.randrange(256)
     s["BGset1"] = rng.choice((0, 0, 1))
@@ -164,17 +147,6 @@ def start_state(rng, level, level_no):
     s.update(level=level_no, KidStrength=3, OppStrength=0,
              gotsword=rng.choice((0, 1, 1)), weightless=0, timebomb=0, blue=scrn)
     return s
-
-
-def screen_vars(level, scrn):
-    """VisScrn and its neighbours, from the level map (4 bytes per screen:
-    left, right, up, down)."""
-    def link(s, which):
-        return level[1952 + (s - 1) * 4 + which] if 1 <= s <= 24 else 0
-    below = link(scrn, 3)
-    return {"VisScrn": scrn, "scrnLeft": link(scrn, 0), "scrnRight": link(scrn, 1),
-            "scrnAbove": link(scrn, 2), "scrnBelow": below,
-            "scrnBelowL": link(below, 0), "scrnBelowR": link(below, 1)}
 
 
 def next_input(rng, held):
@@ -291,9 +263,10 @@ def main(argv):
         # start the "stand" sequence in the Kid record: load, jumpseq, save
         prelude = [("loadkid", "CTRLSUBS", "LOADKID", 0), ("jumpseq", "CTRLSUBS", "JUMPSEQ", stand),
                    ("savekid", "CTRLSUBS", "SAVEKID", 0),
-                   ("initialguards", "SUBS", "INITIALGUARDS", 0)]   # as at level start
+                   ("initialguards", "SUBS", "INITIALGUARDS", 0),   # as at level start
+                   ("initcdbuf", "TOPCTRL", "initCDbuf", 0),
+                   ("firstframe", "TOPCTRL", "FirstFrame", 0)]
         held, prev, alive = None, {"JSTKX": 0, "JSTKY": 0, "btn": 0}, True
-        vis_before = 0
         for name, module, label, a in prelude:
             want = h.step(module, label, a)
             commands.append("R %s %d 0 0" % (name, a))
@@ -312,16 +285,13 @@ def main(argv):
                     flags[flag] = 0xFF
             values = dict(held, ChgKidStr=0, ChgOppStr=0, **flags)
             prev = held
-            scrn_now = h.oracle.peek(h.addr["KidScrn"])
-            values.update(screen_vars(h.level, scrn_now))
+            if h.oracle.peek(h.addr["cutplan"]):             # the new screen has been drawn
+                values.update(cutplan=0, CUTTIMER=2)
+            if h.oracle.peek(h.addr["lightning"]):
+                values["lightning"] = h.oracle.peek(h.addr["lightning"]) - 1
             h.set(values)
             commands.append("S " + " ".join("%s=%d" % kv for kv in values.items()))
-            steps = list(FRAME)
-            if scrn_now != vis_before and 1 <= scrn_now <= 24:
-                steps = [("addguard", "AUTO", "ADDGUARD"),
-                         ("addtorches", "SUBS", "ADDTORCHES")] + steps
-            vis_before = scrn_now
-            for name, module, label in steps:
+            for name, module, label in FRAME:
                 want = h.step(module, label)
                 commands.append("R %s 0 0 0" % name)
                 expected.append((trace, frame, name, want))

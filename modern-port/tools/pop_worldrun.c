@@ -21,8 +21,10 @@
  * returned value and every state variable, then
  *   snd:<hex>     sounds queued by the routine, in order
  *   hooks:<chars> calls out of the ported code: k speaker click, i input
- *                 read, o input saved, d DemoCtrl, v inverty, r addreflobj,
- *                 a attractmode, e/f opponent's input read/saved
+ *                 read, o input saved, v inverty, r addreflobj, a attractmode,
+ *                 e/f opponent's input read/saved, A GOATTRACT, L YouLose,
+ *                 W YouWin, N LoadNext1, R RESTART, C DoCleanCut, t keeptime,
+ *                 T showtime, I initinput, z zeropeels
  *   lvl:<i>.<v>,… blueprint bytes the routine changed (then undone, unless
  *                 a "K 1" line asked for changes to persist)
  *   redbuf:<hex> wipebuf:<hex> whitebuf:<hex> topbuf:<hex>, and the eight
@@ -40,6 +42,7 @@
 #include "pop_collide.h"
 #include "pop_control.h"
 #include "pop_mover.h"
+#include "pop_top.h"
 #include "pop_world.h"
 
 static pop_game g;
@@ -57,7 +60,16 @@ static void h_savedesel(void *ctx) { (void)ctx; log_hook('f'); }
 static void h_click(void *ctx) { (void)ctx; log_hook('k'); }
 static void h_input(void *ctx) { (void)ctx; log_hook('i'); }
 static void h_saveinput(void *ctx) { (void)ctx; log_hook('o'); }
-static void h_demo(void *ctx) { (void)ctx; log_hook('d'); }
+static void h_goattract(void *ctx) { (void)ctx; log_hook('A'); }
+static void h_youlose(void *ctx) { (void)ctx; log_hook('L'); }
+static void h_youwin(void *ctx) { (void)ctx; log_hook('W'); }
+static void h_loadnext(void *ctx) { (void)ctx; log_hook('N'); }
+static void h_restart(void *ctx) { (void)ctx; log_hook('R'); }
+static void h_cleancut(void *ctx) { (void)ctx; log_hook('C'); }
+static void h_keeptime(void *ctx) { (void)ctx; log_hook('t'); }
+static void h_showtime(void *ctx) { (void)ctx; log_hook('T'); }
+static void h_initinput(void *ctx) { (void)ctx; log_hook('I'); }
+static void h_zeropeels(void *ctx) { (void)ctx; log_hook('z'); }
 
 typedef struct { const char *name; uint8_t *p; } var;
 
@@ -120,6 +132,11 @@ static var vars[] = {
     { "invert", &g.invert }, { "redrawflg", &g.redrawflg }, { "msgtimer", &g.msgtimer },
     { "mirrx", &g.mirrx }, { "dmirr", &g.dmirr },
     { "timerequest", &g.timerequest },
+    { "skipmessage", &g.skipmessage }, { "cutplan", &g.cutplan }, { "cutorder", &g.cutorder },
+    { "message", &g.message }, { "MinLeft", &g.MinLeft }, { "SecLeft", &g.SecLeft },
+    { "BTN0", &g.BTN0 }, { "BTN1", &g.BTN1 }, { "waitingtojump", &g.waitingtojump },
+    { "yellowflag", &g.yellowflag }, { "scrnAboveL", &g.scrnAboveL },
+    { "scrnAboveR", &g.scrnAboveR }, { "SCRNUM", &g.SCRNUM },
     { "X", &g.rx }, { "Y", &g.ry }, { "blue", &g.blue },
     { "unmodelled", &g.unmodelled },
 };
@@ -337,6 +354,32 @@ static int run(const char *r, uint8_t a, uint8_t x, uint8_t y, int *out)
     if (!strcmp(r, "addguard"))     DO(pop_addguard(&g));
     if (!strcmp(r, "cutchar"))      RET(pop_cutchar(&g));
     if (!strcmp(r, "cut"))          DO(pop_cut(&g, a));
+
+    /* the frame and the level */
+    if (!strcmp(r, "nextframe"))    DO(pop_nextframe(&g));
+    if (!strcmp(r, "dokid"))        DO(pop_dokid(&g));
+    if (!strcmp(r, "ctrlplayer"))   DO(pop_ctrlplayer(&g));
+    if (!strcmp(r, "misctimers"))   DO(pop_misctimers(&g));
+    if (!strcmp(r, "wtlessflash"))  DO(pop_wtlessflash(&g));
+    if (!strcmp(r, "addsfx"))       DO(pop_addsfx(&g));
+    if (!strcmp(r, "static"))       RET(pop_static(a));
+    if (!strcmp(r, "cold"))         RET(pop_cold(a));
+    if (!strcmp(r, "getscrns"))     DO(pop_getscrns(&g));
+    if (!strcmp(r, "prepcut"))      DO(pop_prepcut(&g));
+    if (!strcmp(r, "firstframe"))   DO(pop_firstframe(&g));
+    if (!strcmp(r, "democtrl"))     DO(pop_democtrl(&g));
+    if (!strcmp(r, "setinitials"))  DO(pop_setinitials(&g));
+    if (!strcmp(r, "startkid"))     DO(pop_startkid(&g));
+    if (!strcmp(r, "startkid1"))    DO(pop_startkid1(&g));
+    if (!strcmp(r, "entrance"))     DO(pop_entrance(&g));
+    if (!strcmp(r, "initcdbuf"))    DO(pop_initcdbuf(&g));
+    if (!strcmp(r, "restartlevel")) {          /* odd A: with a sound left in the queue */
+        if (a & 1) pop_g_addsound(&g, 5);
+        pop_restart_level(&g);
+        *out = -1;
+        return 1;
+    }
+    if (!strcmp(r, "zerosound"))    DO(pop_zerosound(&g.sq));
     return 0;
 #undef RET
 #undef DO
@@ -403,7 +446,16 @@ int main(int argc, char **argv)
     g.hooks.speaker_click = h_click;
     g.hooks.get_input = h_input;
     g.hooks.save_input = h_saveinput;
-    g.hooks.demo_ctrl = h_demo;
+    g.hooks.go_attract = h_goattract;
+    g.hooks.you_lose = h_youlose;
+    g.hooks.you_win = h_youwin;
+    g.hooks.load_next = h_loadnext;
+    g.hooks.restart = h_restart;
+    g.hooks.clean_cut = h_cleancut;
+    g.hooks.keep_time = h_keeptime;
+    g.hooks.show_time = h_showtime;
+    g.hooks.init_input = h_initinput;
+    g.hooks.zero_peels = h_zeropeels;
 
     while (fgets(line, sizeof line, stdin)) {
         if (line[0] == 'L') {
