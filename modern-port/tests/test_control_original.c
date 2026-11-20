@@ -11,6 +11,7 @@
 
 #include "pop_assets.h"
 #include "pop_control.h"
+#include "pop_loop.h"
 #include "pop_seqnames.h"
 #include "pop_sfxnames.h"
 #include "pop_test.h"
@@ -57,16 +58,13 @@ static void kid_frame(void)
     pop_savekid(&g);
 }
 
+/* What is held on the keyboard this frame; the control code reads it
+ * through the selected device and keeps the press flags itself. */
 static void press(uint8_t x, uint8_t y, uint8_t btn)
 {
-    /* what the input code would leave: fresh pushes flagged negative */
-    g.clrF = (x == 0xFF && g.JSTKX != 0xFF) ? 0xFF : (x == 0xFF ? g.clrF : 0);
-    g.clrB = (x == 0x01 && g.JSTKX != 0x01) ? 0xFF : (x == 0x01 ? g.clrB : 0);
-    g.clrU = (y == 0xFF && g.JSTKY != 0xFF) ? 0xFF : (y == 0xFF ? g.clrU : 0);
-    g.clrD = (y == 0x01 && g.JSTKY != 0x01) ? 0xFF : (y == 0x01 ? g.clrD : 0);
-    g.JSTKX = x;
-    g.JSTKY = y;
-    g.btn = btn;
+    g.kbdX = x;
+    g.kbdY = y;
+    g.BTN0 = btn;
 }
 
 /* Is this piece plain ground: something to stand on that does nothing? */
@@ -96,8 +94,8 @@ static int start_kid(uint8_t face)
                 memset(&g.kid, 0, sizeof g.kid);
                 memset(&g.shad, 0, sizeof g.shad);
                 pop_zerosound(&g.sq);
-                g.JSTKX = g.JSTKY = g.btn = 0;
-                g.clrF = g.clrB = g.clrU = g.clrD = g.clrbtn = 0;
+                g.kbdX = g.kbdY = g.BTN0 = g.BTN1 = g.joyon = 0;
+                pop_initinput(&g);
                 g.kid.scrn = (uint8_t)scrn;
                 g.kid.face = face;
                 g.kid.block_x = (uint8_t)col;

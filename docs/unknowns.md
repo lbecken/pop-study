@@ -7,8 +7,8 @@ Items move to the relevant document once resolved.
 
 | # | Question | Next step |
 | --- | --- | --- |
-| T1 | Real duration of a game frame and its variance. Source says only "approx. 11 fps" and 725 frames per game minute (`SPECIALK.S:68-70`). | Measure in an emulator with a disk image, or cycle-count a representative frame. |
-| T2 | Whether any per-frame delay hides in routines not yet read (`keys`, `controller`, `fast`). The `MainLoop` body and `PAGEFLIP` have none. | Read `SPECIALK.S` `KEYS`, `GRAFIX.S` `controller`, `FRAMEADV.S` `FAST`. |
+| T1 | Real duration of a game frame and its variance. Source says only "approx. 11 fps" and 725 frames per game minute (`SPECIALK.S:68-70`). The clock counts frames, not time (`docs/port/game-loop.md` §3): the hour is 43,505 counted frames, so its real length follows from this. | Measure in an emulator with a disk image, or cycle-count a representative frame. |
+| T2 | Per-frame delays outside drawing. Found by reading: `PREAD` (`GRAFIX.S:1193-1213`), a loop whose length depends on the joystick position, run each frame when the joystick is selected; `pause` 25 in `setupkid` while the kid has frame 0 (`TOPCTRL.S:807-810`); the freeze loop on ESC. `KEYS` and `BREAD` have none. `FAST` and the blitters have not been timed. | Cycle-count `PREAD` and `pause` in the simulator; read `FRAMEADV.S` `FAST`. |
 | T3 | `WHOOP` and `GTONE` timing (the effects in `SOUND.S` are resolved: `docs/audio-analysis.md`). | Assemble `GRAFIX.S` (needs the 65C02 `tsb`) and run them in the simulator. |
 | T4 | How long each song freezes the game. | Needs the song data (see A1). |
 
@@ -51,10 +51,10 @@ Items move to the relevant document once resolved.
 | E21 | Whether it is intended that a slicer which has cut someone is no longer a barrier. That it is so is confirmed: the "blood" bit persists (`docs/port/moving-objects.md` §6.8) and `CHECKCOLL` compares the state unmasked. | Not answerable from the source; compare behaviour in an emulator when a disk image is available. |
 | E23 | Whether a guard's extra strength unit being taken from the previous guard's type (`docs/port/opponents.md` §8.1) shows in play: which levels have the type that carries the extra unit, and in what order the kid meets guards there. | List `GdStartProg` per level against the table in `autodata.bin`. |
 | E22 | Whether link chain 0 is harmless in the shipped levels: a dead body on an "up" plate triggers it (`docs/port/moving-objects.md` §6.1). | Decode `LINKLOC[0]` / `LINKMAP[0]` of each level and see what, if anything, a rubble trigger of it does. |
+| E24 | Which build switches the released disk was assembled with. In this checkout `SPECIALK.S:3` has `FinalDisk = 0` while `TOPCTRL.S:4` and `MASTER.S:3` have 1, so the typed codes "POP" and "SKIP" are assembled into the key handler (`docs/port/game-loop.md` §9). | Type the codes in an emulator with a disk image; compare the assembled `SPECIALK` with the disk's. |
 | E16 | Level data semantics not yet read: `BLUETYPE` bits 6–7 (`secmask`, `EQ.S:484`). (Bit 5, the link list and the guard start arrays are resolved: `docs/port/moving-objects.md` §4, `docs/port/opponents.md` §7.) | Grep `secmask`. |
-| E5 | Screen-cut logic and neighbouring-screen drawing. | Read `cutcheck`, `PrepCut`, `FRAMEADV.S`. |
-| E6 | What seeds the random number generator at game start. (`RND` is ported; its callers are the main loop, once per frame, `TOPCTRL.S:367`, the fight decisions and the torch, flask and sword animations.) | Grep `sta RNDseed`. |
-| E7 | Input: joystick thresholds, keyboard buffering, the `clr*` flag protocol. | Read `GRAFIX.S` `controller`, `SPECIALK.S` `KEYS`, `CLRJSTK`. |
+| E5 | Neighbouring-screen drawing. (The screen change itself is resolved: `docs/port/opponents.md` §7, `docs/port/game-frame.md` §5.) | Read `FRAMEADV.S`. |
+| E7 | Input hardware: joystick thresholds (`setcenter`, `cvtpdl`), the keyboard buffer used for typed codes (`addkey`, `checkcode`). (Device selection and the press-flag protocol are resolved: `docs/port/game-loop.md` §2.) | Read `GRAFIX.S` `SETCENTER`, `SPECIALK.S` `addkey`. |
 | E9 | Copy-protection hooks that alter game state (`yellowflag`, `purpleflag`, `timebomb`, `redherring`). `decodeim` ORs `timebomb` into the image number (`CTRLSUBS.S:1036`); `STARTKID1` sets `timebomb = $40` on level 7 if `yellowflag` is not negative (`SUBS.S:1593-1596`). Both are ported and compared (`docs/port/game-frame.md` §6). `purpleflag` and `redherring` are not catalogued, and what a failed check looks like in play is not verified. | Run a level-7 trace with `yellowflag = 0`; grep the other two flags and list their readers. |
 | E10 | Differences between the 3.5" and 5.25" builds (`*525.S`). | `diff` the pairs. |
 | E11 | How `$D000-$DFFF` is shared between language-card banks. | See `docs/memory-map.md`. |
@@ -68,6 +68,6 @@ Items move to the relevant document once resolved.
 | --- | --- | --- |
 | P1 | Byte-exactness of the project's assembler. It assembles 18 of the 22 original modules and each fits its memory slot (`docs/memory-map.md`), but the bytes have not been compared with an independent assembler or a disk image. | Try Merlin32 on a few modules and compare; or compare with a disk image. |
 | P4 | `UNPACK.S` (`mac` macros) and `BOOT.S` (`sav`) do not assemble, and `GRAFIX.S` assembles only up to its final 65816 section (IIGS control panel). None is game logic. | Add macros and 65816 if those modules are ever needed. |
-| P5 | The 6502 simulator is verified only for the instructions its tests exercise. | Run a public 6502 functional test suite against it before using it as an oracle for larger routines. |
+| P5 | The 6502 simulator is verified only for the instructions its tests exercise. Decimal mode (used once, by `GETMINLEFT`) follows the NMOS 6502 and is tested on a handful of values only. | Run a public 6502 functional test suite, including its decimal-mode test, against it. |
 | P2 | Git history of the original repository was not examined (shallow clone). | `git fetch --depth=1000` and review. |
 | P3 | The author's 1989 technical document referenced in the README is not in the repository. | Read it at jordanmechner.com/library; cite, do not copy. |

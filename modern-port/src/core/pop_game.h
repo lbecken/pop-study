@@ -92,34 +92,49 @@ enum {
     POP_GD_PROG = 2215, POP_GD_SEQH = 2239
 };
 
-/* Calls into subsystems that are not ported yet (moving level objects,
- * potion effects, level change).  Each is made at the point where the
- * original has its `jsr`.  Any pointer may be NULL. */
+/* Calls out of the game rules: drawing, sound, the input devices, and the
+ * places where the original leaves the level being played.  Each is made
+ * at the point where the original has its `jsr` or `jmp`.  Any pointer may
+ * be NULL. */
 typedef struct pop_game_hooks {
     void *ctx;
-    void (*invert_y)(void *ctx);         /* inverty: the upside-down potion's redraw */
-    void (*add_refl_obj)(void *ctx);     /* addreflobj: draw the kid's reflection */
+
+    /* Where the original jumps out of the level and never comes back to the
+     * frame it was in (docs/port/game-loop.md, section 8).  The port sets
+     * pop_game.leave before the call and returns from the frame after it. */
     void (*attract_mode)(void *ctx);     /* attractmode: a scripted demo has ended */
-    /* Where the original leaves the level it is playing (TOPCTRL.S): each
-     * is a jump there, so the port's routine returns right after the call. */
     void (*go_attract)(void *ctx);       /* GOATTRACT: back to the title sequence */
     void (*you_lose)(void *ctx);         /* YouLose: time is up */
     void (*you_win)(void *ctx);          /* YouWin: the princess's room */
-    void (*load_next)(void *ctx);        /* LoadNext1: start the next level now */
-    void (*restart)(void *ctx);          /* RESTART: start this level again */
-    void (*clean_cut)(void *ctx);        /* DoCleanCut: draw the new screen */
-    void (*keep_time)(void *ctx);        /* keeptime: the 60-minute clock */
-    void (*show_time)(void *ctx);        /* showtime */
-    void (*init_input)(void *ctx);       /* initinput */
+    void (*restart)(void *ctx);          /* RESTART: load `level` and start it */
+
+    /* drawing */
+    void (*draw_screen)(void *ctx);      /* sure: the whole background of VisScrn */
+    void (*draw_changes)(void *ctx);     /* addmobs, the characters, fast: what changed */
+    void (*show_frame)(void *ctx);       /* PageFlip */
     void (*zero_peels)(void *ctx);       /* zeropeels: forget what was drawn */
-    void (*desel_input)(void *ctx);      /* LoadDesel, getdesel, clrjstk: opponent played by hand */
-    void (*save_desel)(void *ctx);       /* SaveDesel */
+    void (*show_message)(void *ctx, uint8_t kind);           /* POP_SHOW_* over the frame */
+    void (*flash_on)(void *ctx, uint8_t colour);             /* doflashon */
+    void (*flash_off)(void *ctx);        /* doflashoff */
+    void (*invert_y)(void *ctx);         /* inverty: turn the picture upside down / back */
+    void (*add_refl_obj)(void *ctx);     /* addreflobj: draw the kid's reflection */
+
+    /* sound */
+    void (*playback)(void *ctx);         /* playback: play the queued effects */
+    void (*play_song)(void *ctx, uint8_t song);              /* minit, mplay: until it ends */
+    void (*tone)(void *ctx);             /* gtone */
     void (*speaker_click)(void *ctx);    /* a read of $C030, COLL.S 403 */
-    /* PLAYERCTRL's input step: LoadSelect, getselect, clrjstk (CTRL.S
-     * 573-577).  Expected to set JSTKX, JSTKY, btn and the clr* flags. */
-    void (*get_input)(void *ctx);
-    void (*save_input)(void *ctx);       /* SaveSelect,   CTRL.S 582  */
+
+    /* the loop */
+    void (*strobe)(void *ctx);           /* strobe: set keypress, keydown, joyX/Y, BTN0/1 */
+    void (*princess_cut)(void *ctx, uint8_t cut);            /* cutprincess, playcut */
+    void (*copy_check)(void *ctx);       /* yellowcheck: may set yellowflag negative */
 } pop_game_hooks;
+
+/* Why the level being played was left (pop_game.leave). */
+enum {
+    POP_LEAVE_NONE = 0, POP_LEAVE_ATTRACT, POP_LEAVE_LOSE, POP_LEAVE_WIN, POP_LEAVE_RESTART
+};
 
 /* The redraw buffers are one block of memory (EQ.S 218-229): 30 bytes each,
  * one per block of the screen, and 10 for the top line.  They are kept as
@@ -254,6 +269,16 @@ typedef struct pop_game {
     uint8_t  message;                    /* $30B: 1 level, 2 "press button", 3 time left */
     uint8_t  MinLeft, SecLeft;           /* $300, $302 */
     uint8_t  BTN0, BTN1;                 /* $1A, $1B: the two buttons, negative = down */
+    /* --- the loop around the frame (pop_loop.c) --- */
+    uint8_t  keypress, keydown;          /* last key (high bit: new), any-key-down (high bit) */
+    uint8_t  kbdX, kbdY, joyX, joyY;     /* each device as -1, 0, 1 */
+    uint8_t  joyon;                      /* non-zero: the joystick is the selected device */
+    uint8_t  clrSEL[5], clrDESEL[5];     /* the press flags, saved per device */
+    uint8_t  FrameCount[2];              /* frames played, low and high byte */
+    uint8_t  NextTimeMsg;                /* twice the number of the next time message */
+    uint8_t  soundon;
+    /* Not an original variable: why the frame was abandoned, POP_LEAVE_*. */
+    uint8_t  leave;
     uint8_t  waitingtojump;              /* $A7 */
     uint8_t  yellowflag;                 /* $7C: copy protection result; negative = passed */
     uint8_t  scrnAboveL, scrnAboveR;     /* $36, $37 */

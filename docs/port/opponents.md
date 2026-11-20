@@ -231,8 +231,10 @@ its x is 0 or 255 and its sequence fields `$FF`. `INITIALGUARDS` computes x
 
 - **Tables generated, not embedded** (section 4).
 - **Hooks**: the upside-down potion's redraw (`inverty`), drawing the
-  reflection (`addreflobj`), the end of a demo script (`attractmode`), and an
-  opponent played by hand (`LoadDesel`, `getdesel`, `SaveDesel`).
+  reflection (`addreflobj`), and the end of a demo script (`attractmode`,
+  which also ends the frame: game-loop.md §8). An opponent played by hand
+  reads the other input device (`LoadDesel`, `getdesel`, `clrjstk`,
+  `SaveDesel`), ported in `pop_loop.c`.
 - **`AUTOPLAYBACK` takes a pointer and a length**; reading before the start
   or past the end is flagged as unmodelled.
 - **Guard-start entries** are read from the level array at their original

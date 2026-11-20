@@ -30,11 +30,13 @@ Status of each behaviour in the reconstruction.
 | Player | Control: dispatch by frame, standing / running / turning / crouching / hanging handlers, jumps, careful steps, pick-up, running-jump take-off adjustment | faithful, checked against the original code | `modern-port/src/core/pop_control.c` | fuzzed against the original routine by routine; calls into unported subsystems are hooks |
 | Player | Sword-fight moves of the controlled character (`FightCtrl`, strike, block, advance, retreat, sheathe) | faithful, checked against the original code | same | the opponent's decisions (`AUTO.S`) are missing |
 | Player | Floor checks, starting to fall, ledge grab, landing and fall damage, impalement | faithful, checked against the original code | same | |
-| Player | A whole game frame (`NextFrame`, `DoKid`, `misctimers`) | faithful, checked against the original code | `modern-port/src/core/pop_top.c` | the original's `NextFrame` and the port's agree call by call over random play and over the whole demo level. The clock, messages and drawing inside the frame are hooks; three state changes made by the drawing code are done by the tests (`docs/port/game-frame.md` §5) |
-| Player | Input devices, joystick flag upkeep | missing | – | hooks in `pop_playerctrl`; milestone 9d part 2 |
-| Player | Death: waiting until he lies still, the song, "press button to continue", time-out, restart | faithful, checked against the original code | `pop_top.c` | the message's own countdown and the restart itself are outside (`msgtimer` is counted by the message code; `RESTART` is a hook) |
+| Player | A whole game frame (`NextFrame`, `DoKid`, `misctimers`) | faithful, checked against the original code | `modern-port/src/core/pop_top.c` | the original's `NextFrame` and the port's agree over random play and over the whole demo level; drawing is a hook |
+| Player | Input: keyboard as joystick (`KREAD`), device selection, the five press flags per device (`CLRJSTK`) | faithful, checked against the original code | `modern-port/src/core/pop_loop.c` | reading the hardware (key latch, paddles, buttons) and the special keys are the shell's: `strobe` hook |
+| Player | Death: waiting until he lies still, the song, "press button to continue", time-out, restart | faithful, checked against the original code | `pop_top.c` | loading the level for the restart is the shell's (`restart` hook) |
 | World | A level begins: per-level reset, the kid's start and its per-level special cases, the entrance closing, the first screen | faithful, checked against the original code | same | from the point where the level file is in memory; loading it is the caller's job |
-| World | Clock, level and time messages, song cues | missing | – | hooks; milestone 9d part 2 |
+| World | The 60-minute clock, its scheduled messages and the seconds countdown; which message is on screen and when it blinks; when a queued song may play; screen flashes | faithful, checked against the original code | `pop_loop.c` | drawing the messages and playing the songs are hooks |
+| World | One whole pass of `MainLoop`; game start; the step to the next level and which princess scene precedes it | faithful, checked against the original code | same | the original's `MainLoop` and `pop_mainloop` agree pass by pass over random play and over the whole demo; scenes, disk and copy protection are hooks |
+| Rendering | Game state changed inside the drawing code (cut timer, redraw-buffer reset, forced redraw, mirror, meter marks, message timer) | faithful, checked against the original code | same | the drawing itself is missing |
 | Rendering | Character edges and blocks covered (`GETEDGES`) | faithful, checked against the original code | same | image sizes from a generated table instead of the image data |
 | Rendering | Redraw marks (`MARKRED`, `MARKWIPE`, `INDEXBLOCK`) | faithful, checked against the original code | same | the buffers are filled; nothing draws from them yet |
 | World | Level blueprint and initial states (`SETINITIALS`) | faithful, checked against the original code | `pop_top.c`; Python model in `tools/extract_assets/pop_level.py` | |
@@ -58,5 +60,5 @@ Status of each behaviour in the reconstruction.
 | Audio | Audio output device | missing | – | SDL3 backend, milestone 7 |
 | Audio | `GTONE`, `WHOOP`, cheat-timer click | missing | – | |
 | Audio | Music | missing | – | player source present, score data absent from the repository |
-| Timing | Frame cadence | missing | – | decision D2; original has no fixed rate |
+| Timing | Frame cadence | missing | – | decision D2; original has no fixed rate. Game time is counted in frames (`pop_keeptime`), so the cadence chosen sets the length of the hour |
 | Platform | SDL3 window, input, audio | missing | – | |

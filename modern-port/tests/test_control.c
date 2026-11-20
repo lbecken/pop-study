@@ -299,8 +299,14 @@ static void test_playerctrl(void)
     g.stunned = 2;
     pop_playerctrl(&g);
     CHECK_EQ(g.stunned, 1);
-    CHECK(strcmp(hooklog, "io") == 0);             /* input read, then saved */
     CHECK_EQ(g.ch.life, 0xFF);
+
+    setup(3, POP_FACE_LEFT);                       /* the selected device is read ... */
+    g.kbdX = 0xFF;                                 /* "left" held on the keyboard */
+    pop_playerctrl(&g);
+    CHECK_EQ(g.ch.seq, seq_addr(POP_SQ_STARTRUN)); /* facing left: he starts to run */
+    CHECK_EQ(g.clrSEL[0], 0xFF);                   /* ... and its press flags are kept */
+    CHECK_EQ(g.clrDESEL[0], 0);
 
     setup(3, POP_FACE_LEFT);                       /* no strength left: dead this frame */
     g.KidStrength = 0;

@@ -9,6 +9,7 @@
 
 #include "pop_auto.h"
 #include "pop_collide.h"
+#include "pop_loop.h"
 #include "pop_mover.h"
 #include "pop_top.h"
 #include "pop_world.h"
@@ -914,20 +915,22 @@ void pop_userctrl(pop_game *g)
     }
 }
 
-/* PLAYERCTRL, CTRL.S 554-582.  Reading the input device is not ported: the
- * get_input hook stands for LoadSelect / getselect / clrjstk. */
+/* PLAYERCTRL, CTRL.S 554-582. */
 void pop_playerctrl(pop_game *g)
 {
     if (NEG(g->ch.life) && g->KidStrength == 0) g->ch.life = 0;   /* out of strength: dead */
     if (g->stunned != 0) g->stunned--;
     if (g->level == 0) {                       /* the demo plays itself */
         pop_democtrl(g);
+        if (g->leave != 0) return;             /* the script has ended the demo */
         pop_genctrl(g);
         return;
     }
-    if (g->hooks.get_input) g->hooks.get_input(g->hooks.ctx);
+    pop_loadselect(g);                         /* the press flags of the selected device */
+    pop_getselect(g);
+    pop_clrjstk(g);
     pop_userctrl(g);
-    if (g->hooks.save_input) g->hooks.save_input(g->hooks.ctx);
+    pop_saveselect(g);
 }
 
 /* --- floor, falling, landing --------------------------------------------------------------- */

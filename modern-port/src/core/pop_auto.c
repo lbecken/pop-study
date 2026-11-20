@@ -8,6 +8,7 @@
 
 #include "pop_collide.h"
 #include "pop_control.h"
+#include "pop_loop.h"
 #include "pop_mover.h"
 #include "pop_world.h"
 
@@ -615,6 +616,7 @@ static void shadow_prog(pop_game *g)
         }
         if (!a || !a->shadprog5) { g->unmodelled = 1; return; }
         pop_autoplayback(g, a->shadprog5, a->shadprog5_len);
+        if (g->leave != 0) return;
         if (g->ch.x < 15) pop_vanishchar(g);
     } else if (g->level == 6) {                /* when the kid jumps the chasm, shut the gate on him */
         if (g->ch.scrn != 1) return;
@@ -668,12 +670,15 @@ void pop_shadctrl(pop_game *g)
         return;
     }
     if (g->ManCtrl != 0) {                     /* played by hand, with the other device */
-        if (g->hooks.desel_input) g->hooks.desel_input(g->hooks.ctx);
+        pop_loaddesel(g);
+        pop_getdesel(g);
+        pop_clrjstk(g);
         pop_userctrl(g);
-        if (g->hooks.save_desel) g->hooks.save_desel(g->hooks.ctx);
+        pop_savedesel(g);
         return;
     }
     pop_autoctrl(g);
+    if (g->leave != 0) return;
     pop_genctrl(g);
 }
 
@@ -686,6 +691,7 @@ void pop_doshad(pop_game *g)
     pop_rereadblocks(g);
     pop_unholy(g);
     pop_shadctrl(g);
+    if (g->leave != 0) return;
     if (g->ch.scrn == g->VisScrn) {
         pop_g_animchar(g);
         if (g->ch.x >= POP_SCRN_LEFT - 14 && g->ch.x < SCRN_RIGHT + 14) {
@@ -721,7 +727,8 @@ void pop_autoplayback(pop_game *g, const uint8_t *prog, size_t len)
         cmd = prog[y - 1];
     }
     switch (cmd) {
-    case POP_CMD_ENDDEMO:
+    case POP_CMD_ENDDEMO:                      /* a jump: nothing after it happens */
+        g->leave = POP_LEAVE_ATTRACT;
         if (g->hooks.attract_mode) g->hooks.attract_mode(g->hooks.ctx);
         break;
     case POP_CMD_CTR:     do_release(g); break;

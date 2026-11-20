@@ -164,8 +164,19 @@ def test_arithmetic_compare_and_bit():
     assert cpu.p & FLAG_Z and cpu.p & FLAG_N and cpu.p & FLAG_V
     cpu, _, _ = run(" org $0800\nstart lda #$81\n asl\n rts\n")
     assert cpu.a == 0x02 and cpu.p & FLAG_C
-    with pytest.raises(CpuError, match="decimal"):
-        run(" org $0800\nstart sed\n adc #1\n rts\n")
+    # decimal mode: results and carry as BCD arithmetic gives them
+    cpu, _, _ = run(" org $0800\nstart sed\n sec\n lda #$60\n sbc #1\n cld\n rts\n")
+    assert cpu.a == 0x59 and cpu.p & FLAG_C
+    cpu, _, _ = run(" org $0800\nstart sed\n sec\n lda #$00\n sbc #1\n cld\n rts\n")
+    assert cpu.a == 0x99 and not cpu.p & FLAG_C
+    cpu, _, _ = run(" org $0800\nstart sed\n sec\n lda #$42\n sbc #$17\n cld\n rts\n")
+    assert cpu.a == 0x25 and cpu.p & FLAG_C
+    cpu, _, _ = run(" org $0800\nstart sed\n clc\n lda #$19\n adc #$01\n cld\n rts\n")
+    assert cpu.a == 0x20 and not cpu.p & FLAG_C
+    cpu, _, _ = run(" org $0800\nstart sed\n clc\n lda #$99\n adc #$01\n cld\n rts\n")
+    assert cpu.a == 0x00 and cpu.p & FLAG_C
+    cpu, _, _ = run(" org $0800\nstart sed\n sec\n lda #$58\n adc #$46\n cld\n rts\n")
+    assert cpu.a == 0x05 and cpu.p & FLAG_C              # 58 + 46 + 1 = 105
 
 
 def test_stack_subroutines_and_self_modifying_jump():

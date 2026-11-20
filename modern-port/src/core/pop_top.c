@@ -9,12 +9,15 @@
 #include "pop_auto.h"
 #include "pop_collide.h"
 #include "pop_control.h"
+#include "pop_loop.h"
 #include "pop_mover.h"
 #include "pop_world.h"
 
 #define NEG(v) (((v) & 0x80u) != 0)
 #define u8(v) ((uint8_t)(v))
 #define HOOK(name) do { if (g->hooks.name) g->hooks.name(g->hooks.ctx); } while (0)
+/* A jump out of the level: note why, tell the shell, and let the callers return. */
+#define LEAVE(why, name) do { g->leave = (why); HOOK(name); } while (0)
 
 /* --- small things ------------------------------------------------------------------------ */
 
@@ -103,6 +106,7 @@ void pop_democtrl(pop_game *g)
     if (g->ch.sword != 0) {                    /* fighting: the kid is a "guard" too */
         g->guardprog = 10;
         pop_autoctrl(g);
+        if (g->leave != 0) return;
         g->guardprog = 11;
         return;
     }
@@ -117,7 +121,7 @@ void pop_prepcut(pop_game *g)
     if (g->cutscrn == 0 || g->cutscrn == g->VisScrn) return; /* never to screen 0 */
     g->VisScrn = g->cutscrn;
     if (g->VisScrn == 5 && g->level == 14) {   /* the princess's room */
-        HOOK(you_win);
+        LEAVE(POP_LEAVE_WIN, you_win);
         return;
     }
     g->cutplan = 1;
@@ -133,7 +137,8 @@ void pop_firstframe(pop_game *g)
 {
     g->cutscrn = g->kid.scrn;
     pop_prepcut(g);
-    HOOK(clean_cut);
+    if (g->leave != 0) return;
+    pop_cleancut(g);
 }
 
 /* --- the kid ------------------------------------------------------------------------------------ */
@@ -143,6 +148,7 @@ void pop_ctrlplayer(pop_game *g)
     uint8_t a;
     pop_kill0(g);
     pop_playerctrl(g);
+    if (g->leave != 0) return;
     if (NEG(g->ch.life)) return;               /* alive */
 
     /* Dead: CharLife counts 0, 1, ... once he has stopped moving. */
@@ -153,9 +159,9 @@ void pop_ctrlplayer(pop_game *g)
         return;
     }
     /* :deadenough */
-    if (g->level == 0) { HOOK(go_attract); return; }         /* his death ends the demo */
+    if (g->level == 0) { LEAVE(POP_LEAVE_ATTRACT, go_attract); return; }   /* ends the demo */
     if (g->SongCue != 0) return;               /* let the song finish first */
-    if ((g->MinLeft | g->SecLeft) == 0) { HOOK(you_lose); return; }
+    if ((g->MinLeft | g->SecLeft) == 0) { LEAVE(POP_LEAVE_LOSE, you_lose); return; }
     if (g->message == POP_MSG_CONT && g->msgtimer != 0) {
         a = g->msgtimer;
     } else {
@@ -163,9 +169,9 @@ void pop_ctrlplayer(pop_game *g)
         g->msgtimer = 255;
         a = 255;
     }
-    if (a == 1) { HOOK(go_attract); return; }  /* he did not: game over */
+    if (a == 1) { LEAVE(POP_LEAVE_ATTRACT, go_attract); return; }    /* he did not: game over */
     if (!NEG(g->BTN0 | g->BTN1)) return;
-    HOOK(restart);
+    LEAVE(POP_LEAVE_RESTART, restart);
 }
 
 void pop_dokid(pop_game *g)
@@ -174,6 +180,7 @@ void pop_dokid(pop_game *g)
     pop_rereadblocks(g);
     pop_unholy(g);
     pop_ctrlplayer(g);
+    if (g->leave != 0) return;
     if (g->invert != 0 && !NEG(g->ch.life)) {  /* dead: the screen turns right side up */
         g->redrawflg = 2;
         g->invert = 0;
@@ -211,17 +218,20 @@ void pop_nextframe(pop_game *g)
     pop_bonesrise(g);
     pop_checkalert(g);
     pop_dokid(g);
+    if (g->leave != 0) return;
     pop_doshad(g);
+    if (g->leave != 0) return;
     pop_checkstrike(g);
     pop_checkstab(g);
     pop_addsfx(g);
     pop_chgmeters(g);
     pop_cutcheck(g);
     pop_prepcut(g);
+    if (g->leave != 0) return;
     pop_cutguard(g);
 
     if (g->level == 0) {                       /* the demo ends when the kid leaves screen 24 */
-        if (g->kid.scrn == 24) { HOOK(go_attract); return; }
+        if (g->kid.scrn == 24) { LEAVE(POP_LEAVE_ATTRACT, go_attract); return; }
     } else if (g->level == 6) {                /* falling off screen 1 leads to the next level */
         if (g->kid.scrn == 1 && g->kid.y < 20) {
             g->kid.y = 0xFF;
@@ -231,16 +241,16 @@ void pop_nextframe(pop_game *g)
         if (g->kid.scrn == 23) {
             g->NextLevel++;
             g->skipmessage = 1;                /* (without announcing the level or the time) */
-            HOOK(load_next);
+            pop_loadnext1(g);
             return;
         }
     }
     /* the clock runs until the vizier is dead */
-    if (g->level < 13 || (g->level == 13 && g->exitopen == 0)) HOOK(keep_time);
-    HOOK(show_time);
+    if (g->level < 13 || (g->level == 13 && g->exitopen == 0)) pop_keeptime(g);
+    pop_showtime(g);
     if (g->level >= 13) return;                /* one chance to finish level 13 after time is up */
     if ((g->MinLeft | g->SecLeft) != 0) return;
-    HOOK(you_lose);
+    LEAVE(POP_LEAVE_LOSE, you_lose);
 }
 
 /* --- a level begins ------------------------------------------------------------------------------ */
@@ -361,7 +371,7 @@ void pop_restart_level(pop_game *g)
     pop_zerosound(&g->sq);
     HOOK(zero_peels);
     pop_initcdbuf(g);
-    HOOK(init_input);
+    pop_initinput(g);
 
     g->gotsword = 1;
     g->cutorder = 0xFF;

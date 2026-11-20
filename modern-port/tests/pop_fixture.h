@@ -43,18 +43,28 @@ static const uint8_t fx_shadpos[POP_SHADPOS_SIZE] = {
 /* forward at frame 1, button at 5, everything released at 9 */
 static const uint8_t fx_script[] = { 0, 0, 1, 1, 5, 6, 9, 0, 255, 0xFE };
 static pop_autodata fx_auto;
-static char hooklog[32];
+static char hooklog[64];
 static size_t nhooks;
 
 static void hook(char c) { if (nhooks + 1 < sizeof hooklog) { hooklog[nhooks++] = c; hooklog[nhooks] = 0; } }
-static void h_input(void *c) { (void)c; hook('i'); }
-static void h_save(void *c) { (void)c; hook('o'); }
+static void hook_hex(char c, uint8_t v) { hook(c); hook("0123456789ABCDEF"[v >> 4]); hook("0123456789ABCDEF"[v & 15]); }
 static void h_goattract(void *c) { (void)c; hook('A'); }
 static void h_youlose(void *c) { (void)c; hook('L'); }
 static void h_youwin(void *c) { (void)c; hook('W'); }
-static void h_loadnext(void *c) { (void)c; hook('N'); }
 static void h_restart(void *c) { (void)c; hook('R'); }
-static void h_cleancut(void *c) { (void)c; hook('C'); }
+static void h_drawscreen(void *c) { (void)c; hook('S'); }
+static void h_drawchanges(void *c) { (void)c; hook('Q'); }
+static void h_showframe(void *c) { (void)c; hook('P'); }
+static void h_zeropeels(void *c) { (void)c; hook('z'); }
+static void h_message(void *c, uint8_t kind) { (void)c; hook(" clm"[kind & 3]); }
+static void h_flashon(void *c, uint8_t colour) { (void)c; hook_hex('F', colour); }
+static void h_flashoff(void *c) { (void)c; hook('f'); }
+static void h_playback(void *c) { (void)c; hook('p'); }
+static void h_song(void *c, uint8_t song) { (void)c; hook_hex('M', song); }
+static void h_tone(void *c) { (void)c; hook('g'); }
+static void h_strobe(void *c) { (void)c; hook('s'); }
+static void h_cut(void *c, uint8_t cut) { (void)c; hook('x'); hook((char)('0' + cut)); }
+static void h_copycheck(void *c) { (void)c; hook('y'); }
 static void h_click(void *c) { (void)c; hook('k'); }
 static void h_attract(void *c) { (void)c; hook('a'); }
 static void h_refl(void *c) { (void)c; hook('r'); }
@@ -130,14 +140,23 @@ static void setup(int col, uint8_t face)
     dims.wh[0] = dims0;
     g.dims = &dims;
 
-    g.hooks.get_input = h_input;
-    g.hooks.save_input = h_save;
     g.hooks.go_attract = h_goattract;
     g.hooks.you_lose = h_youlose;
     g.hooks.you_win = h_youwin;
-    g.hooks.load_next = h_loadnext;
     g.hooks.restart = h_restart;
-    g.hooks.clean_cut = h_cleancut;
+    g.hooks.draw_screen = h_drawscreen;
+    g.hooks.draw_changes = h_drawchanges;
+    g.hooks.show_frame = h_showframe;
+    g.hooks.zero_peels = h_zeropeels;
+    g.hooks.show_message = h_message;
+    g.hooks.flash_on = h_flashon;
+    g.hooks.flash_off = h_flashoff;
+    g.hooks.playback = h_playback;
+    g.hooks.play_song = h_song;
+    g.hooks.tone = h_tone;
+    g.hooks.strobe = h_strobe;
+    g.hooks.princess_cut = h_cut;
+    g.hooks.copy_check = h_copycheck;
     g.hooks.speaker_click = h_click;
     g.hooks.attract_mode = h_attract;
     g.hooks.add_refl_obj = h_refl;

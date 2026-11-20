@@ -53,14 +53,20 @@ the port does not have yet (`modern-port/tests/fuzz_control.py`):
 | `inverty`, `addreflobj`, `attractmode` | drawing and game flow | records the call |
 | `LoadDesel`, `getdesel`, `SaveDesel` | the second input device | records the call |
 | a read of `$C030` | the speaker | recorded through `on_read` |
-| `LoadSelect`, `getselect`, `clrjstk`, `SaveSelect` | input devices | records the call; the test supplies the joystick variables |
-| `GOATTRACT`, `YouLose`, `YouWin`, `LoadNext1`, `RESTART`, `MainLoop` | jumps that abandon the frame and reset the stack | records the call and returns to the test |
-| `DoCleanCut`, `zeropeels`, `initinput` | drawing and input set-up | records the call |
-| `keeptime`, `showtime` | the clock: not ported yet | records the call |
+| `GOATTRACT`, `YouLose`, `YouWin`, `RESTART`, `attractmode` | jumps that abandon the frame and reset the stack | records the call and **ends the run there** (a Python exception out of the simulator), as the jump ends the frame in the game |
+| `MainLoop` | the loop's own way round | ends the run without a record: one pass is one test step |
+| `strobe` | keyboard and joystick hardware | records the call; the test sets `kbdX`, `kbdY`, `BTN0`, `BTN1`, `keypress` |
+| `sure`, `fast`, `PageFlip`, `zeropeels`, `continuemsg`, `printlevel`, `timeleftmsg`, `doflashon`, `doflashoff` | drawing | records the call (with the flash colour) |
+| `lrcls`, `lrclse`, `vblank`, `copyscrn`, `drawall`, `zerolsts`, `addmobs`, `setupkid`, `setupshad`, `setupcomix`, `setupsword`, `fastspeed`, `normspeed`, `burn`, `listtorches` | drawing | nothing |
+| `playback`, `minit`, `mplay`, `gtone`, `musickeys` | sound | records the call (with the queued sounds, the song number); `mplay` answers "song over" |
+| `cutprincess`, `playcut`, `flipdisk`, `yellow`, `setrecheck0`, `recheckyel` | scenes, disk, copy protection | records the scene number; the disk check answers "no error" |
+| reads of `$C061`, `$C062` | the buttons, read directly by `DEMOKEYS` | memory there is set from `BTN0`, `BTN1` |
 
 (Earlier milestones also trapped `jamspikes`, `addslicers`, `smashmirror`,
-`GoneUpstairs`, `cuesong`, `potioneffect` and `DemoCtrl`; those now run for real, since
-their ports exist.)
+`GoneUpstairs`, `cuesong`, `potioneffect`, `DemoCtrl`, `LoadSelect`, `getselect`,
+`clrjstk`, `SaveSelect`, the deselected-device routines, `keeptime`, `showtime`,
+`initinput`, `LoadNext1` and `DoCleanCut`; those now run for real, since their
+ports exist.)
 
 `RESTART` cannot be entered at its label, because it begins by loading the
 level from disk. The level-start comparison writes the level into memory and
@@ -73,6 +79,9 @@ behaviour given the same answers on both sides.
 
 ## Limits
 
+- **Decimal mode** is modelled as the NMOS 6502 does it; the one routine
+  that uses it (`GETMINLEFT`) does not depend on the flags that differ on a
+  65C02.
 - **Flat memory.** There is no bank switching; writes to the soft switches
   `$C000-$C0FF` are ignored. Routines that draw through the main-memory
   blitters, or use the disk, cannot be run.
@@ -102,6 +111,7 @@ behaviour given the same answers on both sides.
 | Geometry tables | byte/offset, block edges, floor lines as loaded in memory | agree |
 | Sound effects | `PLAYBACK`, `ADDSOUND` | source of the effect data (`docs/audio-analysis.md`) |
 | World queries, gravity (C) | 39 routines on random states, 15,600 cases per test run | C port and original agree |
-| Player control, floor, landing, collision, moving objects, opponents, frame and level top level (C) | 134 routines on random states, about 53,000 cases per test run: variables, registers, sounds, level changes, redraw buffers, calls out | C port and original agree |
-| A game frame over time (C) | the original's level start, then `rnd`, `misctimers`, `NextFrame`, `REFLECTION`, `zerosound` per frame; 60 traces of 60 frames of random input per test run, compared after each call | C port and original agree |
-| The demo (C) | level 0 from its start to `GOATTRACT` with the demo's own script as input: 393 frames, 1,966 calls | C port and original agree at every call |
+| Player control, floor, landing, collision, moving objects, opponents, frame and level top level, the loop around the frame (C) | 161 routines on random states, about 63,800 cases per test run: variables, registers, sounds, level changes, redraw buffers, calls out | C port and original agree |
+| The game loop over time (C) | `FirstFrame`, then whole passes of `MainLoop` with random keyboard input; 60 traces of up to 60 frames per test run, compared after each pass | C port and original agree |
+| The demo (C) | `StartGame`, the level start, then `MainLoop` passes until the demo ends itself: 393 frames | C port and original agree after every pass |
+| The clock's end and the start of level 1 | `MainLoop` run in the simulator from `StartGame` on level 1, and through counted frames 43,380 to 43,505 | source of the observations in `docs/port/game-loop.md` §3, §10 |

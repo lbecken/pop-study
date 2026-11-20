@@ -41,6 +41,7 @@
 #include "pop_auto.h"
 #include "pop_collide.h"
 #include "pop_control.h"
+#include "pop_loop.h"
 #include "pop_mover.h"
 #include "pop_top.h"
 #include "pop_world.h"
@@ -48,28 +49,47 @@
 static pop_game g;
 static uint8_t script[32];               /* a movement script for "playscript" */
 static uint8_t pristine[POP_LEVEL_SIZE];
-static char hooklog[64];
+static char hooklog[160];
 static size_t nhooks;
 
 static void log_hook(char c) { if (nhooks < sizeof hooklog - 1) hooklog[nhooks++] = c; }
+static void log_hex(char c, uint8_t v)
+{
+    log_hook(c);
+    log_hook("0123456789abcdef"[v >> 4]);
+    log_hook("0123456789abcdef"[v & 15]);
+}
 static void h_invert(void *ctx) { (void)ctx; log_hook('v'); }
 static void h_refl(void *ctx) { (void)ctx; log_hook('r'); }
 static void h_attract(void *ctx) { (void)ctx; log_hook('a'); }
-static void h_desel(void *ctx) { (void)ctx; log_hook('e'); }
-static void h_savedesel(void *ctx) { (void)ctx; log_hook('f'); }
 static void h_click(void *ctx) { (void)ctx; log_hook('k'); }
-static void h_input(void *ctx) { (void)ctx; log_hook('i'); }
-static void h_saveinput(void *ctx) { (void)ctx; log_hook('o'); }
 static void h_goattract(void *ctx) { (void)ctx; log_hook('A'); }
 static void h_youlose(void *ctx) { (void)ctx; log_hook('L'); }
 static void h_youwin(void *ctx) { (void)ctx; log_hook('W'); }
-static void h_loadnext(void *ctx) { (void)ctx; log_hook('N'); }
 static void h_restart(void *ctx) { (void)ctx; log_hook('R'); }
-static void h_cleancut(void *ctx) { (void)ctx; log_hook('C'); }
-static void h_keeptime(void *ctx) { (void)ctx; log_hook('t'); }
-static void h_showtime(void *ctx) { (void)ctx; log_hook('T'); }
-static void h_initinput(void *ctx) { (void)ctx; log_hook('I'); }
 static void h_zeropeels(void *ctx) { (void)ctx; log_hook('z'); }
+static void h_drawscreen(void *ctx) { (void)ctx; log_hook('S'); }
+static void h_drawchanges(void *ctx) { (void)ctx; log_hook('Q'); }
+static void h_showframe(void *ctx) { (void)ctx; log_hook('P'); }
+static void h_message(void *ctx, uint8_t kind) { (void)ctx; log_hook(" clm"[kind & 3]); }
+static void h_flashon(void *ctx, uint8_t colour) { (void)ctx; log_hex('F', colour); }
+static void h_flashoff(void *ctx) { (void)ctx; log_hook('f'); }
+static void h_playback(void *ctx)             /* with the sounds about to be played */
+{
+    uint8_t i;
+    (void)ctx;
+    log_hook('p');
+    for (i = 0; i < g.sq.count; i++) {
+        log_hook("0123456789abcdef"[g.sq.items[i] >> 4]);
+        log_hook("0123456789abcdef"[g.sq.items[i] & 15]);
+    }
+    log_hook('.');
+}
+static void h_song(void *ctx, uint8_t song) { (void)ctx; log_hex('M', song); }
+static void h_tone(void *ctx) { (void)ctx; log_hook('g'); }
+static void h_strobe(void *ctx) { (void)ctx; log_hook('s'); }
+static void h_cut(void *ctx, uint8_t cut) { (void)ctx; log_hook('x'); log_hook((char)('0' + cut)); }
+static void h_copycheck(void *ctx) { (void)ctx; log_hook('y'); }
 
 typedef struct { const char *name; uint8_t *p; } var;
 
@@ -137,6 +157,10 @@ static var vars[] = {
     { "BTN0", &g.BTN0 }, { "BTN1", &g.BTN1 }, { "waitingtojump", &g.waitingtojump },
     { "yellowflag", &g.yellowflag }, { "scrnAboveL", &g.scrnAboveL },
     { "scrnAboveR", &g.scrnAboveR }, { "SCRNUM", &g.SCRNUM },
+    { "keypress", &g.keypress }, { "keydown", &g.keydown }, { "kbdX", &g.kbdX },
+    { "kbdY", &g.kbdY }, { "joyX", &g.joyX }, { "joyY", &g.joyY }, { "joyon", &g.joyon },
+    { "NextTimeMsg", &g.NextTimeMsg }, { "soundon", &g.soundon },
+    { "FrameCount", &g.FrameCount[0] }, { "FrameCountH", &g.FrameCount[1] },
     { "X", &g.rx }, { "Y", &g.ry }, { "blue", &g.blue },
     { "unmodelled", &g.unmodelled },
 };
@@ -166,6 +190,7 @@ static buf bufs[] = {
     { "mobx", g.mobx, POP_MOBSPACE }, { "moby", g.moby, POP_MOBSPACE },
     { "mobscrn", g.mobscrn, POP_MOBSPACE }, { "mobvel", g.mobvel, POP_MOBSPACE },
     { "mobtype", g.mobtype, POP_MOBSPACE }, { "moblevel", g.moblevel, POP_MOBSPACE },
+    { "clrSEL", g.clrSEL, 5 }, { "clrDESEL", g.clrDESEL, 5 },
 };
 #define NBUFS (sizeof bufs / sizeof bufs[0])
 #define NVARS16 (sizeof vars16 / sizeof vars16[0])
@@ -380,6 +405,34 @@ static int run(const char *r, uint8_t a, uint8_t x, uint8_t y, int *out)
         return 1;
     }
     if (!strcmp(r, "zerosound"))    DO(pop_zerosound(&g.sq));
+    /* the loop around the frame */
+    if (!strcmp(r, "kread"))        DO(pop_kread(&g));
+    if (!strcmp(r, "getselect"))    DO(pop_getselect(&g));
+    if (!strcmp(r, "getdesel"))     DO(pop_getdesel(&g));
+    if (!strcmp(r, "clrjstk"))      DO(pop_clrjstk(&g));
+    if (!strcmp(r, "saveselect"))   DO(pop_saveselect(&g));
+    if (!strcmp(r, "loadselect"))   DO(pop_loadselect(&g));
+    if (!strcmp(r, "savedesel"))    DO(pop_savedesel(&g));
+    if (!strcmp(r, "loaddesel"))    DO(pop_loaddesel(&g));
+    if (!strcmp(r, "initinput"))    DO(pop_initinput(&g));
+    if (!strcmp(r, "clearjoy"))     DO(pop_clearjoy(&g));
+    if (!strcmp(r, "demokeys"))     RET(pop_demokeys(&g));
+    if (!strcmp(r, "keeptime"))     DO(pop_keeptime(&g));
+    if (!strcmp(r, "getminleft"))   DO(pop_getminleft(&g));
+    if (!strcmp(r, "shortentime"))  DO(pop_shortentime(&g));
+    if (!strcmp(r, "showtime"))     DO(pop_showtime(&g));
+    if (!strcmp(r, "dispmsg"))      DO((void)pop_dispmsg(&g));
+    if (!strcmp(r, "flashon"))      DO(pop_flashon(&g));
+    if (!strcmp(r, "flashoff"))     DO(pop_flashoff(&g));
+    if (!strcmp(r, "songcues"))     DO(pop_songcues(&g));
+    if (!strcmp(r, "frameadv"))     DO(pop_frameadv(&g));
+    if (!strcmp(r, "cleancut"))     DO(pop_cleancut(&g));
+    if (!strcmp(r, "zerored"))      DO(pop_zerored(&g));
+    if (!strcmp(r, "initgame"))     DO(pop_initgame(&g));
+    if (!strcmp(r, "startgame"))    DO(pop_startgame(&g, a));
+    if (!strcmp(r, "loadnextlevel")) DO(pop_loadnextlevel(&g));
+    if (!strcmp(r, "loadnext1"))    DO(pop_loadnext1(&g));
+    if (!strcmp(r, "mainloop"))     DO((void)pop_mainloop(&g));
     return 0;
 #undef RET
 #undef DO
@@ -441,21 +494,24 @@ int main(int argc, char **argv)
     g.hooks.invert_y = h_invert;
     g.hooks.add_refl_obj = h_refl;
     g.hooks.attract_mode = h_attract;
-    g.hooks.desel_input = h_desel;
-    g.hooks.save_desel = h_savedesel;
     g.hooks.speaker_click = h_click;
-    g.hooks.get_input = h_input;
-    g.hooks.save_input = h_saveinput;
     g.hooks.go_attract = h_goattract;
     g.hooks.you_lose = h_youlose;
     g.hooks.you_win = h_youwin;
-    g.hooks.load_next = h_loadnext;
     g.hooks.restart = h_restart;
-    g.hooks.clean_cut = h_cleancut;
-    g.hooks.keep_time = h_keeptime;
-    g.hooks.show_time = h_showtime;
-    g.hooks.init_input = h_initinput;
     g.hooks.zero_peels = h_zeropeels;
+    g.hooks.draw_screen = h_drawscreen;
+    g.hooks.draw_changes = h_drawchanges;
+    g.hooks.show_frame = h_showframe;
+    g.hooks.show_message = h_message;
+    g.hooks.flash_on = h_flashon;
+    g.hooks.flash_off = h_flashoff;
+    g.hooks.playback = h_playback;
+    g.hooks.play_song = h_song;
+    g.hooks.tone = h_tone;
+    g.hooks.strobe = h_strobe;
+    g.hooks.princess_cut = h_cut;
+    g.hooks.copy_check = h_copycheck;
 
     while (fgets(line, sizeof line, stdin)) {
         if (line[0] == 'L') {
@@ -508,6 +564,7 @@ int main(int argc, char **argv)
             int a, x, y, result, any = 0;
             size_t b;
             g.unmodelled = 0;
+            g.leave = 0;
             nhooks = 0;
             pop_zerosound(&g.sq);
             if (sscanf(line + 1, "%31s %d %d %d", name, &a, &x, &y) != 4

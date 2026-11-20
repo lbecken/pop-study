@@ -7,28 +7,25 @@ New code for the pop-study project.
 fuzz_control.py checks single routines on unrelated random states.  This test
 checks that they work together over time.  It puts the kid on a floor of a
 real level, half the time on a screen with a guard, and plays 60 frames of
-random joystick input, running each frame as the original's MainLoop does
-(TOPCTRL.S 366-393):
+random keyboard input.  Each frame is one whole pass of the original's
+MainLoop (TOPCTRL.S 366-399):
 
-    rnd; clear ChgKidStr / ChgOppStr; misctimers; NextFrame; [draw]; zerosound
+    rnd; clear ChgKidStr / ChgOppStr; strobe; demokeys; misctimers;
+    NextFrame; flashon; FrameAdv; playback; zerosound; flashoff; songcues;
+    and LoadNextLevel if the level has been left
 
-NextFrame is the whole of a frame's game logic: the level's moving objects,
-the kid (control, animation, falling, collisions, floor, plates, spikes,
-slicers, death), the opponent, sword contact, strength, and the change to
-another screen.  The same calls are made on the original code in the 6502
-simulator and on the C port, and after each one the whole tracked state, the
-sounds, the level changes, the redraw buffers and the calls out must agree.
-Everything persists from frame to frame.
+run on the original code in the 6502 simulator and, as pop_mainloop, on the
+C port.  After each pass the whole tracked state, the level changes, the
+redraw buffers and the calls out (with the sounds handed to playback) must
+agree.  Everything persists from frame to frame.
 
 A trace starts with INITIALGUARDS and FirstFrame, which enters the kid's
-screen (neighbouring screens, slicers, torches, the guard).
+screen (neighbouring screens, slicers, torches, the guard) and draws it.
 
-Not ported, and so supplied by the test on both sides: the joystick
-variables (in place of the input code, which is a hook), and the three
-things the drawing step does to the game's state: after a screen change it
-clears cutplan and sets CUTTIMER to 2 (drawbg, TOPCTRL.S 918-923), it counts
-`lightning` down (flashoff, 1000-1004), and it calls REFLECTION (through
-addchars, 747-760).  The clock is a hook.
+Stand-ins, the same on both sides: reading the keyboard (the test sets
+kbdX, kbdY and BTN0 where `strobe` would), drawing, playing sounds and
+songs, and the jumps out of the level (restart, next level, title
+sequence), at which a trace ends.
 
 Usage:
     trace_kidstep.py <pop_worldrun> <data dir> <original checkout> [traces] [seed]
@@ -45,11 +42,7 @@ sys.path.insert(0, HERE)
 import fuzz_control as fc  # noqa: E402
 from fuzz_control import BLUEPRINT, BUFFERS, BYTES, WORDS, CpuError  # noqa: E402
 
-FRAME = [("rnd", "GRAFIX", "RND"), ("misctimers", "TOPCTRL", "misctimers"),
-         ("nextframe", "TOPCTRL", "NextFrame"), ("reflection", "MISC", "REFLECTION"),
-         ("zerosound", "SPECIALK", "ZEROSOUND")]
 FRAMES_PER_TRACE = 60
-INPUT_VARS = ("JSTKX", "JSTKY", "btn", "clrF", "clrB", "clrU", "clrD", "clrbtn")
 FLOORS = (1, 2, 4, 6, 10, 11, 14, 15, 22)         # pieces to stand on at the start
 FLOOR_Y = (55, 118, 181)
 
@@ -81,18 +74,31 @@ class TraceHarness(fc.Harness):
         """Like step, for a place in the code that has no label."""
         return self.step(None, None, address=address)
 
+    def frame(self):
+        """One pass of MainLoop."""
+        return self.step(None, "MainLoop")
+
     def step(self, module, label, a=0, address=None):
         o = self.oracle
-        if label != "ZEROSOUND":                     # (the queue is what ZEROSOUND is for)
-            o.poke(self.soundtable, 0)
+        o.poke(self.soundtable, 0)
         self.hooks = []
         self.stray = False
+        self.left = False                            # the original jumped out of the level
+        self.played = ""
+        o.cpu.mem[0xC061] = o.peek(self.addr["BTN0"])        # the buttons themselves
+        o.cpu.mem[0xC062] = o.peek(self.addr["BTN1"])
         try:
-            if address is None:
+            if label == "MainLoop":                  # entered after its `jsr rnd`
+                o.call("RND", module="GRAFIX")
+                o.cpu.sp = 0xFF
+                o.cpu.call(self.mainloop + 3, 6_000_000)
+            elif address is None:
                 o.call(label, a, 0, 0, module=module, max_cycles=3_000_000)
             else:
                 o.cpu.sp = 0xFF
                 o.cpu.call(address, 3_000_000)
+        except fc.Left as jump:
+            self.left = bool(jump.args[0])           # not the loop's own way round
         except CpuError:
             return "error"
         if self.stray:
@@ -128,7 +134,8 @@ def start_state(rng, level, level_no):
                if level[2119 - 1 + sc] < 30 and level[2119 - 1 + sc] // 10 == r]
     scrn, row, col = rng.choice(guarded if guarded and rng.random() < 0.5 else spots)
     s = fc.fw.random_state(rng)
-    for n in fc.EXTRA + fc.COLL_VARS + fc.MOVER_VARS + fc.AUTO_VARS + fc.TOP_VARS:
+    for n in fc.EXTRA + fc.COLL_VARS + fc.MOVER_VARS + fc.AUTO_VARS + fc.TOP_VARS \
+            + fc.LOOP_VARS:
         s[n] = 0
     s.update(yellowflag=0x80, MinLeft=0xFF, SecLeft=0xFF, NextLevel=level_no)
     s["MaxKidStr"] = 3
@@ -150,11 +157,11 @@ def start_state(rng, level, level_no):
 
 
 def next_input(rng, held):
-    """Joystick state for one frame: mostly keep doing what was being done."""
+    """The keys held in one frame: mostly keep doing what was being done."""
     if held is None or rng.random() < 0.25:
-        held = {"JSTKX": rng.choice((0x00, 0xFF, 0xFF, 0xFF, 0x01)),
-                "JSTKY": rng.choice((0x00, 0x00, 0xFF, 0x01)),
-                "btn": rng.choice((0x00, 0x00, 0xFF))}
+        held = {"kbdX": rng.choice((0x00, 0xFF, 0xFF, 0xFF, 0x01)),
+                "kbdY": rng.choice((0x00, 0x00, 0xFF, 0x01)),
+                "BTN0": rng.choice((0x00, 0x00, 0xFF))}
     return held
 
 
@@ -178,7 +185,9 @@ def main(argv):
     sounds, busiest_list, falling_floors, level_changes = set(), 0, 0, 0
     guard_frames = fight_frames = strength_lost = 0
     counts = {"failures": 0, "compared": 0, "off_model": 0}
+    left_level = 0
     cut_at = {}
+    endings = {"A": 0, "L": 0, "W": 0, "R": 0, "?": 0}
 
     def flush():
         """Run the port on the traces gathered so far and compare.  Done in
@@ -266,44 +275,25 @@ def main(argv):
                    ("initialguards", "SUBS", "INITIALGUARDS", 0),   # as at level start
                    ("initcdbuf", "TOPCTRL", "initCDbuf", 0),
                    ("firstframe", "TOPCTRL", "FirstFrame", 0)]
-        held, prev, alive = None, {"JSTKX": 0, "JSTKY": 0, "btn": 0}, True
+        held = None
         for name, module, label, a in prelude:
             want = h.step(module, label, a)
             commands.append("R %s %d 0 0" % (name, a))
             expected.append((trace, -1, name, want))
         for frame in range(FRAMES_PER_TRACE):
+            if h.left or isinstance(want, str):
+                break
             held = next_input(rng, held)
-            # a direction or the button newly pressed sets its flag negative
-            # until the control code uses it (it stores 1)
-            flags = {n: h.oracle.peek(h.addr[n]) for n in ("clrF", "clrB", "clrU", "clrD", "clrbtn")}
-            for flag, var, value in (("clrF", "JSTKX", 0xFF), ("clrB", "JSTKX", 0x01),
-                                     ("clrU", "JSTKY", 0xFF), ("clrD", "JSTKY", 0x01),
-                                     ("clrbtn", "btn", 0xFF)):
-                if held[var] != value:
-                    flags[flag] = 0
-                elif prev[var] != value:
-                    flags[flag] = 0xFF
-            values = dict(held, ChgKidStr=0, ChgOppStr=0, **flags)
-            prev = held
-            if h.oracle.peek(h.addr["cutplan"]):             # the new screen has been drawn
-                values.update(cutplan=0, CUTTIMER=2)
-            if h.oracle.peek(h.addr["lightning"]):
-                values["lightning"] = h.oracle.peek(h.addr["lightning"]) - 1
-            h.set(values)
-            commands.append("S " + " ".join("%s=%d" % kv for kv in values.items()))
-            for name, module, label in FRAME:
-                want = h.step(module, label)
-                commands.append("R %s 0 0 0" % name)
-                expected.append((trace, frame, name, want))
-                if isinstance(want, str):
-                    alive = False
-                    break
-                if want["snd"] != "-":
-                    sounds.update(want["snd"][i:i + 2] for i in range(0, len(want["snd"]), 2))
-                level_changes += want["lvl"] != "-"
-            if not alive:
+            h.set(held)
+            commands.append("S " + " ".join("%s=%d" % kv for kv in held.items()))
+            want = h.frame()
+            commands.append("R mainloop 0 0 0")
+            expected.append((trace, frame, "mainloop", want))
+            if isinstance(want, str):
                 ended_early += 1
                 break
+            sounds.update(h.played[i:i + 2] for i in range(0, len(h.played), 2))
+            level_changes += want["lvl"] != "-"
             frames_run += 1
             seen_frames.add(want["vars"]["KidPosn"])
             seen_actions.add(want["vars"]["KidAction"])
@@ -312,6 +302,9 @@ def main(argv):
             fight_frames += want["vars"]["ShadSword"] == 2 and want["vars"]["ShadFace"] != 86
             strength_lost += want["vars"]["KidStrength"] < 3
             falling_floors += want["vars"]["nummob"] > 0
+            if h.left:                               # restart, next level or title sequence
+                left_level += 1
+                endings["".join(c for c in want["hooks"] if c in "ALWR")[-1:] or "?"] += 1
         if (trace + 1) % 20 == 0:
             flush()
     flush()
@@ -326,14 +319,17 @@ def main(argv):
     if (ended_early + off_model) * 4 > traces:
         print("too many traces cut short: %d of %d" % (ended_early + off_model, traces))
         return 1
-    print("%d traces, %d calls compared: C port and original code agree; "
+    print("%d traces, %d frames (%d calls) compared: C port and original code agree; "
           "%d distinct frames and actions %s seen; %d traces cut short "
           "(a read outside the modelled tables)"
-          % (traces, compared, len(seen_frames), sorted(seen_actions),
+          % (traces, frames_run, compared, len(seen_frames), sorted(seen_actions),
              ended_early + off_model))
-    print("   in the original's run: %d calls changed the level, sounds %s were queued, "
+    print("   in the original's run: %d frames changed the level, sounds %s were played, "
           "up to %d objects in transition at once, a floor was falling in %d frames"
           % (level_changes, sorted(int(x, 16) for x in sounds), busiest_list, falling_floors))
+    print("   %d traces ended by leaving the level (restart or next level %d, title "
+          "sequence %d, time up %d, won %d)"
+          % (left_level, endings["R"], endings["A"], endings["L"], endings["W"]))
     print("   an opponent was present in %d frames and en garde in %d; the kid was below "
           "full strength in %d" % (guard_frames, fight_frames, strength_lost))
     return 0

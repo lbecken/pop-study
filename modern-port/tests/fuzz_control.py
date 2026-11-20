@@ -70,7 +70,11 @@ AUTO_VARS = ["guardprog", "justblocked", "shadowaction", "PlayCount", "PreRecPtr
 # top-level variables (their own random stream)
 TOP_VARS = ["skipmessage", "cutplan", "cutorder", "message", "MinLeft", "SecLeft", "BTN0",
             "BTN1", "waitingtojump", "yellowflag", "scrnAboveL", "scrnAboveR", "SCRNUM"]
-BYTES = fw.BYTES + EXTRA + COLL_VARS + MOVER_VARS + AUTO_VARS + TOP_VARS
+# the loop around the frame (their own random stream).  FrameCountH is the
+# high byte of the 16-bit FrameCount.
+LOOP_VARS = ["keypress", "keydown", "kbdX", "kbdY", "joyX", "joyY", "joyon", "NextTimeMsg",
+             "soundon", "FrameCount", "FrameCountH"]
+BYTES = fw.BYTES + EXTRA + COLL_VARS + MOVER_VARS + AUTO_VARS + TOP_VARS + LOOP_VARS
 WORDS = fw.WORDS + ["FCharX"]
 CD_BUFFERS = (("CDthisframe", 16), ("CDlastframe", 16), ("CDbelow", 16), ("CDabove", 16))
 SN_BUFFERS = (("SNthisframe", 16), ("SNlastframe", 16), ("SNbelow", 16), ("SNabove", 10))
@@ -86,7 +90,7 @@ OTHER_REDRAW = (("fredbuf", 30), ("movebuf", 30), ("halfbuf", 30), ("floorbuf", 
 # original does not use ($9000) and in the runner
 SCRIPT_AT = 0x9000
 BUFFERS = BASE_BUFFERS + CD_BUFFERS + SN_BUFFERS + OTHER_REDRAW + TROB_LISTS + MOB_LISTS \
-    + (("script", 32),)
+    + (("script", 32), ("clrSEL", 5), ("clrDESEL", 5))
 DEAD_SEQS = []       # sequence addresses one frame before a "dead" frame; set by Harness
 STAND_SEQS = []      # the same for the standing frame
 FDY = {}             # Fdy of a few of the kid's frames; set by Harness
@@ -206,6 +210,27 @@ TOP = {
     "restartlevel": ("TOPCTRL", None, ""),
 }
 ROUTINES.update(TOP)
+LOOP = {
+    # the loop around the frame: input, clock, messages, songs, level change
+    "kread": ("SPECIALK", "KREAD", ""), "getselect": ("GRAFIX", "GETSELECT", ""),
+    "getdesel": ("GRAFIX", "GETDESEL", ""), "clrjstk": ("SPECIALK", "CLRJSTK", ""),
+    "saveselect": ("SPECIALK", "SAVESELECT", ""), "loadselect": ("SPECIALK", "LOADSELECT", ""),
+    "savedesel": ("SPECIALK", "SAVEDESEL", ""), "loaddesel": ("SPECIALK", "LOADDESEL", ""),
+    "initinput": ("SPECIALK", "INITINPUT", ""), "clearjoy": ("TOPCTRL", "clearjoy", ""),
+    "demokeys": ("SPECIALK", "DEMOKEYS", "a"),
+    "keeptime": ("SPECIALK", "KEEPTIME", ""), "getminleft": ("SPECIALK", "GETMINLEFT", ""),
+    "shortentime": ("SPECIALK", "SHORTENTIME", ""), "showtime": ("SUBS", "SHOWTIME", ""),
+    "dispmsg": ("TOPCTRL", "dispmsg", ""), "flashon": ("TOPCTRL", "flashon", ""),
+    "flashoff": ("TOPCTRL", "flashoff", ""), "songcues": ("TOPCTRL", "songcues", ""),
+    "frameadv": ("TOPCTRL", "FrameAdv", ""), "cleancut": ("TOPCTRL", "DoCleanCut", ""),
+    "zerored": ("GRAFIX", "ZERORED", ""), "initgame": ("TOPCTRL", "initgame", ""),
+    "startgame": ("TOPCTRL", "StartGame", ""),
+    "loadnextlevel": ("TOPCTRL", "LoadNextLevel", ""),
+    "loadnext1": ("TOPCTRL", "LoadNext1", ""),
+    # one pass of MainLoop: entered after its `jsr rnd`, left where it loops
+    "mainloop": ("TOPCTRL", None, ""),
+}
+ROUTINES.update(LOOP)
 FIGHT_FRAMES = (15, 150, 151, 152, 153, 154, 157, 158, 158, 161, 162, 165, 166, 167, 168, 169,
                 170, 171, 171)
 OTHER_FRAMES = (2, 3, 7, 9, 14, 15, 33, 34, 40, 43, 44, 101, 102, 110, 117, 118, 126, 127, 132,
@@ -1109,6 +1134,181 @@ def top_state(rng, s, pokes, bufs, routine):
                 pokes[720 + at] = rng.choice((1, 2)) if kind == 4 else rng.randrange(8)
 
 
+def timetable(i):
+    """Frame count at which time message i falls due (SPECIALK.S 1234-1253)."""
+    left = (60, 55, 50, 45, 40, 35, 30, 25, 20, 15, 10, 5, 4, 3, 2)
+    return ((60 - left[i]) * 725 if i < 15 else
+            59 * 725 + 1 if i == 15 else 60 * 725 + 5 if i == 16 else 65535)
+
+
+# frame counts at which the clock's answers change, and their neighbours
+TIME_EDGES = sorted({v for v in
+                     [0, 1, 2, 65534, 65535]
+                     + [timetable(i) + d for i in range(17) for d in (-1, 0, 1)]
+                     + [725 * k + d for k in (1, 2, 30, 57, 58, 59, 60, 61) for d in (-1, 0, 1)]
+                     + [42775 + 12 * k + d for k in (0, 1, 2, 30, 58, 59, 60, 61) for d in (0, 1)]
+                     + [0x0F00, 0x0F28, 0x0F29, 0x1000, 0xA7FF, 0xA800, 0xAA00]
+                     if 0 <= v <= 65535})
+KEYS = (0xEA, 0xEB, 0xEC, 0xF5, 0xE9, 0xEF, 0xCA, 0xCB, 0xCC, 0xD5, 0xC9, 0xCF, 0xA0, 0x9B, 0x93,
+        0xE8, 0xED)
+
+
+def loop_state(rng, s, pokes, bufs, routine):
+    """The input devices, the clock and the messages; for the routines of
+    the loop around the frame, the situations they exist for."""
+    s["keypress"] = rng.choice((0, 0, 0xEA, 0x6A, 0xEC, 0xA0, 0x9B, 0x93, rng.randrange(256)))
+    s["keydown"] = rng.choice((0, 0x80))
+    for n in ("kbdX", "kbdY", "joyX", "joyY"):
+        s[n] = rng.choice((0, 0, 1, 0xFF))
+    s["joyon"] = rng.choice((0, 0, 0, 0xFF))
+    s["NextTimeMsg"] = 2 * rng.randrange(19)
+    s["soundon"] = rng.choice((0, 1))
+    count = rng.choice(TIME_EDGES) if rng.random() < 0.7 else rng.randrange(65536)
+    for name in ("clrSEL", "clrDESEL"):
+        bufs[name] = bytes(rng.choice((0, 0, 1, 0xFF)) for _ in range(5))
+    r = rng.random()
+
+    if routine not in LOOP or routine == "mainloop":
+        # The control routines now read the device themselves.  The device a
+        # character is played with gets the stick and the press flags its
+        # case was made with; the other device gets something else.  The kid
+        # is played with the selected device, an opponent played by hand
+        # with the other one.  (The top-level routines keep the buttons
+        # their cases chose.)
+        opponent = routine in ("shadctrl", "doshad")
+        joystick = bool(s["joyon"]) != opponent
+        mine, other = (("joy", "kbd") if joystick else ("kbd", "joy"))
+        s[mine + "X"], s[mine + "Y"] = s["JSTKX"], s["JSTKY"]
+        s[other + "X"], s[other + "Y"] = rng.choice((0, 0, 1, 0xFF)), rng.choice((0, 0, 1, 0xFF))
+        if routine not in TOP and routine != "mainloop":
+            s["BTN0"], s["BTN1"] = s["btn"], rng.choice((0, 0, s["btn"]))
+        flags = bytes(s[n] for n in ("clrF", "clrB", "clrU", "clrD", "clrbtn"))
+        stray = bytes(rng.choice((0, 0, 1, 0xFF)) for _ in range(5))
+        bufs["clrDESEL" if opponent else "clrSEL"] = flags
+        bufs["clrSEL" if opponent else "clrDESEL"] = stray
+        if routine in ("playerctrl", "ctrlplayer", "dokid", "nextframe", "mainloop") \
+                and rng.random() < 0.3:
+            # what the opponent's turn left in the flags is not the kid's business
+            for n in ("clrF", "clrB", "clrU", "clrD", "clrbtn"):
+                s[n] = rng.choice((0, 1, 0xFF))
+        count = rng.choice((count, 100, 100, 100))           # mostly far from any message
+        if routine in ("nextframe", "mainloop") and rng.random() < 0.8:
+            s["NextTimeMsg"] = 2 * sum(timetable(i) <= count for i in range(18))
+    if routine in ("playerctrl", "ctrlplayer") and r < 0.07:
+        # the demo's script reaches its "end of demo" command (frame 233)
+        s.update(level=0, milestone=0, CharSword=0, CharID=0, PreRecPtr=48,
+                 PlayCount=rng.choice((233, 240)))
+        if routine == "ctrlplayer" and rng.random() < 0.6:   # ... with the kid lying dead
+            s.update(CharLife=rng.choice((0, 2, 4)), CharPosn=185, KidLife=0, KidPosn=185)
+        else:
+            s.update(CharLife=0xFF, CharPosn=15, CharAction=0, JSTKX=0xFF, clrF=0xFF,
+                     kbdX=0xFF, joyX=0xFF, stunned=0, KidStrength=3)
+            bufs["clrSEL"] = bytes([0xFF, 0, 0, 0, 0])
+    if routine == "kread":
+        key = rng.choice(KEYS)
+        s["keypress"] = rng.choice((key, key, key & 0x7F, 0))
+    if routine in ("getselect", "getdesel"):
+        s.update(BTN0=rng.choice((0, 0x80)), BTN1=rng.choice((0, 0x80)),
+                 ManCtrl=rng.choice((0, 0, 0xFF, 1)))
+    if routine == "clrjstk":
+        for n in ("clrF", "clrB", "clrU", "clrD", "clrbtn"):
+            s[n] = rng.choice((0, 0, 1, 0xFF))
+        s.update(JSTKX=rng.choice((0, 1, 0xFF, 2)), JSTKY=rng.choice((0, 1, 0xFF, 0x80)),
+                 btn=rng.choice((0, 0x80, 0xFF, 1)))
+    if routine == "demokeys":
+        s.update(level=rng.choice((0, 0, 0, 1)), BTN0=rng.choice((0, 0, 0, 0x80)),
+                 BTN1=rng.choice((0, 0, 0, 0xFF)),
+                 keypress=rng.choice((0, 0x20, 0xA0, 0x9B, 0x93, 0x1B, 0xEA)))
+    if routine in ("getminleft", "keeptime", "showtime", "shortentime"):
+        s.update(level=rng.choice((1, 1, 1, 5, 0, 13, 14)),
+                 KidLife=rng.choice((0xFF,) * 6 + (0, 3)),
+                 timerequest=rng.choice((0, 1, 2, 2, 3, 4)), msgtimer=rng.choice((0, 0, 0, 1, 5)),
+                 message=rng.choice((0, 1, 2, 3, 3)))
+        due = sum(timetable(i) <= count for i in range(18))  # messages already due
+        s["NextTimeMsg"] = 2 * rng.choice((due, max(due - 1, 0), max(due - 1, 0),
+                                           min(due + 1, 18), rng.randrange(19)))
+    if routine == "keeptime" and r < 0.5:                    # just before a message falls due
+        i = rng.randrange(17)
+        count = max(0, timetable(i) + rng.choice((-2, -1, -1, 0, 1)))
+        s.update(NextTimeMsg=2 * i, msgtimer=rng.choice((0, 0, 0, 3)), level=1, KidLife=0xFF)
+    if routine == "shortentime":
+        s["NextTimeMsg"] = 2 * rng.choice((0, 5, 8, 9, 10, 11, 17, 18))
+    if routine == "dispmsg" or (routine in ("frameadv", "cleancut", "mainloop") and r < 0.4):
+        s.update(msgtimer=rng.choice((0, 1, 2, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 88,
+                                      89, 90, 91, 92, 93, 94, 95, 96, 255)),
+                 KidLife=rng.choice((0xFF, 0xFF, 0xFF, 0, 2, 4)), message=rng.choice((0, 1, 2, 3)))
+    if routine in ("flashon", "flashoff") or (routine == "mainloop" and 0.4 <= r < 0.5):
+        s.update(lightning=rng.choice((0, 0, 1, 2, 3, 0x80, 0x90, 0xFF)),
+                 lightcolor=rng.choice((0, 0xFF, 0x11, 5)),
+                 ChgKidStr=rng.choice((0, 0, 0xFF, 0xFE, 1)))
+    if routine == "songcues":
+        lvl = rng.choice((0, 1, 1, 1, 1, 4))
+        s.update(level=lvl, NextLevel=rng.choice((lvl, lvl, lvl + 1)),
+                 SongCue=rng.choice((0, 1, 1, 1, 7)), SongCount=rng.choice((0, 1, 5, 5, 5)),
+                 KidPosn=rng.choice((0, 0, 15, 15, 15, 109, 185, 9)),
+                 ShadFace=rng.choice((86, 86, 0, 0xFF)), ShadPosn=rng.choice((15, 15, 171, 150)),
+                 VisScrn=rng.randint(1, 24), trobcount=rng.choice((0,) * 6 + (1,)),
+                 nummob=rng.choice((0,) * 6 + (1,)), lightning=rng.choice((0,) * 6 + (1,)),
+                 mergetimer=rng.choice((0, 0, 0, 0, 5, 0xFF)),
+                 ChgKidStr=rng.choice((0,) * 5 + (0xFF,)), ChgOppStr=rng.choice((0,) * 5 + (0xFF,)))
+        s["ShadScrn"] = rng.choice((s["VisScrn"], s["VisScrn"], 0))
+    if routine in ("frameadv", "cleancut"):
+        scrn = rng.randint(1, 24)
+        s.update(cutplan=rng.choice((0, 1)), redrawflg=rng.choice((0, 0, 1, 2)), VisScrn=scrn,
+                 KidScrn=rng.choice((scrn, scrn, 0)), ChgKidStr=rng.choice((0, 0, 0xFF, 1)),
+                 ChgOppStr=rng.choice((0, 0, 0xFF, 1)))
+    if routine in ("loadnextlevel", "loadnext1"):
+        lvl = rng.choice((1, 3, 5, 7, 8, 11, 12, 13, 14, rng.randrange(15)))
+        s.update(level=lvl, MaxKidStr=rng.randint(3, 10), milestone=rng.choice((0, 1)),
+                 timerequest=0,
+                 NextLevel=rng.choice((lvl + 1, lvl + 1, lvl + 1, 0, 15, 14, 2, 4, 6, 8, 9, 12,
+                                       200)))
+    if routine == "startgame":
+        s["_a_only"] = rng.choice((0, 1, 1, 4))
+    if routine == "mainloop":
+        if 0.5 <= r < 0.58:                                  # a key during the demo
+            s.update(level=0, keypress=rng.choice((0xA0, 0xEA, 0x9B, 0x20)))
+        elif 0.58 <= r < 0.68:                               # the level has been left
+            lvl = rng.choice((1, 3, 5, 7, 8, 11, 13))
+            s.update(level=lvl, NextLevel=lvl + 1, KidLife=0xFF, MaxKidStr=rng.randint(3, 10))
+        elif 0.68 <= r < 0.8:                                # a song is waiting
+            s.update(SongCue=rng.choice((1, 7)), SongCount=rng.choice((0, 5, 5)),
+                     level=rng.choice((1, 1, 0)))
+        elif 0.8 <= r < 0.9:                                 # ... and all is quiet
+            sc, by, bx = rng.randint(1, 24), rng.randint(0, 2), rng.randint(1, 8)
+            pokes[(sc - 1) * 30 + by * 10 + bx] = 1          # floor to stand on
+            for rec in ("Char", "Kid"):
+                s.update({rec + "Scrn": sc, rec + "BlockY": by, rec + "BlockX": bx,
+                          rec + "Y": (55, 118, 181)[by], rec + "Life": 0xFF, rec + "ID": 0,
+                          rec + "Posn": 15, rec + "Action": 0, rec + "X": 58 + 14 * bx + 14,
+                          rec + "Face": rng.choice((0, 0xFF)), rec + "Sword": 0,
+                          rec + "XVel": 0, rec + "YVel": 0})
+            s.update(level=1, NextLevel=1, cutscrn=sc, VisScrn=sc, KidStrength=3, stunned=0,
+                     weightless=0, invert=0, BlockYthis=by, BlockYlast=by, ShadFace=86,
+                     numtrans=0, nummob=0, mergetimer=0, exitopen=0, ChgKidStr=0, ChgOppStr=0,
+                     lightning=rng.choice((0, 0, 1, 1)), lightcolor=0xFF, CUTTIMER=0,
+                     SongCue=rng.choice((1, 7)), SongCount=5, msgtimer=0, timerequest=0,
+                     kbdX=0, kbdY=0, joyX=0, joyY=0, BTN0=0, BTN1=0, keypress=0)
+            bufs["clrSEL"] = bytes(5)
+            if STAND_SEQS:
+                s["CharSeq"] = s["KidSeq"] = STAND_SEQS[0]
+            for name, _ in CD_BUFFERS:
+                bufs[name] = bytes([0x0F] * 16)
+        elif 0.9 <= r < 0.96:                                # level 8: the mouse is due
+            s.update(level=8, NextLevel=8, CharScrn=16, KidScrn=16, VisScrn=16, cutscrn=16,
+                     exitopen=rng.choice((149, 150, 150)), ShadFace=86, KidLife=0xFF)
+    if routine in ("nextframe", "mainloop"):
+        if rng.random() < 0.5:
+            s["timerequest"] = 0                             # the time is not recomputed
+        if rng.random() < 0.1:                               # the hour is over
+            count = rng.choice((43501, 43505, 43600, 60000))
+            s.update(NextTimeMsg=rng.choice((32, 34)), timerequest=rng.choice((0, 0, 2, 3)),
+                     msgtimer=0, level=rng.choice((5, 12, 13, 13, 13, 14)),
+                     exitopen=rng.choice((0, 0, 1)), MinLeft=rng.choice((0, 0, 1)),
+                     SecLeft=0, KidLife=0xFF)
+    s["FrameCount"], s["FrameCountH"] = count & 0xFF, count >> 8
+
+
 def random_args(rng, routine, s):
     a, x, y = rng.randrange(256), rng.randrange(256), rng.randrange(30)
     if routine in ("checkledge", "pickitup"):
@@ -1122,10 +1322,16 @@ def random_args(rng, routine, s):
     return a, x, y
 
 
+class Left(Exception):
+    """Raised by a trap where the original jumps out of the level."""
+
+
 class Harness:
     def __init__(self, source):
         self.oracle = Oracle(source)
-        self.addr = {n: self.oracle.addr(n, IN_MODULE.get(n)) for n in BYTES + WORDS}
+        self.addr = {n: self.oracle.addr(n, IN_MODULE.get(n)) for n in BYTES + WORDS
+                     if n != "FrameCountH"}
+        self.addr["FrameCountH"] = self.addr["FrameCount"] + 1
         self.bufaddr = {n: SCRIPT_AT if n == "script" else self.oracle.addr(n)
                         for n, _ in BUFFERS}
         self.soundtable = self.oracle.addr("soundtable")
@@ -1136,10 +1342,6 @@ class Harness:
         cpu.traps[self.oracle.addr("dimchar")] = self.trap_dimchar
         cpu.traps[self.oracle.addr("inverty")] = lambda c: self.hooks.append("v")
         cpu.traps[self.oracle.addr("addreflobj")] = lambda c: self.hooks.append("r")
-        cpu.traps[self.oracle.addr("attractmode")] = lambda c: self.hooks.append("a")
-        cpu.traps[self.oracle.addr("LoadDesel")] = lambda c: self.hooks.append("e")
-        cpu.traps[self.oracle.addr("getdesel")] = lambda c: None
-        cpu.traps[self.oracle.addr("SaveDesel")] = lambda c: self.hooks.append("f")
         self.shadprog5 = self.oracle.addr("ShadProg5", "AUTO")
         if not DEAD_SEQS:                            # where a corpse's sequence stands
             o = self.oracle
@@ -1167,20 +1369,54 @@ class Harness:
                 FDY[posn] = o.peek("Fdy")
             o.reset()
         cpu.on_read[0xC030] = lambda c: self.hooks.append("k")      # the speaker
-        # PLAYERCTRL's input step (LoadSelect, getselect, clrjstk), SaveSelect
-        # and the demo's own control: one mark each, nothing done
-        cpu.traps[self.oracle.addr("LoadSelect")] = lambda c: self.hooks.append("i")
-        cpu.traps[self.oracle.addr("getselect")] = lambda c: None
-        cpu.traps[self.oracle.addr("clrjstk")] = lambda c: None
-        cpu.traps[self.oracle.addr("SaveSelect")] = lambda c: self.hooks.append("o")
-        for label, mark in (("GOATTRACT", "A"), ("YouLose", "L"), ("YouWin", "W"),
-                            ("LoadNext1", "N"), ("RESTART", "R"), ("DoCleanCut", "C")):
-            cpu.traps[self.oracle.addr(label, "TOPCTRL")] = \
-                lambda c, mark=mark: self.hooks.append(mark)
-        for name, mark in (("keeptime", "t"), ("showtime", "T"), ("initinput", "I"),
-                           ("zeropeels", "z")):
-            cpu.traps[self.oracle.addr(name)] = lambda c, mark=mark: self.hooks.append(mark)
-        cpu.traps[self.oracle.addr("MainLoop", "TOPCTRL")] = lambda c: None
+        o = self.oracle
+
+        def mark(text):
+            return lambda c: self.hooks.append(text)
+
+        def leave(text):
+            # a jump out of the level: the frame it came from is never
+            # finished, so the run stops here (docs/port/game-loop.md)
+            def trap(c):
+                if text:
+                    self.hooks.append(text)
+                raise Left(text)                     # ("" for MainLoop: the pass is over)
+            return trap
+        cpu.traps[o.addr("attractmode")] = leave("a")
+        for label, text in (("GOATTRACT", "A"), ("YouLose", "L"), ("YouWin", "W"),
+                            ("RESTART", "R"), ("MainLoop", "")):
+            cpu.traps[o.addr(label, "TOPCTRL")] = leave(text)
+        # drawing, sound and the devices: a mark each, or nothing
+        for name, text in (("zeropeels", "z"), ("sure", "S"), ("fast", "Q"), ("PageFlip", "P"),
+                           ("continuemsg", "c"), ("printlevel", "l"), ("timeleftmsg", "m"),
+                           ("gtone", "g"), ("doflashoff", "f"), ("playback", "p"),
+                           ("strobe", "s"), ("yellow", "y")):
+            cpu.traps[o.addr(name)] = mark(text)
+        for name in ("lrcls", "lrclse", "vblank", "copyscrn", "drawall", "zerolsts", "addmobs",
+                     "setupcomix", "setupsword", "fastspeed", "normspeed", "burn", "musickeys",
+                     "listtorches", "cutprincess", "setrecheck0"):
+            cpu.traps[o.addr(name)] = lambda c: None
+        for label in ("setupkid", "setupshad", "flipdisk"):
+            cpu.traps[o.addr(label, "TOPCTRL")] = lambda c: None
+        cpu.traps[o.addr("doflashon")] = lambda c: self.hooks.append("F%02x" % c.a)
+        cpu.traps[o.addr("minit")] = lambda c: self.hooks.append("M%02x" % c.a)
+        cpu.traps[o.addr("playcut")] = lambda c: self.hooks.append("x%d" % c.a)
+
+        def song_over(c):                            # mplay: 0 = the song has ended
+            c.a = 0
+        cpu.traps[o.addr("mplay")] = song_over
+
+        def disk_ok(c):                              # recheckyel: Z set = no disk error
+            c.p |= 0x02
+        cpu.traps[o.addr("recheckyel")] = disk_ok
+        self.mainloop = o.addr("MainLoop", "TOPCTRL")
+        self.played = ""
+
+        def playback(c):                             # the frame's sounds, as they are played
+            count = o.peek(self.soundtable)
+            self.played = bytes(o.peek(self.soundtable + 1, count)).hex() if count else ""
+            self.hooks.append("p" + self.played + ".")
+        cpu.traps[o.addr("playback")] = playback
         # RESTART has no label after its disk load: find its `jsr setinitials`
         top = self.oracle.modules["TOPCTRL"]
         target = self.oracle.addr("setinitials")
@@ -1230,8 +1466,16 @@ class Harness:
                 a, x = self.shadprog5 & 0xFF, self.shadprog5 >> 8
             elif routine == "playscript":
                 a, x = SCRIPT_AT & 0xFF, SCRIPT_AT >> 8
+            # DEMOKEYS reads the buttons themselves, not the copies in BTN0/1
+            o.cpu.mem[0xC061] = o.peek(self.addr["BTN0"])
+            o.cpu.mem[0xC062] = o.peek(self.addr["BTN1"])
             try:
-                if routine == "restartlevel":
+                if routine == "mainloop":
+                    o.call("RND", module="GRAFIX")
+                    o.cpu.a, o.cpu.x, o.cpu.y, o.cpu.sp = 0, 0, 0, 0xFF
+                    o.cpu.call(self.mainloop + 3, 6_000_000)
+                    ra, rx, ry, rp = o.cpu.a, o.cpu.x, o.cpu.y, o.cpu.p
+                elif routine == "restartlevel":
                     if a & 1:                        # a sound queued before the restart
                         o.poke(self.soundtable, 1)
                         o.poke(self.soundtable + 1, 5)
@@ -1241,6 +1485,8 @@ class Harness:
                 else:
                     ra, rx, ry, rp = o.call(label, a, x, y, module=module,
                                             max_cycles=3_000_000)
+            except Left:
+                ra, rx, ry, rp = o.cpu.a, o.cpu.x, o.cpu.y, o.cpu.p
             except CpuError:
                 return "error"                       # ran into data or never returned
             if self.stray:
@@ -1279,9 +1525,11 @@ def main(argv):
         only = list(AUTO)
     elif only == ["@top"]:
         only = list(TOP)
+    elif only == ["@loop"]:
+        only = list(LOOP)
     elif only == ["@control"]:
         only = [n for n in ROUTINES if n not in COLLISION and n not in MOVER and n not in AUTO
-                and n not in TOP]
+                and n not in TOP and n not in LOOP]
 
     h = Harness(source)
     levels = []
@@ -1302,16 +1550,20 @@ def main(argv):
             # each case has its own random stream, so that changing how one
             # routine's cases are made leaves the others' cases as they were
             rng = random.Random("%d/%d/%s" % (seed, round_no, routine))
-            s, pokes, bufs = random_state(rng, level, routine)
+            # a pass of the main loop gets the situations of a frame
+            like = "nextframe" if routine == "mainloop" else routine
+            s, pokes, bufs = random_state(rng, level, like)
             collision_state(random.Random("%d/%d/%s/coll" % (seed, round_no, routine)),
-                            s, pokes, bufs, routine)
+                            s, pokes, bufs, like)
             mover_state(random.Random("%d/%d/%s/mover" % (seed, round_no, routine)),
-                        s, pokes, bufs, routine)
+                        s, pokes, bufs, like)
             pokes = {i: v for i, v in pokes.items() if 0 <= i < len(level)}
             auto_state(random.Random("%d/%d/%s/auto" % (seed, round_no, routine)),
-                       s, pokes, bufs, routine)
+                       s, pokes, bufs, like)
             top_state(random.Random("%d/%d/%s/top" % (seed, round_no, routine)),
-                      s, pokes, bufs, routine)
+                      s, pokes, bufs, like)
+            loop_state(random.Random("%d/%d/%s/loop" % (seed, round_no, routine)),
+                       s, pokes, bufs, routine)
             if s.pop("_fresh", 0):                           # a level as it is on disk
                 fresh = random.Random("%d/%d/%s/level" % (seed, round_no, routine))
                 number = s["level"] if s["level"] < 15 else fresh.randrange(15)
@@ -1338,7 +1590,7 @@ def main(argv):
                                "decstr", "getopdist", "clrall", "facejstk") \
                     and (routine not in MOVER or routine in ("checkpress", "shakeloose",
                                                              "addslicers")) \
-                    and routine not in AUTO and routine not in TOP \
+                    and routine not in AUTO and routine not in TOP and routine not in LOOP \
                     and not noreread and rng.random() < 0.8:
                 steps.insert(0, ("rereadblocks", 0, 0, 0))   # a consistent CharBlockX
             if routine == "getedges":

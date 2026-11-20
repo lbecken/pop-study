@@ -18,11 +18,13 @@ checkout of the original source and is never stored in this repository.
 | Sound-effect queue (`ADDSOUND`, `ZEROSOUND`, play order) | ported, tested |
 | Sound-effect rendering (speaker flip list to PCM) | written, tested against the Python renderer; no output device yet |
 | A whole frame (`NextFrame`, `DoKid`), the kid's death, entering a screen, the start of a level, the demo's player (`TOPCTRL.S`, `SUBS.S`) | ported; same, plus a replay of the whole demo level against the original |
-| Input devices, the clock and messages, song cues, drawing, SDL3 shell | not started (hooks) |
+| The loop around the frame: input-device state and press flags, the clock and its messages, song cues, flashes, `MainLoop`, the next level (`TOPCTRL.S`, `SPECIALK.S`, `SUBS.S`) | ported; same. `pop_mainloop` is one complete frame |
+| Drawing, reading keys and joystick, sound output, music, SDL3 shell | not started (hooks) |
 
 There is no runnable game yet and no SDL3 dependency yet. The nearest thing
 is `tests/replay_demo.py`, which plays the original's demo level in the port,
-frame by frame, next to the original code in a 6502 simulator.
+one `pop_mainloop` call per frame, next to the original's `MainLoop` in a 6502
+simulator.
 See `../docs/port/` for per-subsystem notes and `../docs/milestones.md` for the plan.
 
 ## Layout
@@ -70,6 +72,6 @@ Options: `-DPOP_WERROR=ON` (warnings as errors), `-DPOP_SANITIZE=ON`
 
 | Platform | Compiler | Result |
 | --- | --- | --- |
-| Linux x86-64 (Ubuntu 24.04) | GCC 13.3, with `-Werror` and ASan/UBSan | all 18 tests pass |
-| Linux x86-64 (Ubuntu 24.04) | Clang 18.1, with `-Werror`; unit test programs also run under valgrind with no errors | all 18 tests pass |
+| Linux x86-64 (Ubuntu 24.04) | GCC 13.3, with `-Werror` and ASan/UBSan | all 19 tests pass |
+| Linux x86-64 (Ubuntu 24.04) | Clang 18.1, with `-Werror`; unit test programs also run under valgrind with no errors | all 19 tests pass |
 | macOS, Windows | – | **not tested**. The code is plain C17 with no platform calls, and the CMake file has an MSVC branch, but neither has been built. |

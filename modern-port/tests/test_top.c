@@ -85,11 +85,13 @@ static void test_death(void)
     pop_ctrlplayer(&g);                            /* then "Press button to continue" */
     CHECK_EQ(g.message, POP_MSG_CONT);
     CHECK_EQ(g.msgtimer, 255);
-    CHECK(hooklog[0] == 'i' && strchr(hooklog, 'R') == NULL);
+    CHECK(strchr(hooklog, 'R') == NULL);
+    CHECK_EQ(g.leave, POP_LEAVE_NONE);
     g.BTN1 = 0xFF;
     nhooks = 0;
     pop_ctrlplayer(&g);
     CHECK(strchr(hooklog, 'R') != NULL);           /* button: the level starts again */
+    CHECK_EQ(g.leave, POP_LEAVE_RESTART);
 
     dead_kid();                                    /* the message ran out: game over */
     g.ch.life = POP_DEADENOUGH;
@@ -168,11 +170,12 @@ static void test_level_start(void)
     CHECK_EQ(g.gotsword, 1);
     CHECK_EQ(g.SongCue, 0);
     CHECK_EQ(g.message, POP_MSG_LEVEL);
-    CHECK_EQ(g.msgtimer, POP_LEVELTIMER);
+    CHECK_EQ(g.msgtimer, POP_LEVELTIMER - 1);      /* (the first frame has been drawn) */
 
     CHECK_EQ(g.VisScrn, 1);                        /* FirstFrame entered his screen */
-    CHECK_EQ(g.cutplan, 1);
-    CHECK(strchr(hooklog, 'C') != NULL);
+    CHECK_EQ(g.cutplan, 0);                        /* and drew it whole */
+    CHECK_EQ(g.CUTTIMER, 2);
+    CHECK(strcmp(hooklog, "zSzQP") == 0);
     CHECK_EQ(g.shad.id, 2);                        /* with its guard */
     CHECK_EQ(g.shad.x, 86 + 14);
     CHECK_EQ(g.shad.posn, POP_SQ_ALERTSTAND);
@@ -250,7 +253,10 @@ static void test_frame(void)
     pop_nextframe(&g);
     CHECK_EQ(g.NextLevel, 13);
     CHECK_EQ(g.skipmessage, 1);
-    CHECK(strchr(hooklog, 'N') != NULL);
+    CHECK_EQ(g.level, 13);                         /* straight on, with no time message */
+    CHECK_EQ(g.timerequest, 0);
+    CHECK_EQ(g.leave, POP_LEAVE_RESTART);
+    CHECK(strcmp(hooklog, "R") == 0);
 
     setup(3, POP_FACE_LEFT);                       /* the demo: guard dead, the kid runs off */
     g.level = 0;

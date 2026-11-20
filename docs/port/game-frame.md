@@ -13,9 +13,8 @@ the original repository at commit `25243550` unless another file is named.
 Everything in sections 1–8 is **confirmed** by reading the source and by
 running the original code (section 10) unless marked otherwise.
 
-Not in this part: the input devices, the clock and the messages, the songs'
-cue logic, and drawing. Where the frame needs them the port calls a hook
-(section 9).
+The loop around the frame (input devices, the clock and the messages, song
+cues, the game state changed by drawing, the next level) is game-loop.md.
 
 ## 1. Routines
 
@@ -152,9 +151,9 @@ runs `PlayerCtrl`. While `CharLife` is negative he is alive. After death:
    title sequence). A button (`BTN0` or `BTN1`, read directly) restarts the
    level: `RESTART`.
 
-At the fixed 11 frames per second of design default D2 the 255 frames are
-about 23 seconds (inferred from the frame rate; the timer itself is counted
-down by the message code, which is part 2 of this milestone).
+The timer is counted down by `dispmsg`, once per frame drawn (game-loop.md
+§4). At the "approx. 11 fps" the source states (`SPECIALK.S:69`) the 255
+frames are about 23 seconds (**inferred**; real frame timing is unknown T1).
 
 ## 5. Entering a screen
 
@@ -184,7 +183,8 @@ Three pieces of game state are changed by the *drawing* code, not by
 | `flashoff` 1000-1003, after the frame is shown | `lightning` counts down |
 | `addchars` 747-760, in `DoFast` | `REFLECTION` (`MISC.S:486-582`): the mirror image on level 4, and through it `CreateShad`, the birth of the shadow |
 
-The port's tests (section 10) do exactly these three things between frames.
+All three are in the port since part 2 (`pop_frameadv`, `pop_flashoff`;
+game-loop.md §6).
 
 ## 6. A level begins
 
@@ -302,25 +302,25 @@ time and is not in this repository (design default D1).
 
 ## 9. What is a hook
 
-The frame calls out of the modelled game state in these places. Each is a
+The frame leaves the modelled game state in these places (the loop around
+it adds drawing, sound and the input devices: game-loop.md). Each is a
 function pointer in `pop_game_hooks`; a null pointer is "do nothing".
 
 | Hook | Original | Meaning |
 | --- | --- | --- |
-| `go_attract` | `GOATTRACT` | Back to the title sequence |
+| `go_attract`, `attract_mode` | `GOATTRACT`, `attractmode` | Back to the title sequence |
 | `you_lose`, `you_win` | `YouLose`, `YouWin` | The two endings |
-| `load_next` | `LoadNext1` | Load level `NextLevel` |
-| `restart` | `RESTART` | Start the level again |
-| `clean_cut` | `DoCleanCut` | Draw the whole screen |
-| `keep_time`, `show_time` | `keeptime`, `showtime` | The clock (part 2) |
-| `init_input`, `zero_peels` | `initinput`, `zeropeels` | Input and drawing resets |
+| `restart` | `RESTART` | Load `level` and start it (again, or after `LoadNext1` the next one) |
 | `invert_y` | `inverty` | Turn the display upside down / back |
-| `get_input`, `save_input` … | (player-control.md) | The joystick |
+| `zero_peels` | `zeropeels` | Forget what was drawn |
 
-In the original the first five never return to their caller: they are jumps
-that abandon the frame and reset the stack. The port calls the hook and
-returns from the routine at once, so the caller of `pop_nextframe` must
-check what the hook recorded before going on.
+The first five are jumps in the original: the frame they are reached from
+is abandoned and the stack reset. The port sets `g->leave`, calls the hook,
+and every caller returns at once (game-loop.md §8), so nothing after such a
+jump is executed in the port either.
+
+Until part 2 of this milestone the clock, the input step and `LoadNext1`
+were hooks as well; they are now ported (`pop_loop.c`).
 
 ## 10. Checks
 
@@ -332,8 +332,8 @@ an Apple II or an emulator.
 | --- | --- |
 | `tests/test_top.c` (`top_unit`) | 90 hand-worked checks on synthetic data; no original data needed |
 | `tests/fuzz_control.py … @top` | Each of the 18 routines on random states: all variables, the level, sounds, buffers, and the list of hooks called |
-| `tests/trace_kidstep.py` | Random play: after the original's own level start, `rnd; misctimers; NextFrame; REFLECTION; zerosound` per frame with random joystick input, compared after every call |
-| `tests/replay_demo.py` | The original's demo from level start to `GOATTRACT`, compared after every call |
+| `tests/trace_kidstep.py` | Random play: `FirstFrame`, then whole passes of `MainLoop` with random keyboard input, compared after every pass |
+| `tests/replay_demo.py` | The original's demo from `StartGame` to `GOATTRACT`, one `MainLoop` pass at a time, compared after every pass |
 | `tests/mutation_check.py` | 89 deliberate one-token errors in `pop_top.c` must be noticed by the random-state comparison (88 are; the remaining one is hidden by the comparison's rule for unmodelled memory and is checked against the unit test, see verification.md) |
 
 Recorded results are in verification.md.

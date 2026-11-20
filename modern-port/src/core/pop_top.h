@@ -20,10 +20,11 @@
  *   CTRLSUBS.S  GETSCRNS 284-318
  *   FRAMEADV.S  GETINITOBJ 2217-2249
  *
- * Where the original jumps out of the level (to the title sequence, the
- * next level, a restart, the win and lose scenes) the port calls a hook and
- * returns.  The clock (keeptime, showtime), drawing and the input devices
- * are hooks too.
+ * Where the original jumps out of the level (to the title sequence, a
+ * restart, the win and lose scenes) the port sets pop_game.leave, calls a
+ * hook, and every routine above returns at once.  The clock, the input
+ * devices' state and the step to the next level are in pop_loop.c; drawing
+ * is a hook.
  *
  * See docs/port/game-frame.md.
  */

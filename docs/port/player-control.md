@@ -18,7 +18,7 @@ means it starts an animation sequence with `jumpseq`.
 
 | Original | C | What it decides |
 | --- | --- | --- |
-| `PLAYERCTRL` 554-582 | `pop_playerctrl` | Kid's control step: dies if `KidStrength` is 0, counts `stunned` down, then reads input (hook) and calls `UserCtrl`; on level 0 calls `DemoCtrl` (hook) and `GenCtrl` |
+| `PLAYERCTRL` 554-582 | `pop_playerctrl` | Kid's control step: dies if `KidStrength` is 0, counts `stunned` down, then reads the selected input device (`LoadSelect`, `getselect`, `clrjstk`; game-loop.md §2) and calls `UserCtrl`; on level 0 calls `DemoCtrl` and `GenCtrl` |
 | `UserCtrl` 610-622 | `pop_userctrl` | Mirrors the stick for a character facing right, calls `GenCtrl`, mirrors it back |
 | `clrall` 625-632 | `pop_clrall` | Clears the four direction flags; returns 1 |
 | `GENCTRL` 648-733 | `pop_genctrl` | Dispatch by `CharLife`, `CharAction`, `CharSword`, `CharID`, `CharPosn` (section 2) |
@@ -230,10 +230,10 @@ it, starts `fallhang` and sets `stunned` = 12, which blocks climbing up for
 
 ## 5. Intentional deviations
 
-- **Unported subsystems are hooks** (`pop_game_hooks`): `potioneffect`, the
-  input step of `PLAYERCTRL`, and `DemoCtrl`. (`addslicers` and `jamspikes`
-  were hooks until the moving objects were ported.) Each is called where the original has its
-  `jsr`.
+- **Hooks** (`pop_game_hooks`) stand where the original calls drawing, sound
+  or hardware. Subsystems that were hooks when this was written
+  (`addslicers`, `jamspikes`, `potioneffect`, `DemoCtrl`, the input step of
+  `PLAYERCTRL`) have since been ported and are called directly.
 - **Image sizes come from a generated table.** `GETEDGES` calls `DIMCHAR`,
   which reads the image tables in main memory. The port reads
   `imgdims.bin` (width and height only, generated from the user's checkout).

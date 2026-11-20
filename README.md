@@ -29,7 +29,7 @@ licensing position this policy is based on.
 | `docs/port/` | Per-subsystem port notes: interface, pseudocode, pitfalls, tests |
 | `docs/verification.md` | Test commands, recorded results, what has not been verified |
 | `docs/compatibility-matrix.md` | Which behaviours are faithful, approximate, missing or unverified |
-| `modern-port/` | The C17 port (see its README): animation, level queries, player control, falling and landing, collision, moving level objects, opponents and sword fighting, a whole game frame and level start, sound effects; no window yet |
+| `modern-port/` | The C17 port (see its README): animation, level queries, player control, falling and landing, collision, moving level objects, opponents and sword fighting, the whole game loop (frame, input state, clock, messages, level change), sound effects; no window yet |
 | `docs/unknowns.md` | Open questions, each with the next inspection step |
 | `docs/milestones.md` | Milestone plan, directory layout, decisions awaiting input |
 | `assets/manifest.json` | Hashed inventory of all 582 original files (metadata only) |
@@ -102,14 +102,17 @@ simulator, with a C queue and renderer) and milestone 8 (the level-reading,
 frame-lookup and gravity routines, then player control, floor checks, falling
 and landing in C; every routine is compared with the original code on random
 inputs, and the ported part of a whole kid frame is compared with the original
-over many consecutive frames) and milestone 9 as far as part 1 of 9d
+over many consecutive frames) and milestone 9
 (collision; everything in the level that moves; the opponents: guards
 and the shadow, sword fighting, strength, and passing from screen to screen;
-then the routine that produces a whole frame, the kid's death, and the start
-of a level; all verified the same way, and the original's demo level now
-replays in the C port with the same result as the original code at every
-step). Input devices, the clock and messages, and drawing are not ported, so
-there is no runnable game yet. See
+the routine that produces a whole frame, the kid's death, the start of a
+level; then the loop around the frame: input state, the 60-minute clock,
+messages, song cues, the step to the next level; all verified the same way,
+and the original's demo level replays in the C port, one pass of the
+original's main loop at a time, with the same result as the original code
+after every pass). All game rules that do not draw are now in C. Drawing,
+the hardware side of input and sound, and a window are not, so there is no
+runnable game yet. See
 `docs/milestones.md`.
 
 ## Conventions

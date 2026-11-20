@@ -8,8 +8,9 @@ rather than from a hand-derived formula.
 
 Scope and limits:
   * The 151 documented NMOS 6502 opcodes.  No undocumented opcodes, no
-    65C02 additions.  Decimal mode is not modelled: ADC/SBC with the D flag
-    set raise an error.
+    65C02 additions.  Decimal mode follows the NMOS 6502: A and the carry are
+    the BCD result, N, V and Z come from the binary operation (a 65C02
+    sets N and Z from the decimal result instead and takes a cycle more).
   * Cycle counts are the documented ones, including +1 for a taken branch,
     +1 more when a taken branch crosses a page, and +1 for indexed reads
     that cross a page.
@@ -353,9 +354,38 @@ class Cpu6502:
             v = operand()
             self.a = self._nz(self.a & v if mnem == "and" else
                               self.a | v if mnem == "ora" else self.a ^ v)
+        elif mnem in ("adc", "sbc") and self.p & FLAG_D:
+            # Decimal mode, as the NMOS 6502 does it: the result in A and the
+            # carry are those of BCD arithmetic; N, V and Z come from the
+            # binary operation (for adc: N and V from the half-corrected sum).
+            v = operand()
+            carry = self.p & FLAG_C
+            if mnem == "adc":
+                binary = self.a + v + carry
+                lo_sum = (self.a & 0x0F) + (v & 0x0F) + carry
+                if lo_sum >= 0x0A:
+                    lo_sum = ((lo_sum + 0x06) & 0x0F) + 0x10
+                total = (self.a & 0xF0) + (v & 0xF0) + lo_sum
+                self._flag(FLAG_N, total & 0x80)
+                self._flag(FLAG_V, (~(self.a ^ v) & (self.a ^ total)) & 0x80)
+                if total >= 0xA0:
+                    total += 0x60
+                self._flag(FLAG_C, total > 0xFF)
+                self._flag(FLAG_Z, (binary & 0xFF) == 0)
+                self.a = total & 0xFF
+            else:
+                binary = self.a + (v ^ 0xFF) + carry
+                lo_diff = (self.a & 0x0F) - (v & 0x0F) + carry - 1
+                if lo_diff < 0:
+                    lo_diff = ((lo_diff - 0x06) & 0x0F) - 0x10
+                total = (self.a & 0xF0) - (v & 0xF0) + lo_diff
+                if total < 0:
+                    total -= 0x60
+                self._flag(FLAG_C, binary > 0xFF)
+                self._flag(FLAG_V, (~(self.a ^ v ^ 0xFF) & (self.a ^ binary)) & 0x80)
+                self._nz(binary)
+                self.a = total & 0xFF
         elif mnem in ("adc", "sbc"):
-            if self.p & FLAG_D:
-                raise CpuError("decimal mode is not modelled ($%04X)" % pc)
             v = operand()
             if mnem == "sbc":
                 v ^= 0xFF
