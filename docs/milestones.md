@@ -30,7 +30,7 @@ build/                generated, git-ignored
   rooms/              levelNN/screenSS.png and .json, level.json, overview.png
   audio/              sfx.json, sfx.csv, sfx_NN_name.wav, sfx_all.wav
   port/               CMake build tree; port/data/ holds seqtable.bin, sfx.bin,
-                      framedef.bin
+                      framedef.bin, imgdims.bin
 ```
 
 The original checkout stays outside this repository and is never written to.
@@ -47,9 +47,11 @@ The original checkout stays outside this repository and is never written to.
 | 6 | Sound effects by executing the original `SOUND.S`: a 6502 assembler and cycle-counting simulator, flip lists as JSON/CSV, WAV previews; C sound queue and effect renderer; `docs/audio-analysis.md`. Side result: 18 of 22 original modules assemble and fit their memory slots | 131 pytest cases; 7 CTest tests incl. C renderer against Python, sample by sample; simulator timing equals the hand-derived loop formula for every effect | **done** |
 | 7 | SDL3 shell: window, fixed timestep, nearest-neighbour scaling, plays the run cycle with keyboard input; SDL3 audio backend for the effect renderer | Manual + deterministic headless trace. Needs SDL3, which is not installed in the current environment | deferred until SDL3 is available |
 | 8a | Oracle (original routines run in the 6502 simulator, 17 modules loaded) and the C world-query layer: block reading across screens, foot/distance/coordinate routines, piece classes, frame lookup, record copies, `GRAVITY`, `ADDFALL`; `docs/oracle.md`, `docs/port/world-queries.md` | 139 pytest cases; 9 CTest tests incl. 15,600 random cases per run, C against the original code; earlier milestones re-checked against the original | **done** |
-| 8b | Player control in C: `GENCTRL` dispatch and the `standing`, `starting`, `turning`, `arunning`, `crouching`, `hanging` handlers with their `Do…` actions (about 1,100 bytes of 6502 in `CTRL.S`) | Each handler fuzzed against the original through the oracle, plus input-replay traces | proposed next |
-| 8c | Floor and falling: `CHECKFLOOR`, `onground`, `startfall`, `hitflr`, `fallon` (`CTRL.S`), then one full `DoKid` step on an open floor | Same; a whole-step comparison against the original `DoKid` path as far as it runs without drawing | |
-| 9 | Collision, then TROBs/MOBs, then opponents and sword fighting, one subsystem per milestone | Replay traces per subsystem | |
+| 8b | Player control in C: `PLAYERCTRL` (input left as a hook), `UserCtrl`, `GENCTRL`, the `standing`, `starting`, `stjumpup`, `turning`, `arunning`, `crouching`, `hanging` handlers, `FightCtrl`/`GuardCtrl` and every `Do…` action, with `GETFWDDIST`, `SETUPCHAR`, `GETEDGES`, `CHECKLEDGE`, `GETOPDIST` and the redraw marks; `docs/port/player-control.md` | Each routine fuzzed against the original through the oracle (all variables, sounds, level changes, redraw buffers, calls out); 143 unit checks on synthetic data; 35 deliberate bugs injected to test the test | **done** |
+| 8c | Floor and falling in C: `CHECKFLOOR`, `onground`, `startfall`, `CDpatch`, `InsideBlock`, `falling`, `hitflr`, `fallon`, `CHECKIMPALE`, `DOIMPALE`; then the ported part of a whole kid frame run for many consecutive frames | Same fuzzing; plus `trace_kidstep.py`: 60-frame traces of random input, C against the original after every call; a scenario test on `LEVEL1` (run and stop) | **done** |
+| 9a | Collision: `COLL.S` up to `GETFWDDIST` (`checkbarr`, `collisions`, `checkgate`, bumps), added to the kid-frame trace | Fuzz + trace, as 8b/8c | proposed next |
+| 9b | Moving level objects (`MOVER.S`): gates, plates and their links, loose floors, spikes, slicers; `CHECKPRESS` | Same | |
+| 9c | Input (`getselect`, `clrjstk`), demo playback, opponents (`AUTO.S`), strength and death handling | Same; demo-level replay as an end-to-end test | |
 | 10 | Blitter fidelity: masks, mirroring, colour model | Pixel comparison with emulator captures | |
 | 11 | Verification pass: compatibility matrix, emulator comparison, profiling | `docs/verification.md` | |
 | 12 | Optional: Blender → sprite-sheet pipeline document | – | |

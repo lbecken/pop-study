@@ -79,6 +79,7 @@ uint8_t pop_getblockx(pop_game *g, uint8_t x);       /* block column; sets OFFSE
 uint8_t pop_getblockxp(pop_game *g, uint8_t x);      /* same, for the centre plane */
 uint8_t pop_getblocky(uint8_t y);                    /* row 0-3, or $FF above the screen */
 uint8_t pop_getblockyp(uint8_t y);                   /* same, by floor lines */
+uint8_t pop_floory(pop_game *g, uint8_t index);      /* FloorY,x: floor line of row index-1 */
 
 /* --- piece classes ---------------------------------------------------------------- */
 

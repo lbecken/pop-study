@@ -272,6 +272,17 @@ uint8_t pop_getblockej(pop_game *g, uint8_t block)
     return v;
 }
 
+/* FloorY,x.  The table has five entries (block rows -1 to 3); BlockAy follows
+ * it in memory, and after that the table module ends. */
+uint8_t pop_floory(pop_game *g, uint8_t index)
+{
+    uint8_t v = 0;
+    if (index >= 10 || !edge_tables(30u + index, &v)) {
+        g->unmodelled = 1;
+    }
+    return v;
+}
+
 /* GETBLOCKY: X counts 3..0 while A < BlockTop+1,x; $FF if below all four. */
 uint8_t pop_getblocky(uint8_t y)
 {

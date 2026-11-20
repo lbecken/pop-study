@@ -77,6 +77,40 @@ typedef struct pop_framefile {
 int pop_framefile_load(const char *path, pop_framefile *out, const char **err);
 void pop_framefile_free(pop_framefile *f);
 
+/* imgdims.bin layout (all integers little-endian):
+ *   0   8 bytes  magic "POPIDIM1"
+ *   8   u16      number of tables (11)
+ *   10  u16      reserved, 0
+ *   then, per table:
+ *       u16      number of images n
+ *       n x (u8 width in bytes, u8 height in lines)
+ * Tables 0-6 are character tables 1-7 as the game numbers them, with the
+ * guard set as table 3 (the opponent).  Tables 7-10 are the other opponent
+ * sets the game loads in its place on some levels: fat guard, shadow,
+ * skeleton, vizier (by file name; which level uses which is the game's
+ * business, MISC.S 774).
+ */
+#define POP_DIMFILE_MAGIC "POPIDIM1"
+#define POP_DIMFILE_TABLES 11
+
+typedef enum pop_opponent_set {
+    POP_OPP_GUARD = 0, POP_OPP_FAT, POP_OPP_SHADOW, POP_OPP_SKELETON, POP_OPP_VIZIER,
+    POP_OPP_SETS
+} pop_opponent_set;
+
+typedef struct pop_dimfile {
+    pop_imgdims    dims;                     /* views into `storage` */
+    uint16_t       opp_count[POP_OPP_SETS];
+    const uint8_t *opp_wh[POP_OPP_SETS];
+    uint8_t       *storage;                  /* owned */
+} pop_dimfile;
+
+int pop_dimfile_load(const char *path, pop_dimfile *out, const char **err);
+void pop_dimfile_free(pop_dimfile *f);
+
+/* Make character table 3 describe the given opponent image set. */
+void pop_dimfile_use_opponent(pop_dimfile *f, pop_opponent_set set);
+
 /* Read an original level file (LEVEL0..LEVEL14, 2304 bytes) into g->blueprint. */
 int pop_level_load(const char *path, pop_game *g, const char **err);
 

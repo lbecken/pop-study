@@ -17,6 +17,7 @@
 
 #include "pop_char.h"
 #include "pop_seq.h"
+#include "pop_sound.h"
 
 /* Level blueprint: the 2304 bytes at $B700 (EQ.S 258-265). */
 enum {
@@ -51,6 +52,31 @@ typedef struct pop_frametab {
     uint16_t       swordtab;  /* swordtab */
 } pop_frametab;
 
+/* Width (bytes) and height (lines) of every character image, by table.
+ * Stands in for DIMCHAR / GETWIDTH (GRAFIX.S 879-883, HIRES.S 287-301),
+ * which read them from the image tables in memory. */
+#define POP_CHTABLES 7
+typedef struct pop_imgdims {
+    uint16_t       count[POP_CHTABLES];
+    const uint8_t *wh[POP_CHTABLES];     /* count[t] pairs: width, height */
+} pop_imgdims;
+
+/* Calls into subsystems that are not ported yet (moving level objects,
+ * potion effects, level change).  Each is made at the point where the
+ * original has its `jsr`.  Any pointer may be NULL. */
+typedef struct pop_game_hooks {
+    void *ctx;
+    void (*add_slicers)(void *ctx);      /* addslicers,   SUBS.S 250  */
+    void (*jam_spikes)(void *ctx);       /* jamspikes,    MOVER.S 354 (after the spec write) */
+    void (*potion_effect)(void *ctx);    /* potioneffect, MISC.S      */
+    void (*gone_upstairs)(void *ctx);    /* GoneUpstairs, COLL.S 1162 */
+    /* PLAYERCTRL's input step: LoadSelect, getselect, clrjstk (CTRL.S
+     * 573-577).  Expected to set JSTKX, JSTKY, btn and the clr* flags. */
+    void (*get_input)(void *ctx);
+    void (*save_input)(void *ctx);       /* SaveSelect,   CTRL.S 582  */
+    void (*demo_ctrl)(void *ctx);        /* DemoCtrl,     CTRL.S 587: the demo level's kid */
+} pop_game_hooks;
+
 typedef struct pop_game {
     uint8_t blueprint[POP_LEVEL_SIZE];   /* $B700 */
 
@@ -81,6 +107,40 @@ typedef struct pop_game {
      * Original callers use them directly, e.g. `jsr getunderft` followed by
      * `lda (BlueSpec),y`.  Only the routines documented as setting them do. */
     uint8_t  rx, ry;
+
+    /* --- player input, relative to the facing direction (CTRL.S 636-646) ---
+     * JSTKX: - forward, + back, 0 centre.  JSTKY: - up, + down.
+     * btn: - pressed.  clr*: - means a fresh press not yet used; set to 1
+     * once it has been acted on. */
+    uint8_t  JSTKX, JSTKY;               /* $18, $19 */
+    uint8_t  btn;                        /* $3D */
+    uint8_t  clrF, clrB, clrU, clrD, clrbtn;   /* $D4-$D8 */
+
+    /* --- game variables used by control and falling --- */
+    uint8_t  level;                      /* $3F4 */
+    uint8_t  stunned, gotsword, offguard, EnemyAlert, heroic, refract, gdtimer;
+    uint8_t  KidStrength, OppStrength, ChgKidStr, ChgOppStr;
+    uint8_t  mergetimer, rjumpflag, droppedout, savekidx, lastpotion;
+    uint8_t  blockid, bufindex, timebomb;
+
+    /* --- character as set up for drawing and collision (SETUPCHAR, GETEDGES) --- */
+    uint8_t  FCharImage, FCharY, FCharFace, FCharCU, FCharCD, FCharCL, FCharCR, FCharTable;
+    uint16_t FCharX;
+    uint8_t  imwidth, imheight;
+    uint8_t  leftej, rightej, topej;
+    uint8_t  leftblock, rightblock, topblock, bottomblock;
+    uint8_t  CDLeftEj, CDRightEj;
+    uint8_t  blockedge, tempobjid;
+
+    /* --- redraw marks (CTRLSUBS.S 1734-1757) --- */
+    uint8_t  redbuf[30], wipebuf[30], whitebuf[30], topbuf[10];
+    uint8_t  height;                     /* $04: wipe height for MARKWIPE */
+
+    pop_soundq sq;                       /* soundtable, $B6C0 */
+
+    const pop_seqtab  *seq;
+    const pop_imgdims *dims;
+    pop_game_hooks     hooks;
 
     /* Set when a routine was asked for something the port does not model
      * (see docs/port/world-queries.md).  Never set by valid game states. */

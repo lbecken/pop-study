@@ -17,6 +17,8 @@ Output:
                       executing SOUND.S (layout: pop_assets.h)
     pop_sfxnames.h    #define POP_SFX_<NAME> <n> for every effect name
     framedef.bin      assembled FRAMEDEF.S with a 24-byte header
+    imgdims.bin       width and height of every character image, by table,
+                      with the four alternative opponent sets (no image data)
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 
 from merlin_data import assemble, parse_equates  # noqa: E402
 from pop_animdata import decode_sequence_table  # noqa: E402
+from pop_imgtable import parse_image_table  # noqa: E402
 from pop_sfx import CPU_HZ, SoundModule  # noqa: E402
 
 SRC = os.path.join("01 POP Source", "Source")
@@ -87,6 +90,37 @@ def build_framedef(source):
     return header + asm.image
 
 
+# Character table number (as computed by decodeim, CTRLSUBS.S 1017-1039, and
+# indexed into chtablist, GRAFIX.S 186-187) -> image file.  Table 3 is the
+# opponent set, which the game swaps per level.  The five opponent files have
+# 32 images each but different sizes image for image, so all five are
+# exported: the guard set in position 3 and the others after the seven.
+CHTABLE_FILES = ("IMG.CHTAB1", "IMG.CHTAB2", "IMG.CHTAB3", "IMG.CHTAB4.GD", "IMG.CHTAB5",
+                 "IMG.CHTAB6.A", "IMG.CHTAB7")
+OPPONENT_VARIANTS = ("IMG.CHTAB4.FAT", "IMG.CHTAB4.SHAD", "IMG.CHTAB4.SKEL",
+                     "IMG.CHTAB4.VIZ")
+
+
+def image_dims(source, files=CHTABLE_FILES):
+    """[(width bytes, height lines), ...] for each character table."""
+    tables = []
+    for name in files:
+        with open(os.path.join(source, "01 POP Source", "Images", name), "rb") as f:
+            table = parse_image_table(f.read())
+        tables.append([(im.width_bytes, im.height) for im in table.images])
+    return tables
+
+
+def build_imgdims(source):
+    tables = image_dims(source, CHTABLE_FILES + OPPONENT_VARIANTS)
+    blob = b"POPIDIM1" + struct.pack("<HH", len(tables), 0)
+    for dims in tables:
+        blob += struct.pack("<H", len(dims))
+        for w, h in dims:
+            blob += bytes((w, h))
+    return blob
+
+
 def build_sfx(source):
     mod = SoundModule(os.path.join(source, SRC))
     effects = mod.all_effects()
@@ -131,9 +165,13 @@ def main(argv=None):
     frames = build_framedef(args.source)
     with open(os.path.join(args.out, "framedef.bin"), "wb") as f:
         f.write(frames)
+    dims = build_imgdims(args.source)
+    with open(os.path.join(args.out, "imgdims.bin"), "wb") as f:
+        f.write(dims)
     print("wrote %s: seqtable.bin (%d bytes, %d entries), pop_seqnames.h, "
-          "sfx.bin (%d bytes, %d effects), pop_sfxnames.h, framedef.bin (%d bytes)"
-          % (args.out, len(blob), entries, len(sfx), sfx_count, len(frames)))
+          "sfx.bin (%d bytes, %d effects), pop_sfxnames.h, framedef.bin (%d bytes), "
+          "imgdims.bin (%d bytes)"
+          % (args.out, len(blob), entries, len(sfx), sfx_count, len(frames), len(dims)))
     return 0
 
 

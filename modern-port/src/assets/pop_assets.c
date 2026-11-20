@@ -191,6 +191,74 @@ void pop_framefile_free(pop_framefile *f)
     }
 }
 
+int pop_dimfile_load(const char *path, pop_dimfile *out, const char **err)
+{
+    uint8_t header[12];
+    uint8_t *mem;
+    long size;
+    size_t at = 0, t;
+    FILE *fp;
+
+    memset(out, 0, sizeof *out);
+    fp = fopen(path, "rb");
+    if (!fp) return fail(err, "cannot open file", NULL, NULL);
+    if (fread(header, 1, sizeof header, fp) != sizeof header)
+        return fail(err, "file shorter than its header", fp, NULL);
+    if (memcmp(header, POP_DIMFILE_MAGIC, 8) != 0)
+        return fail(err, "not a POPIDIM1 file", fp, NULL);
+    if (u16le(header + 8) != POP_DIMFILE_TABLES)
+        return fail(err, "unexpected number of image tables", fp, NULL);
+    if (fseek(fp, 0, SEEK_END) != 0 || (size = ftell(fp)) < (long)sizeof header
+        || size > 65536L || fseek(fp, (long)sizeof header, SEEK_SET) != 0)
+        return fail(err, "cannot size file", fp, NULL);
+    size -= (long)sizeof header;
+    mem = malloc((size_t)size + 1u);
+    if (!mem) return fail(err, "out of memory", fp, NULL);
+    if (fread(mem, 1, (size_t)size, fp) != (size_t)size)
+        return fail(err, "read error", fp, mem);
+    fclose(fp);
+
+    for (t = 0; t < POP_DIMFILE_TABLES; t++) {
+        uint16_t n;
+        if (at + 2 > (size_t)size) break;
+        n = u16le(mem + at);
+        at += 2;
+        if (at + 2u * n > (size_t)size) break;
+        if (t < POP_CHTABLES) {
+            out->dims.count[t] = n;
+            out->dims.wh[t] = mem + at;
+        } else {
+            out->opp_count[t - POP_CHTABLES + 1] = n;
+            out->opp_wh[t - POP_CHTABLES + 1] = mem + at;
+        }
+        at += 2u * n;
+    }
+    if (t != POP_DIMFILE_TABLES || at != (size_t)size) {
+        memset(out, 0, sizeof *out);
+        return fail(err, "image tables do not fill the file", NULL, mem);
+    }
+    out->opp_count[POP_OPP_GUARD] = out->dims.count[3];
+    out->opp_wh[POP_OPP_GUARD] = out->dims.wh[3];
+    out->storage = mem;
+    return 0;
+}
+
+void pop_dimfile_free(pop_dimfile *f)
+{
+    if (f) {
+        free(f->storage);
+        memset(f, 0, sizeof *f);
+    }
+}
+
+void pop_dimfile_use_opponent(pop_dimfile *f, pop_opponent_set set)
+{
+    if (f && f->storage && (int)set >= 0 && set < POP_OPP_SETS) {
+        f->dims.count[3] = f->opp_count[set];
+        f->dims.wh[3] = f->opp_wh[set];
+    }
+}
+
 int pop_level_load(const char *path, pop_game *g, const char **err)
 {
     uint8_t extra;

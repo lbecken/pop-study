@@ -29,6 +29,7 @@ All in `CTRLSUBS.S` unless noted. "Reads"/"writes" list original variables.
 | `GETBLOCKEJ` 497-502 | `pop_getblockej` | A = column −5…14 | A = x of its left edge |
 | `GETBLOCKX`, `GETBLOCKXP` 523-530 | `pop_getblockx`, `…xp` | A = x | A = column; `OFFSET` = unit within it |
 | `GETBLOCKY`, `GETBLOCKYP` 543-560 | `pop_getblocky`, `…yp` | A = y | A = row 0–3, `$FF` above |
+| `FloorY,x` (table, `TABLES.S:24, 179-184`) | `pop_floory` | index = row + 1 (8-bit) | floor line of that row; indexes 5–9 read `BlockAy`, which follows it |
 | `GETBASEBLOCK` 622-626 | `pop_getbaseblock` | | `CharBlockX` |
 | `FACEDX` 633-640 | `pop_facedx` | A = dx | A = dx or −dx |
 | `CMPSPACE`, `CMPBARR`, `CMPWALL` 1508-1568 | `pop_cmpspace` … | A = piece id | A = class |

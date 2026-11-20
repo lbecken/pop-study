@@ -53,3 +53,30 @@ def test_seqtable_bin_header_and_names(tmp_path):
     assert flips[9] == 3 and flips[8] == 80            # Footstep, GotKey
     names = (tmp_path / "pop_sfxnames.h").read_text()
     assert "#define POP_SFX_FOOTSTEP          9" in names
+
+
+@needs_source
+def test_imgdims_bin(tmp_path):
+    """Image sizes for DIMCHAR: seven character tables plus four more
+    opponent sets, no image data."""
+    import export_port_data
+    assert export_port_data.main(["--source", SOURCE, "--out", str(tmp_path)]) == 0
+    blob = (tmp_path / "imgdims.bin").read_bytes()
+    assert blob[:8] == b"POPIDIM1"
+    tables, reserved = struct.unpack_from("<HH", blob, 8)
+    assert (tables, reserved) == (11, 0)
+    pos, dims = 12, []
+    for _ in range(tables):
+        n = struct.unpack_from("<H", blob, pos)[0]
+        dims.append([(blob[pos + 2 + 2 * i], blob[pos + 3 + 2 * i]) for i in range(n)])
+        pos += 2 + 2 * n
+    assert pos == len(blob)
+    # every size is a real image: 1-40 bytes wide, 1-192 lines high
+    assert all(1 <= w <= 40 and 1 <= h <= 192 for t in dims for w, h in t)
+    # the opponent sets (table 3 and the four after the seven) have the same
+    # number of images but not the same sizes
+    opponents = [dims[3]] + dims[7:]
+    assert [len(t) for t in opponents] == [32] * 5
+    assert len({tuple(t) for t in opponents}) == 5
+    # the widest character image fits the 16-entry Mult7 table GETEDGES uses
+    assert max(w for t in dims for w, _ in t) < 16

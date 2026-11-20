@@ -165,7 +165,8 @@ def main(argv):
 
     failures = 0
     for line, (routine, args, before, ra, rx, ry, after) in zip(lines, expected):
-        got = dict((k, int(v)) for k, v in (tok.split("=") for tok in line.split()))
+        got = dict((k, int(v)) for k, v in
+                   (tok.split("=") for tok in line.split() if "=" in tok))
         problems = []
         if got["unmodelled"]:
             problems.append("C reported an unmodelled case")

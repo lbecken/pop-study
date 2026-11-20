@@ -40,6 +40,23 @@ No two overlap (checked at load). The main-memory modules (`HIRES`,
 `HRTABLES`, `MASTER`, `UNPACK`) share addresses with these in the other memory
 bank and are not loaded.
 
+## Traps: standing in for what cannot run
+
+`Cpu6502.traps[address]` runs a Python function when execution reaches an
+address and then returns as `rts` would. The control tests use it for the
+routines the flat memory cannot serve, and to record calls into subsystems
+the port does not have yet (`modern-port/tests/fuzz_control.py`):
+
+| Trapped | Why | The trap |
+| --- | --- | --- |
+| `dimchar` (`GRAFIX.S:879-883`) | reads image tables in main memory | answers width and height from the same image files |
+| `jamspikes` (`MOVER.S:354-358`) | goes on into the moving-object list | writes `$FF` to the spikes' state, as the first two instructions do; records the call |
+| `addslicers`, `potioneffect`, `GoneUpstairs` | unported subsystems | records the call |
+| `LoadSelect`, `getselect`, `clrjstk`, `SaveSelect`, `DemoCtrl` | input devices, demo | records the call; the test supplies the joystick variables |
+
+A trapped routine is not being tested; what is compared is the caller's
+behaviour given the same answers on both sides.
+
 ## Limits
 
 - **Flat memory.** There is no bank switching; writes to the soft switches
@@ -71,3 +88,5 @@ bank and are not loaded.
 | Geometry tables | byte/offset, block edges, floor lines as loaded in memory | agree |
 | Sound effects | `PLAYBACK`, `ADDSOUND` | source of the effect data (`docs/audio-analysis.md`) |
 | World queries, gravity (C) | 39 routines on random states, 15,600 cases per test run | C port and original agree |
+| Player control, floor, landing (C) | 52 routines on random states, about 20,700 cases per test run: variables, registers, sounds, level changes, redraw buffers, calls out | C port and original agree |
+| A kid frame over time (C) | the ported steps of `DoKid` in order, 60 traces of 60 frames of random input per test run, compared after each call | C port and original agree |

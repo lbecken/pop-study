@@ -29,7 +29,7 @@ licensing position this policy is based on.
 | `docs/port/` | Per-subsystem port notes: interface, pseudocode, pitfalls, tests |
 | `docs/verification.md` | Test commands, recorded results, what has not been verified |
 | `docs/compatibility-matrix.md` | Which behaviours are faithful, approximate, missing or unverified |
-| `modern-port/` | The C17 port (see its README); so far the sequence interpreter |
+| `modern-port/` | The C17 port (see its README): animation, level queries, player control, falling and landing, sound effects; no window yet |
 | `docs/unknowns.md` | Open questions, each with the next inspection step |
 | `docs/milestones.md` | Milestone plan, directory layout, decisions awaiting input |
 | `assets/manifest.json` | Hashed inventory of all 582 original files (metadata only) |
@@ -72,7 +72,7 @@ python3 tools/extract_assets/make_manifest.py --source ../pop-original --out ass
 POP_SOURCE_DIR=../pop-original python3 -m pytest tests -q
 ```
 
-Without `POP_SOURCE_DIR` the 25 integration tests are skipped and only the
+Without `POP_SOURCE_DIR` the 26 integration tests are skipped and only the
 synthetic-data unit tests run. `build/` is git-ignored.
 
 The C port:
@@ -98,9 +98,12 @@ definitions and animation sequences extracted and cross-checked) and milestone
 against the Python decoder), milestone 5 (level parser and a Python model of
 the full-screen redraw that renders every screen of every level) and milestone
 6 (sound effects obtained by running the original sound code in a 6502
-simulator, with a C queue and renderer) and the first part of milestone 8
-(the level-reading, frame-lookup and gravity routines in C, each compared with
-the original code on random inputs). There is no runnable game yet. See
+simulator, with a C queue and renderer) and milestone 8 (the level-reading,
+frame-lookup and gravity routines, then player control, floor checks, falling
+and landing in C; every routine is compared with the original code on random
+inputs, and the ported part of a whole kid frame is compared with the original
+over many consecutive frames). Collision with walls, moving level objects,
+opponents and drawing are not ported, so there is no runnable game yet. See
 `docs/milestones.md`.
 
 ## Conventions

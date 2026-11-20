@@ -38,7 +38,8 @@ else()
 endif()
 
 # Game rules: no I/O, no SDL.
-add_library(pop_core STATIC src/core/pop_seq.c src/core/pop_sound.c src/core/pop_world.c)
+add_library(pop_core STATIC src/core/pop_seq.c src/core/pop_sound.c src/core/pop_world.c
+            src/core/pop_control.c)
 target_include_directories(pop_core PUBLIC src/core)
 
 # Sound: effect data to PCM.  No I/O, no SDL (the SDL3 backend comes later).
@@ -80,6 +81,10 @@ add_executable(test_world tests/test_world.c)
 target_link_libraries(test_world PRIVATE pop_core)
 add_test(NAME world_unit COMMAND test_world)
 
+add_executable(test_control tests/test_control.c)
+target_link_libraries(test_control PRIVATE pop_core)
+add_test(NAME control_unit COMMAND test_control)
+
 # --- tests on the original data (optional) -----------------------------------
 if(POP_SOURCE_DIR)
   if(NOT EXISTS "${POP_SOURCE_DIR}/01 POP Source/Source/SEQTABLE.S")
@@ -93,13 +98,14 @@ if(POP_SOURCE_DIR)
   set(POP_DATA "${CMAKE_CURRENT_BINARY_DIR}/data")
   set(POP_DATA_FILES "${POP_DATA}/seqtable.bin" "${POP_DATA}/pop_seqnames.h"
                      "${POP_DATA}/sfx.bin" "${POP_DATA}/pop_sfxnames.h"
-                     "${POP_DATA}/framedef.bin")
+                     "${POP_DATA}/framedef.bin" "${POP_DATA}/imgdims.bin")
   add_custom_command(
     OUTPUT ${POP_DATA_FILES}
     COMMAND "${Python3_EXECUTABLE}" "${POP_TOOLS}/export_port_data.py"
             --source "${POP_SOURCE_DIR}" --out "${POP_DATA}"
     DEPENDS "${POP_TOOLS}/export_port_data.py" "${POP_TOOLS}/merlin_data.py"
             "${POP_TOOLS}/pop_animdata.py" "${POP_TOOLS}/mos6502.py"
+            "${POP_TOOLS}/pop_imgtable.py"
             "${POP_AUDIO_TOOLS}/pop_sfx.py"
             "${POP_SOURCE_DIR}/01 POP Source/Source/SEQTABLE.S"
             "${POP_SOURCE_DIR}/01 POP Source/Source/SEQDATA.S"
@@ -140,6 +146,21 @@ if(POP_SOURCE_DIR)
                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/fuzz_world.py"
                    "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}/framedef.bin"
                    "${POP_SOURCE_DIR}" 400 1989)
+  add_executable(test_control_original tests/test_control_original.c)
+  target_include_directories(test_control_original PRIVATE "${POP_DATA}" tests)
+  target_link_libraries(test_control_original PRIVATE pop_assets)
+  add_dependencies(test_control_original pop_data)
+  add_test(NAME control_original
+           COMMAND test_control_original "${POP_DATA}"
+                   "${POP_SOURCE_DIR}/01 POP Source/Levels/LEVEL1")
+  add_test(NAME control_c_vs_original
+           COMMAND "${Python3_EXECUTABLE}"
+                   "${CMAKE_CURRENT_SOURCE_DIR}/tests/fuzz_control.py"
+                   "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}" "${POP_SOURCE_DIR}" 400 1989)
+  add_test(NAME kidstep_c_vs_original
+           COMMAND "${Python3_EXECUTABLE}"
+                   "${CMAKE_CURRENT_SOURCE_DIR}/tests/trace_kidstep.py"
+                   "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}" "${POP_SOURCE_DIR}" 60 1989)
 else()
   message(STATUS "POP_SOURCE_DIR not set: original-data tests are not built")
 endif()

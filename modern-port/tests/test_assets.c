@@ -63,9 +63,53 @@ static void test_load_rejects_bad_files(void)
     remove("pop_test_bad.bin");
 }
 
+static void test_dimfile(void)
+{
+    /* 11 tables: table t has t+1 images of size (t+1) x (10+t) */
+    uint8_t bytes[12 + 11 * 2 + 2 * 66];
+    size_t at = 12, t, i;
+    pop_dimfile f;
+    const char *err = NULL;
+    memcpy(bytes, "POPIDIM1", 8);
+    bytes[8] = 11; bytes[9] = 0; bytes[10] = 0; bytes[11] = 0;
+    for (t = 0; t < 11; t++) {
+        bytes[at++] = (uint8_t)(t + 1);
+        bytes[at++] = 0;
+        for (i = 0; i <= t; i++) {
+            bytes[at++] = (uint8_t)(t + 1);
+            bytes[at++] = (uint8_t)(10 + t);
+        }
+    }
+    CHECK_EQ(at, sizeof bytes);
+    CHECK(write_file("pop_test_dims.bin", bytes, sizeof bytes) != NULL);
+    CHECK_EQ(pop_dimfile_load("pop_test_dims.bin", &f, &err), 0);
+    CHECK_EQ(f.dims.count[0], 1);
+    CHECK_EQ(f.dims.count[6], 7);
+    CHECK_EQ(f.dims.wh[6][0], 7);
+    CHECK_EQ(f.dims.wh[6][1], 16);
+    CHECK_EQ(f.dims.count[3], 4);                  /* the guard set by default */
+    pop_dimfile_use_opponent(&f, POP_OPP_SKELETON);/* file table 9 */
+    CHECK_EQ(f.dims.count[3], 10);
+    CHECK_EQ(f.dims.wh[3][1], 19);
+    pop_dimfile_use_opponent(&f, POP_OPP_GUARD);
+    CHECK_EQ(f.dims.count[3], 4);
+    pop_dimfile_free(&f);
+    CHECK(f.storage == NULL);
+
+    /* one byte short, one byte long, wrong table count */
+    CHECK(write_file("pop_test_dims.bin", bytes, sizeof bytes - 1) != NULL);
+    CHECK(pop_dimfile_load("pop_test_dims.bin", &f, &err) != 0);
+    CHECK(f.storage == NULL && f.dims.wh[0] == NULL);
+    bytes[8] = 7;
+    CHECK(write_file("pop_test_dims.bin", bytes, sizeof bytes) != NULL);
+    CHECK(pop_dimfile_load("pop_test_dims.bin", &f, &err) != 0);
+    remove("pop_test_dims.bin");
+}
+
 int main(void)
 {
     RUN(test_load_valid);
     RUN(test_load_rejects_bad_files);
+    RUN(test_dimfile);
     return pop_test_summary();
 }
