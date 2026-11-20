@@ -292,6 +292,15 @@ uint8_t pop_floory(pop_game *g, uint8_t index)
 }
 
 /* BlockBot,x and BlockAy,x: the tables on either side of FloorY. */
+uint8_t pop_blocktop(pop_game *g, uint8_t index)
+{
+    uint8_t v = 0;
+    if (index >= 20 || !edge_tables(20u + index, &v)) {
+        g->unmodelled = 1;
+    }
+    return v;
+}
+
 uint8_t pop_blockbot(pop_game *g, uint8_t index)
 {
     uint8_t v = 0;

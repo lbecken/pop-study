@@ -20,17 +20,24 @@ and on the C port, and after every call the whole tracked state, the sounds,
 the level changes, the redraw buffers and the calls to unported subsystems
 must agree.  Level changes persist from frame to frame.
 
-So within a trace gates open and close when plates are stepped on, spikes
-spring, slicers run, loose floors shake, fall and crush, in both
-implementations alike.
+and around it the rest of the original's NextFrame as far as it is ported:
+bonesrise and checkalert before the kid; the opponent's whole frame (DoShad),
+checkstrike, checkstab, chgmeters, cutcheck and cutguard after him.
 
-What is NOT in the frame, because it is not ported yet: guards (firstguard,
-DoShad), strength changes and death handling, screen changes and drawing.
-The joystick flags are set by the test, standing in for the input code, and
-so are VisScrn and the neighbouring-screen variables, which the test keeps
-pointing at the kid's screen as the screen-change code would.  When the
-visible screen changes the test also calls addtorches, as the original does
-on entering a screen (TOPCTRL.S 1061).
+So within a trace gates open and close when plates are stepped on, spikes
+spring, slicers run, loose floors fall, guards notice the kid, fight him and
+are fought, strength is lost, and the kid passes from screen to screen, in
+both implementations alike.
+
+What is NOT in the frame, because it is not ported yet: firstguard and
+unholy inside the kid's part, the kid's death handling (he lies where he
+fell), strength-meter changes being cleared, sound effects for hits
+(addsfx), and drawing.  The joystick flags are set by the test, standing in
+for the input code.  When the kid has passed to another screen the test does
+what the original's screen-change code does next: it makes that screen the
+visible one, sets the neighbouring-screen variables, and calls addguard and
+addtorches (TOPCTRL.S 1039-1062).  A trace also starts that way, so a guard
+who belongs on the first screen is there.
 
 Usage:
     trace_kidstep.py <pop_worldrun> <data dir> <original checkout> [traces] [seed]
@@ -59,6 +66,15 @@ FRAME = [("animmobs", "MOVER", "ANIMMOBS"), ("animtrans", "MOVER", "ANIMTRANS"),
          ("checkspikes", "CTRLSUBS", "CHECKSPIKES"), ("checkimpale", "CTRL", "CHECKIMPALE"),
          ("checkslice", "COLL", "CHECKSLICE"), ("shakeloose", "TOPCTRL", "shakeloose"),
          ("savekid", "CTRLSUBS", "SAVEKID")]
+# ... and the rest of NextFrame as far as it is ported (TOPCTRL.S 503-526).
+# bonesrise and checkalert come before the kid, the others after.
+BEFORE_KID = [("bonesrise", "MISC", "BONESRISE"), ("checkalert", "MISC", "CHECKALERT")]
+AFTER_KID = [("doshad", "TOPCTRL", "DoShad"), ("checkstrike", "AUTO", "CHECKSTRIKE"),
+             ("checkstab", "AUTO", "CHECKSTAB"), ("chgmeters", "TOPCTRL", "chgmeters"),
+             ("cutcheck", "AUTO", "CUTCHECK"), ("cutguard", "AUTO", "CUTGUARD")]
+# MainLoop (TOPCTRL.S 366-371) draws a random number and clears the strength
+# changes before NextFrame; the test clears them where it sets the joystick.
+FRAME = [("rnd", "GRAFIX", "RND")] + FRAME[:2] + BEFORE_KID + FRAME[2:] + AFTER_KID
 FRAMES_PER_TRACE = 60
 INPUT_VARS = ("JSTKX", "JSTKY", "btn", "clrF", "clrB", "clrU", "clrD", "clrbtn")
 FLOORS = (1, 2, 4, 6, 10, 11, 14, 15, 22)         # pieces to stand on at the start
@@ -116,7 +132,7 @@ class TraceHarness(fc.Harness):
                 "bufs": {n: bytes(o.peek(self.bufaddr[n], size)).hex() for n, size in BUFFERS}}
 
 
-def start_state(rng, level):
+def start_state(rng, level, level_no):
     """The kid standing on a floor piece with open space above it."""
     spots = []
     for scrn in range(1, 25):
@@ -125,10 +141,14 @@ def start_state(rng, level):
                 i = (scrn - 1) * 30 + row * 10 + col
                 if level[i] & 0x1F in FLOORS and (row == 0 or level[i - 10] & 0x1F in (0, 19)):
                     spots.append((scrn, row, col))
-    scrn, row, col = rng.choice(spots)
+    # half the time, on a screen where a guard waits on the same row
+    guarded = [(sc, r, c) for sc, r, c in spots
+               if level[2119 - 1 + sc] < 30 and level[2119 - 1 + sc] // 10 == r]
+    scrn, row, col = rng.choice(guarded if guarded and rng.random() < 0.5 else spots)
     s = fc.fw.random_state(rng)
-    for n in fc.EXTRA + fc.COLL_VARS + fc.MOVER_VARS:
+    for n in fc.EXTRA + fc.COLL_VARS + fc.MOVER_VARS + fc.AUTO_VARS:
         s[n] = 0
+    s["MaxKidStr"] = 3
     s["RNDseed"] = rng.randrange(256)
     s["BGset1"] = rng.choice((0, 0, 1))
     s["collideL"] = s["collideR"] = 0xFF
@@ -137,11 +157,12 @@ def start_state(rng, level):
         for f in fc.fw.CHAR_FIELDS:
             s[rec + f] = 0
         s[rec + "Seq"] = 0
+    s["ShadFace"] = 86                               # no opponent until ADDGUARD finds one
     s.update(KidPosn=15, KidX=58 + 14 * col + rng.randint(2, 11), KidY=FLOOR_Y[row],
              KidFace=rng.choice((0x00, 0xFF)), KidBlockX=col, KidBlockY=row, KidScrn=scrn,
              KidLife=0xFF, KidID=0, KidAction=0)
-    s.update(level=rng.choice((1, 2, 3, 12)), KidStrength=3, OppStrength=3,
-             gotsword=rng.choice((0, 1)), weightless=0, timebomb=0, blue=scrn)
+    s.update(level=level_no, KidStrength=3, OppStrength=0,
+             gotsword=rng.choice((0, 1, 1)), weightless=0, timebomb=0, blue=scrn)
     return s
 
 
@@ -183,9 +204,84 @@ def main(argv):
     commands, expected = ["K 1"], []
     seen_frames, seen_actions, ended_early, frames_run = set(), set(), 0, 0
     sounds, busiest_list, falling_floors, level_changes = set(), 0, 0, 0
+    guard_frames = fight_frames = strength_lost = 0
+    counts = {"failures": 0, "compared": 0, "off_model": 0}
+    cut_at = {}
+
+    def flush():
+        """Run the port on the traces gathered so far and compare.  Done in
+        batches so that memory use does not grow with the number of traces."""
+        failures, compared, off_model = counts["failures"], counts["compared"], counts["off_model"]
+        dead_trace = -1
+        argv_c = [runner, os.path.join(data, "framedef.bin"), os.path.join(data, "seqtable.bin"),
+                  os.path.join(data, "imgdims.bin"), os.path.join(data, "autodata.bin")]
+        out = subprocess.run(argv_c, input="\n".join(commands) + "\n", capture_output=True,
+                             text=True)
+        if out.returncode != 0:
+            print("pop_worldrun failed: " + out.stderr[-500:])
+            raise SystemExit(1)
+        lines = out.stdout.splitlines()
+        if len(lines) != len(expected):
+            print("expected %d result lines, got %d" % (len(expected), len(lines)))
+            raise SystemExit(1)
+
+        for line, (trace, frame, name, want) in zip(lines, expected):
+            if trace == dead_trace:
+                continue
+            got, extra = {}, {}
+            for tok in line.split():
+                if "=" in tok:
+                    k, v = tok.split("=")
+                    got[k] = int(v)
+                else:
+                    k, v = tok.split(":")
+                    extra[k] = v
+            if isinstance(want, str):
+                cut_at[name + " (original: %s)" % want] = cut_at.get(name + " (original: %s)" % want, 0) + 1
+                if want == "stray" and not got["unmodelled"]:
+                    failures += 1
+                    print("MISMATCH trace %d frame %d %s: the original asked for a missing "
+                          "image, the port did not" % (trace, frame, name))
+                dead_trace = trace
+                continue
+            if got["unmodelled"]:
+                # The port reached a table index the original has no entry for
+                # (the kid has run off the screen: nothing changes screens yet).
+                # The original went on with whatever memory holds there; nothing
+                # further in this trace can be compared.
+                dead_trace = trace
+                off_model += 1
+                cut_at[name + " (port)"] = cut_at.get(name + " (port)", 0) + 1
+                continue
+            problems = []
+            if got["blue"] != want["vars"]["blue"]:
+                problems.append("blueprint screen: C %d, original %d"
+                                % (got["blue"], want["vars"]["blue"]))
+            for n in BYTES + WORDS:
+                if got[n] != want["vars"][n]:
+                    problems.append("%s: C %d, original %d" % (n, got[n], want["vars"][n]))
+            for key in ("snd", "hooks", "lvl"):
+                if extra[key] != want[key]:
+                    problems.append("%s: C %s, original %s" % (key, extra[key], want[key]))
+            for n, _ in BUFFERS:
+                if extra[n] != want["bufs"][n]:
+                    problems.append("%s: C %s, original %s" % (n, extra[n], want["bufs"][n]))
+            compared += 1
+            if problems:
+                failures += 1
+                dead_trace = trace                       # later frames would only repeat it
+                if failures <= 5:
+                    print("MISMATCH trace %d frame %d after %s" % (trace, frame, name))
+                    for p in problems[:10]:
+                        print("   " + p)
+        counts.update(failures=failures, compared=compared, off_model=off_model)
+        del commands[1:]
+        del expected[:]
+
     for trace in range(traces):
-        level = levels[rng.randrange(1, 15)]
-        s = start_state(rng, level)
+        level_no = rng.randrange(1, 15)
+        level = levels[level_no]
+        s = start_state(rng, level, level_no)
         bufs = {name: bytes(size) for name, size in BUFFERS}
         h.begin(level, s, bufs)
         commands.append("L " + level.hex())
@@ -194,7 +290,8 @@ def main(argv):
             commands.append("H %s %s" % (name, bufs[name].hex()))
         # start the "stand" sequence in the Kid record: load, jumpseq, save
         prelude = [("loadkid", "CTRLSUBS", "LOADKID", 0), ("jumpseq", "CTRLSUBS", "JUMPSEQ", stand),
-                   ("savekid", "CTRLSUBS", "SAVEKID", 0)]
+                   ("savekid", "CTRLSUBS", "SAVEKID", 0),
+                   ("initialguards", "SUBS", "INITIALGUARDS", 0)]   # as at level start
         held, prev, alive = None, {"JSTKX": 0, "JSTKY": 0, "btn": 0}, True
         vis_before = 0
         for name, module, label, a in prelude:
@@ -213,7 +310,7 @@ def main(argv):
                     flags[flag] = 0
                 elif prev[var] != value:
                     flags[flag] = 0xFF
-            values = dict(held, **flags)
+            values = dict(held, ChgKidStr=0, ChgOppStr=0, **flags)
             prev = held
             scrn_now = h.oracle.peek(h.addr["KidScrn"])
             values.update(screen_vars(h.level, scrn_now))
@@ -221,7 +318,8 @@ def main(argv):
             commands.append("S " + " ".join("%s=%d" % kv for kv in values.items()))
             steps = list(FRAME)
             if scrn_now != vis_before and 1 <= scrn_now <= 24:
-                steps.insert(0, ("addtorches", "SUBS", "ADDTORCHES"))
+                steps = [("addguard", "AUTO", "ADDGUARD"),
+                         ("addtorches", "SUBS", "ADDTORCHES")] + steps
             vis_before = scrn_now
             for name, module, label in steps:
                 want = h.step(module, label)
@@ -240,71 +338,21 @@ def main(argv):
             seen_frames.add(want["vars"]["KidPosn"])
             seen_actions.add(want["vars"]["KidAction"])
             busiest_list = max(busiest_list, want["vars"]["numtrans"])
+            guard_frames += want["vars"]["ShadFace"] != 86
+            fight_frames += want["vars"]["ShadSword"] == 2 and want["vars"]["ShadFace"] != 86
+            strength_lost += want["vars"]["KidStrength"] < 3
             falling_floors += want["vars"]["nummob"] > 0
+        if (trace + 1) % 20 == 0:
+            flush()
+    flush()
+    failures, compared, off_model = counts["failures"], counts["compared"], counts["off_model"]
 
-    argv_c = [runner, os.path.join(data, "framedef.bin"), os.path.join(data, "seqtable.bin"),
-              os.path.join(data, "imgdims.bin")]
-    out = subprocess.run(argv_c, input="\n".join(commands) + "\n", capture_output=True,
-                         text=True)
-    if out.returncode != 0:
-        print("pop_worldrun failed: " + out.stderr[-500:])
-        return 1
-    lines = out.stdout.splitlines()
-    if len(lines) != len(expected):
-        print("expected %d result lines, got %d" % (len(expected), len(lines)))
-        return 1
-
-    failures, compared, dead_trace, off_model = 0, 0, -1, 0
-    for line, (trace, frame, name, want) in zip(lines, expected):
-        if trace == dead_trace:
-            continue
-        got, extra = {}, {}
-        for tok in line.split():
-            if "=" in tok:
-                k, v = tok.split("=")
-                got[k] = int(v)
-            else:
-                k, v = tok.split(":")
-                extra[k] = v
-        if isinstance(want, str):
-            if want == "stray" and not got["unmodelled"]:
-                failures += 1
-                print("MISMATCH trace %d frame %d %s: the original asked for a missing "
-                      "image, the port did not" % (trace, frame, name))
-            dead_trace = trace
-            continue
-        if got["unmodelled"]:
-            # The port reached a table index the original has no entry for
-            # (the kid has run off the screen: nothing changes screens yet).
-            # The original went on with whatever memory holds there; nothing
-            # further in this trace can be compared.
-            dead_trace = trace
-            off_model += 1
-            continue
-        problems = []
-        if got["blue"] != want["vars"]["blue"]:
-            problems.append("blueprint screen: C %d, original %d"
-                            % (got["blue"], want["vars"]["blue"]))
-        for n in BYTES + WORDS:
-            if got[n] != want["vars"][n]:
-                problems.append("%s: C %d, original %d" % (n, got[n], want["vars"][n]))
-        for key in ("snd", "hooks", "lvl"):
-            if extra[key] != want[key]:
-                problems.append("%s: C %s, original %s" % (key, extra[key], want[key]))
-        for n, _ in BUFFERS:
-            if extra[n] != want["bufs"][n]:
-                problems.append("%s: C %s, original %s" % (n, extra[n], want["bufs"][n]))
-        compared += 1
-        if problems:
-            failures += 1
-            dead_trace = trace                       # later frames would only repeat it
-            if failures <= 5:
-                print("MISMATCH trace %d frame %d after %s" % (trace, frame, name))
-                for p in problems[:10]:
-                    print("   " + p)
     if failures:
         print("%d traces differ" % failures)
         return 1
+    if os.environ.get("POP_FUZZ_VERBOSE") or (ended_early + off_model) * 4 > traces:
+        for k in sorted(cut_at, key=cut_at.get, reverse=True):
+            print("   cut short at %-40s %d" % (k, cut_at[k]))
     if (ended_early + off_model) * 4 > traces:
         print("too many traces cut short: %d of %d" % (ended_early + off_model, traces))
         return 1
@@ -316,6 +364,8 @@ def main(argv):
     print("   in the original's run: %d calls changed the level, sounds %s were queued, "
           "up to %d objects in transition at once, a floor was falling in %d frames"
           % (level_changes, sorted(int(x, 16) for x in sounds), busiest_list, falling_floors))
+    print("   an opponent was present in %d frames and en garde in %d; the kid was below "
+          "full strength in %d" % (guard_frames, fight_frames, strength_lost))
     return 0
 
 

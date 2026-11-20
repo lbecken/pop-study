@@ -98,6 +98,15 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | 2026-11-20 | `trace_kidstep.py` with moving objects, 500 traces, seed 42 | same | 617,880 calls agree; 170 distinct frames. In the original's run 26,180 calls changed the level, 12 different sounds were queued, up to 9 objects were in transition at once, and a floor was falling in 1,277 frames; 33 traces cut short (kid off the screen edge) |
 | 2026-11-20 | `mutation_check.py`, all three files, 400 rounds, seed 1989 | – | 104 deliberate errors: 98 noticed, 6 without effect (each listed with its reason), 0 missed. For `pop_mover.c`: 45 errors, 44 noticed, 1 without effect; its first run missed 7, of which 5 were boundary values since added to the generator, 1 turned out to have no effect, and 1 was hidden by the comparison itself (see below) |
 | 2026-11-20 | gcov on `pop_mover.c` under `fuzz_control.py @mover` (400 rounds) | GCC 13.3 | 99.7 % of lines, 97 % of branch directions |
+| 2026-11-20 | pytest, with original (after milestone 9c) | Python 3.13, Linux | 141 passed |
+| 2026-11-20 | pytest, without original | Python 3.13, Linux | 114 passed, 27 skipped |
+| 2026-11-20 | CTest, with original | GCC 13.3, `-Werror`, ASan + UBSan | 16 of 16 passed |
+| 2026-11-20 | CTest, with original | Clang 18.1, `-Werror`; `test_auto`, `test_assets` under valgrind | 16 of 16 passed, no valgrind errors |
+| 2026-11-20 | CTest, without original | GCC 13.3, `-Werror` | 8 of 8 passed |
+| 2026-11-20 | `fuzz_control.py @auto`, 1,000 rounds, seed 42 | ASan build of the runner | 28,767 cases over the 29 opponent routines agree; 233 skipped |
+| 2026-11-20 | `trace_kidstep.py` with opponents, 400 traces, seed 42 | same | 693,798 calls agree; 194 distinct frames, every `CharAction` seen. In the original's run an opponent was present in 12,324 frames and en garde in 7,456, the kid was below full strength in 7,825, 22,257 calls changed the level; 18 traces cut short |
+| 2026-11-20 | `mutation_check.py`, all four files, 400 rounds, seed 1989 | – | 183 deliberate errors: 174 noticed, 9 without effect (each with its reason), 0 missed. `pop_auto.c`: 79 errors, 76 noticed, 3 without effect. Its first run missed 18: most because the test placed the fighters 13 units further apart than intended (the distance measure adds 13 when they face each other), the rest boundary values; all since added |
+| 2026-11-20 | gcov on `pop_auto.c` under `fuzz_control.py @auto` (400 rounds) | GCC 13.3 | 98.8 % of lines, 94 % of branch directions |
 
 ## Kinds of evidence
 
@@ -112,7 +121,7 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | Two implementations | C interpreter vs Python decoder, 45,600 ticks identical; C effect renderer vs Python, 26,204 samples | catches slips, not a shared misreading |
 | Executing the original | sound effects obtained by running the assembled `SOUND.S` in a 6502 simulator; timing equals the hand-derived loop formula | strong for behaviour; depends on the simulator's cycle table |
 | Differential fuzzing | each ported C routine against the original routine in the simulator, on random states wider than valid ones (`docs/oracle.md`) | strong: independent of my reading of the code; depends on the assembler and simulator being right |
-| Mutation check | 104 deliberately wrong builds of the control, collision and moving-object code, each run against the comparison (`modern-port/tests/mutation_check.py`) | shows the comparison has teeth, and where its inputs were thin: the first version missed six boundary values, since added |
+| Mutation check | 183 deliberately wrong builds of the control, collision, moving-object and opponent code, each run against the comparison (`modern-port/tests/mutation_check.py`) | shows the comparison has teeth, and where its inputs were thin: the first version missed six boundary values, since added |
 | Multi-frame trace | the ported per-frame steps run for 60 frames with state carried over, C against the original after each call | strong for how the routines work together; says nothing about the steps not yet ported |
 | Coverage | gcov on the C under the fuzz inputs | shows which branches the comparison reached at all |
 | Cross-screen continuity | rendered screens placed by the level map line up at their edges | moderate: wrong piece offsets or neighbour rules would show as seams |

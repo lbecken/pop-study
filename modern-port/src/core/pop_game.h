@@ -61,12 +61,44 @@ typedef struct pop_imgdims {
     const uint8_t *wh[POP_CHTABLES];     /* count[t] pairs: width, height */
 } pop_imgdims;
 
+/* Tables from AUTO.S that describe content rather than rules: how each kind
+ * of opponent fights, where the shadow appears, a scripted movement.  They
+ * are generated from the user's checkout like the other game data.
+ *   fight: 124 bytes, the eight per-program tables (12 entries each) and the
+ *          two per-level tables (14 each), contiguous as in memory;
+ *   shadpos: 3 x 8 bytes (Posn, X, Y, Face, BlockX, BlockY, Action, sequence)
+ *          for levels 6, 5 and 12;
+ *   shadprog5: (frame, command) pairs for the shadow's theft on level 5. */
+typedef struct pop_autodata {
+    const uint8_t *fight;
+    const uint8_t *shadpos;
+    const uint8_t *shadprog5;
+    size_t         shadprog5_len;
+} pop_autodata;
+
+enum {
+    POP_FT_STRIKE = 0, POP_FT_RESTRIKE = 12, POP_FT_BLOCK = 24, POP_FT_IMPBLOCK = 36,
+    POP_FT_ADV = 48, POP_FT_REFRACT = 60, POP_FT_SPECIALCOLOR = 72, POP_FT_EXTRASTR = 84,
+    POP_FT_BASICSTR = 96, POP_FT_BASICCOLOR = 110, POP_FT_SIZE = 124,
+    POP_SHADPOS_6A = 0, POP_SHADPOS_5 = 8, POP_SHADPOS_12 = 16, POP_SHADPOS_SIZE = 24
+};
+
+/* Guard start data per screen, inside the level's INFO area (EQ.S 282-287). */
+enum {
+    POP_GD_BLOCK = 2119, POP_GD_FACE = 2143, POP_GD_X = 2167, POP_GD_SEQL = 2191,
+    POP_GD_PROG = 2215, POP_GD_SEQH = 2239
+};
+
 /* Calls into subsystems that are not ported yet (moving level objects,
  * potion effects, level change).  Each is made at the point where the
  * original has its `jsr`.  Any pointer may be NULL. */
 typedef struct pop_game_hooks {
     void *ctx;
-    void (*potion_effect)(void *ctx);    /* potioneffect, MISC.S      */
+    void (*invert_y)(void *ctx);         /* inverty: the upside-down potion's redraw */
+    void (*add_refl_obj)(void *ctx);     /* addreflobj: draw the kid's reflection */
+    void (*attract_mode)(void *ctx);     /* attractmode: a scripted demo has ended */
+    void (*desel_input)(void *ctx);      /* LoadDesel, getdesel, clrjstk: opponent played by hand */
+    void (*save_desel)(void *ctx);       /* SaveDesel */
     void (*speaker_click)(void *ctx);    /* a read of $C030, COLL.S 403 */
     /* PLAYERCTRL's input step: LoadSelect, getselect, clrjstk (CTRL.S
      * 573-577).  Expected to set JSTKX, JSTKY, btn and the clr* flags. */
@@ -182,6 +214,24 @@ typedef struct pop_game {
     uint8_t  BGset1;                     /* $303: background set, 1 = palace */
     /* scratch that carries values between MOVER routines (its `locals`) */
     uint8_t  mv_state, linkindex, pptype, underFF;
+
+    /* --- opponents, fighting, screen changes (AUTO.S, MISC.S) --- */
+    uint8_t  guardprog;                  /* $DD: the opponent's "program": index into the fight tables */
+    uint8_t  justblocked;                /* $7E: frames of impaired blocking after a blocked strike */
+    uint8_t  shadowaction;               /* $217 */
+    uint8_t  PlayCount, PreRecPtr;       /* $A0, $309: scripted-movement playback */
+    uint8_t  CUTTIMER, cutscrn;          /* $28, $A6 */
+    uint8_t  milestone;                  /* $212 */
+    uint8_t  MaxKidStr, MaxOppStr;       /* $D0, $DC */
+    uint8_t  origstrength;               /* $E1 */
+    uint8_t  GuardColor;                 /* $216 */
+    uint8_t  lightcolor, lightning;      /* $89, $88: colour and number of screen flashes asked for */
+    uint8_t  ManCtrl;                    /* $DE: non-zero = the opponent is played by hand */
+    uint8_t  vibes, invert, redrawflg;   /* $318, $9F, $97 */
+    uint8_t  msgtimer;                   /* $DB */
+    uint8_t  timerequest;                /* ask for the time-left message */
+    uint8_t  mirrx, dmirr;               /* $B0, $B1: mirror x, distance from it (REFLECTION) */
+    const struct pop_autodata *autodata; /* fight tables and scripted positions (generated) */
 
     /* --- redraw marks (CTRLSUBS.S 1734-1757) --- */
     uint8_t  rb[POP_RB_SIZE];            /* $5E00: the redraw buffers, see POP_RB_* */

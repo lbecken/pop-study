@@ -81,6 +81,7 @@ uint8_t pop_getblockxp(pop_game *g, uint8_t x);      /* same, for the centre pla
 uint8_t pop_getblocky(uint8_t y);                    /* row 0-3, or $FF above the screen */
 uint8_t pop_getblockyp(uint8_t y);                   /* same, by floor lines */
 uint8_t pop_floory(pop_game *g, uint8_t index);      /* FloorY,x: floor line of row index-1 */
+uint8_t pop_blocktop(pop_game *g, uint8_t index);    /* BlockTop,x: top line of row index-1 */
 uint8_t pop_blockbot(pop_game *g, uint8_t index);    /* BlockBot,x: bottom line of row index-1 */
 uint8_t pop_blockay(pop_game *g, uint8_t index);     /* BlockAy,x: bottom line - 3 */
 

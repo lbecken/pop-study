@@ -16,6 +16,7 @@
 
 #include <string.h>
 
+#include "pop_auto.h"
 #include "pop_control.h"
 #include "pop_world.h"
 
@@ -28,6 +29,20 @@ static uint8_t seq_bytes[2 * SEQ_COUNT + 4 * SEQ_COUNT];
 static pop_seqtab seqtab;
 static const uint8_t dims0[] = { 2, 40 };          /* one image: 2 bytes x 40 lines */
 static pop_imgdims dims;
+/* Made-up fight tables: opponent type 0 never does anything by choice;
+ * type 1 always blocks and advances, strikes 100 times in 256, never
+ * restrikes, is dazed 20 frames by a hit, wears the other colour and has
+ * one unit more.  Guards have 3 units on even levels and 4 on odd ones. */
+static uint8_t fx_fight[POP_FT_SIZE];
+/* (Posn, X, Y, Face, BlockX, BlockY, Action, sequence) x 3 */
+static const uint8_t fx_shadpos[POP_SHADPOS_SIZE] = {
+    15, 100, 118, 0x00, 3, 1, 0, 2,
+    15, 60, 55, 0xFF, 0, 0, 0, 2,
+    15, 81, 55, 0x00, 1, 0, 0, 7,
+};
+/* forward at frame 1, button at 5, everything released at 9 */
+static const uint8_t fx_script[] = { 0, 0, 1, 1, 5, 6, 9, 0, 255, 0xFE };
+static pop_autodata fx_auto;
 static char hooklog[32];
 static size_t nhooks;
 
@@ -36,6 +51,9 @@ static void h_input(void *c) { (void)c; hook('i'); }
 static void h_save(void *c) { (void)c; hook('o'); }
 static void h_demo(void *c) { (void)c; hook('d'); }
 static void h_click(void *c) { (void)c; hook('k'); }
+static void h_attract(void *c) { (void)c; hook('a'); }
+static void h_refl(void *c) { (void)c; hook('r'); }
+static void h_invert(void *c) { (void)c; hook('v'); }
 
 /* Address of made-up sequence n: its only frame is number n, repeated. */
 static uint16_t seq_addr(unsigned n) { return (uint16_t)(SEQ_BODY + 4u * (n - 1u)); }
@@ -84,6 +102,23 @@ static void setup(int col, uint8_t face)
     seqtab.origin = SEQ_ORIGIN;
     g.seq = &seqtab;
 
+    memset(fx_fight, 0, sizeof fx_fight);
+    fx_fight[POP_FT_STRIKE + 1] = 100;
+    fx_fight[POP_FT_BLOCK + 1] = 255;
+    fx_fight[POP_FT_ADV + 1] = 255;
+    fx_fight[POP_FT_REFRACT + 1] = 20;
+    fx_fight[POP_FT_SPECIALCOLOR + 1] = 1;
+    fx_fight[POP_FT_EXTRASTR + 1] = 1;
+    for (i = 0; i < 14; i++) {
+        fx_fight[POP_FT_BASICSTR + i] = (uint8_t)(3 + (i & 1u));
+        fx_fight[POP_FT_BASICCOLOR + i] = (uint8_t)(i & 1u);
+    }
+    fx_auto.fight = fx_fight;
+    fx_auto.shadpos = fx_shadpos;
+    fx_auto.shadprog5 = fx_script;
+    fx_auto.shadprog5_len = sizeof fx_script;
+    g.autodata = &fx_auto;
+
     dims.count[0] = 1;
     dims.wh[0] = dims0;
     g.dims = &dims;
@@ -92,6 +127,9 @@ static void setup(int col, uint8_t face)
     g.hooks.save_input = h_save;
     g.hooks.demo_ctrl = h_demo;
     g.hooks.speaker_click = h_click;
+    g.hooks.attract_mode = h_attract;
+    g.hooks.add_refl_obj = h_refl;
+    g.hooks.invert_y = h_invert;
 
     for (c = 0; c <= 6; c++) put(1, 1, c, POP_FLOOR, 0);
 
@@ -106,6 +144,9 @@ static void setup(int col, uint8_t face)
     g.level = 1;
     g.KidStrength = 3;
     g.OppStrength = 3;
+    g.MaxKidStr = 3;
+    g.MaxOppStr = 3;
+    g.shad.face = POP_NO_CHAR;
     g.VisScrn = 1;
     g.collideL = g.collideR = 0xFF;
     pop_calcblue(&g, 1);

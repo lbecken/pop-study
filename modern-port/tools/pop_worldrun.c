@@ -3,9 +3,10 @@
  * New code.  Used by tests/fuzz_world.py, which feeds it the same inputs it
  * gives the original code in the 6502 simulator and compares the answers.
  *
- *   pop_worldrun <framedef.bin> [<seqtable.bin> <imgdims.bin>]
+ *   pop_worldrun <framedef.bin> [<seqtable.bin> <imgdims.bin> [<autodata.bin>]]
  *
- * The two optional files are needed by the control and floor routines.
+ * The optional files are needed by the control and floor routines and, the
+ * last, by the opponents.
  *
  * Input lines:
  *   L <4608 hex digits>           load a level blueprint
@@ -19,8 +20,9 @@
  * For each R line one line is printed: "a=<n> <name>=<n> ..." listing the
  * returned value and every state variable, then
  *   snd:<hex>     sounds queued by the routine, in order
- *   hooks:<chars> calls out of the ported code: p potioneffect, k speaker
- *                 click, i input read, o input saved, d DemoCtrl
+ *   hooks:<chars> calls out of the ported code: k speaker click, i input
+ *                 read, o input saved, d DemoCtrl, v inverty, r addreflobj,
+ *                 a attractmode, e/f opponent's input read/saved
  *   lvl:<i>.<v>,… blueprint bytes the routine changed (then undone, unless
  *                 a "K 1" line asked for changes to persist)
  *   redbuf:<hex> wipebuf:<hex> whitebuf:<hex> topbuf:<hex>, and the eight
@@ -34,18 +36,24 @@
 #include <string.h>
 
 #include "pop_assets.h"
+#include "pop_auto.h"
 #include "pop_collide.h"
 #include "pop_control.h"
 #include "pop_mover.h"
 #include "pop_world.h"
 
 static pop_game g;
+static uint8_t script[32];               /* a movement script for "playscript" */
 static uint8_t pristine[POP_LEVEL_SIZE];
 static char hooklog[64];
 static size_t nhooks;
 
 static void log_hook(char c) { if (nhooks < sizeof hooklog - 1) hooklog[nhooks++] = c; }
-static void h_potion(void *ctx) { (void)ctx; log_hook('p'); }
+static void h_invert(void *ctx) { (void)ctx; log_hook('v'); }
+static void h_refl(void *ctx) { (void)ctx; log_hook('r'); }
+static void h_attract(void *ctx) { (void)ctx; log_hook('a'); }
+static void h_desel(void *ctx) { (void)ctx; log_hook('e'); }
+static void h_savedesel(void *ctx) { (void)ctx; log_hook('f'); }
 static void h_click(void *ctx) { (void)ctx; log_hook('k'); }
 static void h_input(void *ctx) { (void)ctx; log_hook('i'); }
 static void h_saveinput(void *ctx) { (void)ctx; log_hook('o'); }
@@ -102,6 +110,16 @@ static var vars[] = {
     { "numtrans", &g.numtrans }, { "nummob", &g.nummob }, { "trobcount", &g.trobcount },
     { "tempnt", &g.tempnt }, { "exitopen", &g.exitopen }, { "RNDseed", &g.RNDseed },
     { "scrnAbove", &g.scrnAbove }, { "scrnBelow", &g.scrnBelow }, { "BGset1", &g.BGset1 },
+    { "guardprog", &g.guardprog }, { "justblocked", &g.justblocked },
+    { "shadowaction", &g.shadowaction }, { "PlayCount", &g.PlayCount },
+    { "PreRecPtr", &g.PreRecPtr }, { "CUTTIMER", &g.CUTTIMER }, { "cutscrn", &g.cutscrn },
+    { "milestone", &g.milestone }, { "MaxKidStr", &g.MaxKidStr },
+    { "MaxOppStr", &g.MaxOppStr }, { "origstrength", &g.origstrength },
+    { "GuardColor", &g.GuardColor }, { "lightcolor", &g.lightcolor },
+    { "lightning", &g.lightning }, { "ManCtrl", &g.ManCtrl }, { "vibes", &g.vibes },
+    { "invert", &g.invert }, { "redrawflg", &g.redrawflg }, { "msgtimer", &g.msgtimer },
+    { "mirrx", &g.mirrx }, { "dmirr", &g.dmirr },
+    { "timerequest", &g.timerequest },
     { "X", &g.rx }, { "Y", &g.ry }, { "blue", &g.blue },
     { "unmodelled", &g.unmodelled },
 };
@@ -125,6 +143,7 @@ static buf bufs[] = {
     { "fredbuf", g.rb + POP_RB_FRED, 30 }, { "movebuf", g.rb + POP_RB_MOVE, 30 },
     { "halfbuf", g.rb + POP_RB_HALF, 30 }, { "floorbuf", g.rb + POP_RB_FLOOR, 30 },
     { "objbuf", g.rb + POP_RB_OBJ, 30 },
+    { "script", script, sizeof script },
     { "trloc", g.trloc, POP_TROBSPACE }, { "trscrn", g.trscrn, POP_TROBSPACE },
     { "trdirec", g.trdirec, POP_TROBSPACE },
     { "mobx", g.mobx, POP_MOBSPACE }, { "moby", g.moby, POP_MOBSPACE },
@@ -285,6 +304,39 @@ static int run(const char *r, uint8_t a, uint8_t x, uint8_t y, int *out)
     if (!strcmp(r, "crumble"))      DO(pop_crumble(&g));
     if (!strcmp(r, "mirappear"))    DO(pop_mirappear(&g));
     if (!strcmp(r, "addlowersound")) DO(pop_addlowersound(&g, a));
+
+    /* opponents */
+    if (!g.autodata) return 0;
+    if (!strcmp(r, "autoctrl"))     DO(pop_autoctrl(&g));
+    if (!strcmp(r, "shadctrl"))     DO(pop_shadctrl(&g));
+    if (!strcmp(r, "doshad"))       DO(pop_doshad(&g));
+    if (!strcmp(r, "playscript"))   DO(pop_autoplayback(&g, script, sizeof script));
+    if (!strcmp(r, "autoplayback")) DO(pop_autoplayback(&g, g.autodata->shadprog5,
+                                                        g.autodata->shadprog5_len));
+    if (!strcmp(r, "checkstrike"))  DO(pop_checkstrike(&g));
+    if (!strcmp(r, "checkstab"))    DO(pop_checkstab(&g));
+    if (!strcmp(r, "stabchar"))     DO(pop_stabchar(&g));
+    if (!strcmp(r, "chgmeters"))    DO(pop_chgmeters(&g));
+    if (!strcmp(r, "rechargemeter")) DO(pop_rechargemeter(&g));
+    if (!strcmp(r, "boostmeter"))   DO(pop_boostmeter(&g));
+    if (!strcmp(r, "markmeters"))   DO(pop_markmeters(&g));
+    if (!strcmp(r, "unholy"))       DO(pop_unholy(&g));
+    if (!strcmp(r, "kill0"))        DO(pop_kill0(&g));
+    if (!strcmp(r, "deathsong"))    DO(pop_deathsong(&g));
+    if (!strcmp(r, "deadenemy"))    DO(pop_deadenemy(&g));
+    if (!strcmp(r, "checkalert"))   DO(pop_checkalert(&g));
+    if (!strcmp(r, "firstguard"))   DO(pop_firstguard(&g));
+    if (!strcmp(r, "vanishchar"))   DO(pop_vanishchar(&g));
+    if (!strcmp(r, "bonesrise"))    DO(pop_bonesrise(&g));
+    if (!strcmp(r, "mouserescue"))  DO(pop_mouserescue(&g));
+    if (!strcmp(r, "potioneffect")) DO(pop_potioneffect(&g));
+    if (!strcmp(r, "reflection"))   DO(pop_reflection(&g));
+    if (!strcmp(r, "cutcheck"))     DO(pop_cutcheck(&g));
+    if (!strcmp(r, "cutguard"))     DO(pop_cutguard(&g));
+    if (!strcmp(r, "initialguards")) DO(pop_initialguards(&g));
+    if (!strcmp(r, "addguard"))     DO(pop_addguard(&g));
+    if (!strcmp(r, "cutchar"))      RET(pop_cutchar(&g));
+    if (!strcmp(r, "cut"))          DO(pop_cut(&g, a));
     return 0;
 #undef RET
 #undef DO
@@ -304,12 +356,14 @@ int main(int argc, char **argv)
     pop_framefile frames;
     pop_seqfile seq;
     pop_dimfile dims;
+    pop_autofile autof;
     const char *err = NULL;
     size_t i;
     int keep = 0;
 
-    if (argc != 2 && argc != 4) {
-        fprintf(stderr, "usage: %s <framedef.bin> [<seqtable.bin> <imgdims.bin>]\n"
+    if (argc != 2 && argc != 4 && argc != 5) {
+        fprintf(stderr, "usage: %s <framedef.bin> [<seqtable.bin> <imgdims.bin> "
+                        "[<autodata.bin>]]\n"
                         "       (commands on standard input)\n", argv[0]);
         return 2;
     }
@@ -321,7 +375,15 @@ int main(int argc, char **argv)
     memset(&seq, 0, sizeof seq);
     memset(&dims, 0, sizeof dims);
     g.frames = &frames.tab;
-    if (argc == 4) {
+    memset(&autof, 0, sizeof autof);
+    if (argc == 5) {
+        if (pop_autofile_load(argv[4], &autof, &err) != 0) {
+            fprintf(stderr, "%s: %s\n", argv[4], err);
+            return 2;
+        }
+        g.autodata = &autof.data;
+    }
+    if (argc >= 4) {
         if (pop_seqfile_load(argv[2], &seq, &err) != 0) {
             fprintf(stderr, "%s: %s\n", argv[2], err);
             return 2;
@@ -333,7 +395,11 @@ int main(int argc, char **argv)
         g.seq = &seq.tab;
         g.dims = &dims.dims;
     }
-    g.hooks.potion_effect = h_potion;
+    g.hooks.invert_y = h_invert;
+    g.hooks.add_refl_obj = h_refl;
+    g.hooks.attract_mode = h_attract;
+    g.hooks.desel_input = h_desel;
+    g.hooks.save_desel = h_savedesel;
     g.hooks.speaker_click = h_click;
     g.hooks.get_input = h_input;
     g.hooks.save_input = h_saveinput;
@@ -424,5 +490,6 @@ int main(int argc, char **argv)
     pop_framefile_free(&frames);
     pop_seqfile_free(&seq);
     pop_dimfile_free(&dims);
+    pop_autofile_free(&autof);
     return 0;
 }

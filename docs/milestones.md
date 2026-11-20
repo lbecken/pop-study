@@ -30,7 +30,7 @@ build/                generated, git-ignored
   rooms/              levelNN/screenSS.png and .json, level.json, overview.png
   audio/              sfx.json, sfx.csv, sfx_NN_name.wav, sfx_all.wav
   port/               CMake build tree; port/data/ holds seqtable.bin, sfx.bin,
-                      framedef.bin, imgdims.bin
+                      framedef.bin, imgdims.bin, autodata.bin
 ```
 
 The original checkout stays outside this repository and is never written to.
@@ -51,8 +51,8 @@ The original checkout stays outside this repository and is never written to.
 | 8c | Floor and falling in C: `CHECKFLOOR`, `onground`, `startfall`, `CDpatch`, `InsideBlock`, `falling`, `hitflr`, `fallon`, `CHECKIMPALE`, `DOIMPALE`; then the ported part of a whole kid frame run for many consecutive frames | Same fuzzing; plus `trace_kidstep.py`: 60-frame traces of random input, C against the original after every call; a scenario test on `LEVEL1` (run and stop) | **done** |
 | 9a | Collision in C: `CHECKBARR` and its collision-data buffers, `COLLISIONS`, `CHECKCOLL`, the ground and air bumps, `CHECKGATE`, `CHECKSLICE`, `CHECKSLICE2`, `ENEMYCOLL`, `GoneUpstairs`; added to the kid-frame trace, where the kid now stops at walls; `docs/port/collision.md` | 8 more routines in the fuzz comparison (60 in all); the trace with collision steps; 109 unit checks; 24 more deliberate bugs | **done** |
 | 9b | Moving level objects in C: the transition list and every piece's state machine (gates, exit, plates and their link chains, spikes, slicers, loose floors, torches, flasks, sword), falling floors with landing, rubble and crushing, and the triggers in the kid's frame (`CHECKPRESS`, `CHECKSPIKES`, `shakeloose`, `ADDSLICERS`); `docs/port/moving-objects.md` | 27 more routines in the fuzz comparison (87 in all); the kid-frame trace with the level reacting; 129 unit checks of whole timelines; 45 more deliberate bugs | **done** |
-| 9c | Opponents: `AUTO.S` (guard and shadow decisions), sword hits (`checkstrike`, `checkstab`), strength changes and death handling, `firstguard`; `DoShad` joins the frame trace | Same | proposed next |
-| 9d | Input (`getselect`, `clrjstk`), demo playback, screen changes (`cutcheck`, `PrepCut`), level start (`SETINITIALS` in C), the rest of `NextFrame` | Same; demo-level replay as an end-to-end test | |
+| 9c | Opponents in C: `AUTO.S` (guard and shadow programs, `CHECKSTRIKE`, `CHECKSTAB`, scripted movement, `CUTCHECK` and the guard hand-over, `ADDGUARD`), `MISC.S` (`STABCHAR`, `CHECKALERT`, `FIRSTGUARD`, potions, mirror shadow, skeleton, mouse), `SHADCTRL`, `DoShad`, strength meters, `INITIALGUARDS`; fight tables generated into `autodata.bin`; `docs/port/opponents.md` | 29 more routines in the fuzz comparison (116 in all); the frame trace with guards, fights, strength and screen changes; 128 unit checks; 80 more deliberate bugs | **done** |
+| 9d | The top level of a frame and a level: `NextFrame`, `DoKid` with the kid's death handling, `MainLoop`'s timers, `PrepCut`, level start (`SETINITIALS`, `startkid`, `entrance`), input (`getselect`, `clrjstk`) and the demo's script | Whole `NextFrame` against the original; the demo level replayed as an end-to-end test | proposed next |
 | 10 | Blitter fidelity: masks, mirroring, colour model | Pixel comparison with emulator captures | |
 | 11 | Verification pass: compatibility matrix, emulator comparison, profiling | `docs/verification.md` | |
 | 12 | Optional: Blender → sprite-sheet pipeline document | – | |
@@ -71,6 +71,14 @@ commit none of it. This keeps the repository free of original content at the
 cost of a required setup step.
 *Alternative:* commit generated JSON/headers for the tables (not the art), which
 makes the port build stand-alone but redistributes data derived from the source.
+
+*Clarification (milestone 9c).* "Data" here means tables that describe
+content: animation, levels, images, sounds, and since 9c the opponents' fight
+parameters and scripted movements (`autodata.bin`). Constants that are part
+of a routine's logic (thresholds, the gate's drop speeds, the widths of
+barriers within a block) are written in the C source next to the code that
+uses them, each with its citation. The line between the two is a judgement;
+say so if you want it drawn elsewhere.
 
 **D2. Simulation rate.** The original has no fixed frame rate (see
 `architecture.md` §2).

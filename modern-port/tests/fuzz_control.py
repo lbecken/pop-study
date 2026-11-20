@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Differential test: C player-control, floor, collision and moving-object
-routines against the original.
+"""Differential test: C player-control, floor, collision, moving-object and
+opponent routines against the original.
 
 New code for the pop-study project.
 
@@ -28,7 +28,7 @@ Usage:
     fuzz_control.py <pop_worldrun> <data dir> <original checkout> [cases] [seed] [only]
 
 `only` limits the run to some routines: a comma-separated list of names, or
-@control, @collision or @mover for those groups.
+@control, @collision, @mover or @auto for those groups.
 """
 
 import os
@@ -62,7 +62,12 @@ COLL_VARS = ["blocky", "collideL", "collideR", "collX", "begrange", "endrange", 
 # moving-object variables (again with their own random stream)
 MOVER_VARS = ["numtrans", "nummob", "trobcount", "tempnt", "exitopen", "RNDseed",
               "scrnAbove", "scrnBelow", "BGset1"]
-BYTES = fw.BYTES + EXTRA + COLL_VARS + MOVER_VARS
+# opponent variables (their own random stream too)
+AUTO_VARS = ["guardprog", "justblocked", "shadowaction", "PlayCount", "PreRecPtr", "CUTTIMER",
+             "cutscrn", "milestone", "MaxKidStr", "MaxOppStr", "origstrength", "GuardColor",
+             "lightcolor", "lightning", "ManCtrl", "vibes", "invert", "redrawflg", "msgtimer",
+             "mirrx", "dmirr", "timerequest"]
+BYTES = fw.BYTES + EXTRA + COLL_VARS + MOVER_VARS + AUTO_VARS
 WORDS = fw.WORDS + ["FCharX"]
 CD_BUFFERS = (("CDthisframe", 16), ("CDlastframe", 16), ("CDbelow", 16), ("CDabove", 16))
 SN_BUFFERS = (("SNthisframe", 16), ("SNlastframe", 16), ("SNbelow", 16), ("SNabove", 10))
@@ -74,7 +79,13 @@ MOB_LISTS = (("mobx", 16), ("moby", 16), ("mobscrn", 16), ("mobvel", 16), ("mobt
 BASE_BUFFERS = (("redbuf", 30), ("wipebuf", 30), ("whitebuf", 30), ("topbuf", 10))
 OTHER_REDRAW = (("fredbuf", 30), ("movebuf", 30), ("halfbuf", 30), ("floorbuf", 30),
                 ("objbuf", 30))
-BUFFERS = BASE_BUFFERS + CD_BUFFERS + SN_BUFFERS + OTHER_REDRAW + TROB_LISTS + MOB_LISTS
+# "script": a made-up movement script for AUTOPLAYBACK, kept in memory the
+# original does not use ($9000) and in the runner
+SCRIPT_AT = 0x9000
+BUFFERS = BASE_BUFFERS + CD_BUFFERS + SN_BUFFERS + OTHER_REDRAW + TROB_LISTS + MOB_LISTS \
+    + (("script", 32),)
+DEAD_SEQS = []       # sequence addresses one frame before a "dead" frame; set by Harness
+FDY = {}             # Fdy of a few of the kid's frames; set by Harness
 IN_MODULE = {"tempobjid": "COLL"}          # a COLL local, not in the shared equates
 
 # routine -> (module, label, results compared: any of "a", "x", "y", "c")
@@ -155,6 +166,34 @@ ANIMATED = {  # piece -> states for objects on the transition list
     16: (0, 4, 19, 20, 40, 60, 80, 100, 120, 164, 167, 168, 171, 172),
     10: (0, 7, 8, 0x28, 0xE8, 0x41), 22: (0, 1, 2, 40), 1: (0, 3), 20: (0,),
 }
+
+AUTO = {
+    # opponents, sword hits, strength, screen changes (AUTO.S, MISC.S and helpers)
+    "autoctrl": ("AUTO", "AUTOCTRL", ""), "shadctrl": ("CTRL", "SHADCTRL", ""),
+    "autoplayback": ("AUTO", "AUTOPLAYBACK", ""), "playscript": ("AUTO", "AUTOPLAYBACK", ""),
+    "doshad": ("TOPCTRL", "DoShad", ""),
+    "checkstrike": ("AUTO", "CHECKSTRIKE", ""), "checkstab": ("AUTO", "CHECKSTAB", ""),
+    "stabchar": ("MISC", "STABCHAR", ""), "chgmeters": ("TOPCTRL", "chgmeters", ""),
+    "rechargemeter": ("CTRLSUBS", "RECHARGEMETER", ""),
+    "boostmeter": ("CTRLSUBS", "BOOSTMETER", ""), "markmeters": ("MISC", "MARKMETERS", ""),
+    "unholy": ("MISC", "UNHOLY", ""), "kill0": ("TOPCTRL", "kill0", ""),
+    "deathsong": ("TOPCTRL", "deathsong", ""), "deadenemy": ("SUBS", "DEADENEMY", ""),
+    "checkalert": ("MISC", "CHECKALERT", ""), "firstguard": ("MISC", "FIRSTGUARD", ""),
+    "vanishchar": ("MISC", "VANISHCHAR", ""), "bonesrise": ("MISC", "BONESRISE", ""),
+    "mouserescue": ("MISC", "MOUSERESCUE", ""), "potioneffect": ("MISC", "POTIONEFFECT", ""),
+    "reflection": ("MISC", "REFLECTION", ""), "cutcheck": ("AUTO", "CUTCHECK", ""),
+    "cutguard": ("AUTO", "CUTGUARD", ""), "addguard": ("AUTO", "ADDGUARD", ""),
+    "initialguards": ("SUBS", "INITIALGUARDS", ""),
+    "cutchar": ("AUTO", "cutchar", "a"), "cut": ("AUTO", "CUT", ""),
+}
+ROUTINES.update(AUTO)
+FIGHT_FRAMES = (15, 150, 151, 152, 153, 154, 157, 158, 158, 161, 162, 165, 166, 167, 168, 169,
+                170, 171, 171)
+OTHER_FRAMES = (2, 3, 7, 9, 14, 15, 33, 34, 40, 43, 44, 101, 102, 110, 117, 118, 126, 127, 132,
+                133, 135, 149, 162, 163, 166, 168, 169, 177, 178, 185, 219, 228, 229)
+# distances the fight code compares with, and their neighbours
+RANGES = (-16, -15, -14, -8, -7, -4, -3, 0, 7, 8, 9, 10, 11, 12, 13, 28, 29, 30, 34, 35, 36,
+          39, 40, 41, 49, 50, 51, 89, 90, 91, 126, 127, 128, 140)
 
 COLLISION = ("checkbarr", "collisions", "checkcoll", "checkgate", "checkslice",
              "checkslice2", "enemycoll", "goneupstairs")
@@ -635,6 +674,304 @@ def mover_state(rng, s, pokes, bufs, routine):
         s["_noreread"] = 1
 
 
+def place_at(rng, d, x, face):
+    """Where to put the other character, and which way he faces, so that
+    GETOPDIST from a character at x facing `face` gives d (signed).  The
+    routine adds 13 when the two face each other, so facing each other the
+    measure is never 0-12."""
+    opposite = d >= 13 and rng.random() < 0.75
+    raw = d - 13 if opposite else d
+    other_x = (x + (raw if face == 0 else -raw)) & 0xFF
+    return other_x, (face ^ 0xFF) if opposite or (d < 0 and rng.random() < 0.5) else face
+
+
+def fighter(rng, s, rec, scrn, row, x, face):
+    """Fill one character record with someone who could be in a fight."""
+    s.update({rec + "Scrn": scrn, rec + "BlockY": row, rec + "Y": FLOOR_Y.get(row, 55),
+              rec + "X": x & 0xFF, rec + "Face": face,
+              rec + "BlockX": ((x - 58) // 14) & 0xFF,
+              rec + "Posn": rng.choice(FIGHT_FRAMES if rng.random() < 0.6 else OTHER_FRAMES),
+              rec + "Sword": rng.choice((0, 2, 2)), rec + "Action": rng.choice((0, 1, 1, 2, 5, 6, 99)),
+              rec + "Life": rng.choice((0xFF,) * 6 + (0, 1)),
+              rec + "XVel": 0, rec + "YVel": 0})
+
+
+def auto_state(rng, s, pokes, bufs, routine):
+    """Opponent variables; for the opponent routines also two characters set
+    against each other at the distances the code distinguishes, the level
+    places it knows by number, and guard-start entries."""
+    s["guardprog"] = rng.randrange(12) if rng.random() < 0.97 else rng.randrange(12, 30)
+    s["justblocked"] = rng.choice((0, 0, 1, 4))
+    s["shadowaction"] = rng.choice((0, 0, 1))
+    s["PlayCount"] = rng.choice((0, 0, 1, 13, 14, 17, 18, 28, 29, 44, 45, 48, 49, 253, 254))
+    s["PreRecPtr"] = rng.choice((0, 2, 4, 6, 8, 10, 12, 14))
+    s["CUTTIMER"] = rng.choice((0, 0, 0, 2))
+    s["cutscrn"], s["GuardColor"], s["origstrength"] = (rng.randrange(256) for _ in range(3))
+    s["milestone"] = rng.choice((0, 1))
+    s["MaxKidStr"] = rng.choice((3, 3, 4, 9, 10))
+    s["MaxOppStr"] = rng.choice((3, 4, 5))
+    s["lightcolor"], s["lightning"] = rng.randrange(256), rng.randrange(4)
+    s["ManCtrl"] = rng.choice((0, 0, 0, 0, 1))
+    s["vibes"], s["redrawflg"], s["msgtimer"] = rng.randrange(4), rng.randrange(3), rng.randrange(256)
+    s["invert"] = rng.choice((0, 0xFF))
+    s["mirrx"], s["dmirr"] = rng.randrange(256), rng.randrange(256)
+    s["timerequest"] = rng.randrange(4)
+    bufs["script"] = bytes(32)
+    if routine not in AUTO:
+        return
+    r = rng.random()
+    s["level"] = rng.choice((0, 1, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 12, 12, 12, 13, 13))
+    scrn = rng.choice((1, 3, 4, 7, 11, 15, 18, 24, rng.randint(1, 24)))
+    row = rng.choice((0, 1, 1, 2))
+    x = rng.randint(120, 128)
+    face = rng.choice((0x00, 0xFF))
+    d = rng.choice(RANGES)
+    other_x, other_face = place_at(rng, d if d < 128 else 127, x, face)
+    other_scrn = scrn if rng.random() < 0.85 else rng.randint(0, 24)
+    other_row = row if rng.random() < 0.8 else rng.choice((0, 1, 2, 3, 0xFF))
+    s.update(EnemyAlert=rng.choice((0, 1, 2, 2, 2)), droppedout=rng.choice((0, 0, 1)),
+             offguard=rng.choice((0, 0, 1)), refract=rng.choice((0, 0, 0, 3)),
+             gdtimer=rng.choice((0, 0, 2)), alertguard=rng.choice((0, 0, 1)),
+             heroic=rng.choice((0, 1)), exitopen=rng.choice((0, 0, 1, 77)),
+             mergetimer=rng.choice((0, 0, 0, 42, 0xFF)), SongCue=rng.choice((0, 0, 5)),
+             KidStrength=rng.choice((0, 1, 2, 3, 3)), OppStrength=rng.choice((0, 1, 2, 3, 4)),
+             ChgKidStr=rng.choice((0, 0, 1, 0xFF, 0xFD)), ChgOppStr=rng.choice((0, 0, 1, 0xFF)),
+             lastpotion=rng.choice((0, 1, 2, 3, 4, 5, 6, 0xFF)), VisScrn=scrn,
+             createshad=rng.choice((0, 0, 0xFF)), blue=scrn)
+    ids = (2, 2, 2, 4, 1, 1, 0, 24)
+    # the acting character and his opponent, for routines that use Char / Op
+    fighter(rng, s, "Char", scrn, row, x, face)
+    fighter(rng, s, "Op", other_scrn, other_row, other_x, other_face)
+    s["CharID"], s["OpID"] = rng.choice(ids), rng.choice((0, 0, 0, 1, 2))
+    # ... and the same pair as Kid and Shad, for routines that load them
+    fighter(rng, s, "Kid", scrn, row, x, face)
+    fighter(rng, s, "Shad", other_scrn, other_row, other_x, other_face)
+    s["KidID"], s["ShadID"] = 0, rng.choice((2, 2, 2, 4, 1, 1, 24))
+    if rng.random() < 0.15:
+        s["ShadFace"] = 86                                   # no opponent at all
+    if rng.random() < 0.15:
+        s["CharFace"] = 86
+    for rec in ("Char", "Kid", "Shad"):
+        s[rec + "Seq"] = 0x3000 + rng.randrange(0x9F0)
+
+    base = (scrn - 1) * 30 + row * 10
+    for _ in range(rng.choice((0, 1, 2, 4))):                # what stands between and around them
+        col = rng.randrange(10)
+        piece = rng.choice((0, 0, 1, 1, 2, 4, 4, 7, 11, 12, 13, 18, 20, 10, 22, 21))
+        pokes[base + col] = piece
+        pokes[720 + base + col] = rng.choice((0, 0, 2, 19, 20, 100, 111, 112, 188))
+        if row < 2 and rng.random() < 0.4:
+            pokes[base + 10 + col] = rng.choice((0, 1, 2, 11, 20))
+
+    for _ in range(rng.choice((1, 2, 3))):                   # guards waiting on screens
+        t = rng.choice((scrn, scrn, s["ShadScrn"] or 1, rng.randint(1, 24)))
+        pokes[2119 - 1 + t] = rng.choice((rng.randrange(30),) * 3 + (30, 0xFF))
+        pokes[2143 - 1 + t] = rng.choice((0x00, 0xFF))
+        pokes[2167 - 1 + t] = rng.randint(60, 190)
+        seq = rng.choice((0, 0, 0x3000 + rng.randrange(0x9F0)))
+        pokes[2191 - 1 + t], pokes[2239 - 1 + t] = seq & 0xFF, seq >> 8
+        pokes[2215 - 1 + t] = rng.choice((0, 1, 2, 3, 5, 7, 11, 12, 200))
+
+    if routine in ("autoctrl", "shadctrl") and r < 0.35:     # the shadow's set pieces
+        lvl = rng.choice((4, 5, 6, 12, 12))
+        s.update(level=lvl, CharID=1, CharLife=0xFF)
+        if lvl == 4:
+            s.update(CharScrn=4, CharX=rng.choice((60, 79, 80, 81, 150)))
+        elif lvl == 5:
+            s.update(CharScrn=24, CharX=rng.choice((10, 14, 15, 16, 55)))
+            pokes[(24 - 1) * 30 + 1] = 4
+            pokes[720 + (24 - 1) * 30 + 1] = rng.choice((0, 19, 20, 21, 188))
+        elif lvl == 6:
+            s.update(CharScrn=1, KidPosn=rng.choice((43, 43, 42)),
+                     KidX=rng.choice((0x60, 0x7F, 0x80, 0x90)))
+        else:
+            s.update(CharScrn=rng.choice((15, 15, 3)), OpX=rng.choice((100, 149, 150, 151)),
+                     CharSword=rng.choice((0, 0, 2)), OpSword=rng.choice((0, 0, 2)),
+                     CharPosn=rng.choice((15, 15, 158)), OpPosn=rng.choice(OTHER_FRAMES))
+            if rng.random() < 0.5:                           # swords down, face to face
+                dd = rng.choice((-2, 20, 40, 60))
+                ox, oface = place_at(rng, dd, s["CharX"], s["CharFace"])
+                s.update(CharSword=0, OpSword=0, offguard=1, EnemyAlert=rng.choice((2, 2, 1)),
+                         shadowaction=1, OpX=ox, OpFace=oface, OpScrn=s["CharScrn"],
+                         OpPosn=rng.choice((2, 3, 9, 14, 15, 126, 127, 130, 132, 133)))
+    elif routine in ("autoctrl", "shadctrl") and r < 0.55:   # a guard and the kid, alive
+        s.update(CharID=rng.choice((2, 2, 2, 4, 0)), CharLife=0xFF, KidLife=0xFF, OpLife=0xFF,
+                 CharPosn=rng.choice(FIGHT_FRAMES), CharAction=rng.choice((0, 1)),
+                 OpPosn=rng.choice(FIGHT_FRAMES + OTHER_FRAMES))
+    if routine in ("autoctrl", "shadctrl", "doshad") and 0.55 <= r < 0.9:
+        # en garde, the kid within reach on a clear floor: the fight proper
+        gap = rng.choice((7, 8, 9, 10, 11, 12, 13, 14, 20, 28, 28, 29, 29, 29, 30, 30, 34, 35,
+                          36, 39, 40, 41, 49, 50, 51))
+        col = rng.randint(4, 5)
+        rr = row if row < 3 else 1
+        cx = 58 + 14 * col + 7
+        ox, oface = place_at(rng, gap, cx, face)
+        s["guardprog"] = rng.choice((0, 0, 1, 3, 5, 7, 9, 11))
+        s.update(CharID=rng.choice((2, 2, 4)), CharLife=0xFF, KidLife=0xFF, OpLife=0xFF,
+                 CharSword=2, CharAction=1, CharPosn=rng.choice((150, 158, 161, 170, 171)),
+                 EnemyAlert=2, CharScrn=scrn, OpScrn=scrn, CharBlockY=rr, OpBlockY=rr,
+                 CharBlockX=col, CharX=cx, CharFace=face, OpFace=oface,
+                 OpX=ox, OpSword=rng.choice((2, 2, 0, 0)),
+                 OpPosn=rng.choice((151, 152, 153, 158, 162, 169, 171, 15, 6, 7, 9, 14, 15, 33,
+                                    34, 40, 43, 44, 101, 102, 110, 117, 118)),
+                 OpAction=rng.choice((0, 1, 5)), refract=rng.choice((0, 0, 0, 2)),
+                 gdtimer=rng.choice((0, 0, 3)), justblocked=rng.choice((0, 0, 2)),
+                 ShadFace=face)
+        if rng.random() < 0.25:
+            # both ready, in reach, the guard of a type that strikes often:
+            # does he hold back while the kid starts his own thrust?
+            ox, oface = place_at(rng, 20, cx, face)
+            s.update(OpX=ox, OpFace=oface, OpSword=2, refract=0, justblocked=0,
+                     guardprog=rng.choice((1, 6, 7)), CharPosn=rng.choice((158, 170, 171)),
+                     OpPosn=rng.choice((151, 151, 169, 169, 158, 150)), OpAction=1)
+        for c in range(10):                                  # a clear floor
+            pokes[(scrn - 1) * 30 + rr * 10 + c] = 1
+    if routine in ("autoctrl", "shadctrl", "doshad") and 0.9 <= r:
+        # a guard whose opponent dropped out of the fight, at the edge he left by
+        col = rng.randint(2, 7)
+        ahead = col - 1 if face else col + 1
+        s.update(CharID=2, CharLife=0xFF, KidLife=0xFF, CharSword=2, CharAction=1,
+                 CharPosn=rng.choice((158, 170, 171)), EnemyAlert=0, droppedout=1,
+                 CharBlockX=col, CharBlockY=row if row < 2 else 1, CharScrn=scrn,
+                 CharX=58 + 14 * col + rng.randint(3, 10),
+                 OpAction=rng.choice((0, 1, 2, 4, 6)), ShadFace=face)
+        rr = s["CharBlockY"]
+        s["OpBlockY"] = rng.choice((rr + 1, rr + 1, rr))
+        here = (scrn - 1) * 30 + rr * 10
+        pokes[here + col] = 1
+        pokes[here + ahead] = rng.choice((0, 0, 0, 1, 20, 4))
+        pokes[here + 10 + ahead] = rng.choice((1, 1, 1, 2, 11, 0, 20))
+    if routine in ("autoctrl", "shadctrl") and 0.35 <= r < 0.40:     # the mouse
+        s.update(CharID=24, CharX=rng.choice((165, 166, 167, 199, 200, 201)),
+                 CharAction=rng.choice((0, 1, 1)), CharFace=rng.choice((0xFF, 0xFF, 86)))
+    elif routine in ("autoctrl", "shadctrl") and 0.40 <= r < 0.55:   # a guard not yet en garde
+        dd = rng.choice((-9, -8, -7, -5, -4, -3, 20, 126, 127, -128, -127, -60))
+        ox, oface = place_at(rng, dd, x, face)
+        s.update(CharID=2, CharSword=0, CharLife=0xFF, KidLife=rng.choice((0xFF,) * 4 + (0,)),
+                 CharPosn=166, CharAction=1, CharX=x, CharFace=face, OpX=ox, OpFace=oface,
+                 OpScrn=s["CharScrn"], OpBlockY=rng.choice((row, row, row, 0xFE)),
+                 CharBlockY=row, alertguard=rng.choice((0, 1, 1)),
+                 EnemyAlert=rng.choice((0, 1, 2, 2)), level=rng.choice((1, 13, 13)),
+                 SongCue=rng.choice((0, 0, 9)))
+    if routine == "firstguard" and r < 0.6:                  # the kid slipping past a guard
+        dd = rng.choice((-17, -16, -15, -14, -13, -1, 5))
+        ox, oface = place_at(rng, dd, x, face)
+        s.update(EnemyAlert=2, CharSword=0, OpSword=2, OpAction=rng.choice((0, 1, 1, 2)),
+                 CharX=x, CharFace=face, OpX=ox, OpFace=face ^ 0xFF, OpScrn=s["CharScrn"],
+                 CharBlockY=row if row < 3 else 1)
+    if routine == "reflection" and FDY and rng.random() < 0.4:
+        # the reflection's bottom line at, just above and just below the
+        # top of the mirror's block
+        posn = rng.choice(sorted(FDY))
+        rr = rng.choice((0, 1, 2))
+        col = rng.randrange(10)
+        pokes[(scrn - 1) * 30 + rr * 10 + col] = 13
+        s.update(KidPosn=posn, KidID=0, KidBlockX=col, KidBlockY=rr, KidScrn=scrn,
+                 KidX=58 + 14 * col + rng.randint(0, 13), createshad=0,
+                 KidY=((3, 66, 129)[rr] - FDY[posn] + rng.choice((-1, 0, 1, 40))) & 0xFF,
+                 _reflect=1)
+    if routine == "kill0":
+        s["CharScrn"] = rng.choice((0, 0, scrn))
+    if routine == "playscript":
+        # (frame, command) pairs with rising frame numbers
+        frame, script = 0, bytearray()
+        for _ in range(rng.randint(2, 8)):
+            script += bytes((frame, rng.choice((0, 1, 2, 3, 4, 5, 6, 7, 7, 9, 0xFF, 0xFE))))
+            frame += rng.randint(1, 20)
+        script += bytes((255, rng.choice((0xFE, 0xFE, 0xFF))))
+        bufs["script"] = bytes(script) + bytes(32 - len(script))
+        s["PreRecPtr"] = rng.choice(range(0, len(script), 2))
+        s["PlayCount"] = rng.choice((0, 1, frame // 2, frame, 253, 254))
+    if routine == "checkstrike" and r < 0.5:                 # one thrusts, the other may block
+        a_, b_ = rng.choice((("Kid", "Shad"), ("Shad", "Kid")))
+        gap = rng.choice((0, 7, 8, 9, 11, 12, 13, 28, 29, 30))
+        sface = rng.choice((0x00, 0xFF))
+        ox, oface = place_at(rng, gap, 124, sface)
+        s.update({a_ + "Posn": rng.choice((153, 154, 154)), a_ + "Sword": 2,
+                  b_ + "Posn": rng.choice((150, 161, 158, 171, 15)),
+                  b_ + "Sword": rng.choice((2, 2, 0)),
+                  "KidScrn": scrn, "ShadScrn": scrn, "KidBlockY": row, "ShadBlockY": row,
+                  a_ + "Face": sface, a_ + "X": 124, b_ + "Face": oface, b_ + "X": ox})
+    if routine == "addguard":
+        if DEAD_SEQS and rng.random() < 0.3:                 # a guard who lies dead there
+            seq = rng.choice(DEAD_SEQS)
+            for t in range(1, 25):
+                if pokes.get(2119 - 1 + t, 99) < 30:
+                    pokes[2191 - 1 + t], pokes[2239 - 1 + t] = seq & 0xFF, seq >> 8
+        s["level"] = rng.choice((1, 2, 3, 3, 5, 5, 6, 6, 12, 12, 12, 13))
+        s["VisScrn"] = rng.choice((1, 1, 15, 15, 24, 24, scrn, s["ShadScrn"] or 1))
+        if rng.random() < 0.5:                               # the sword / the potion there or gone
+            pokes[(15 - 1) * 30 + 1] = rng.choice((22, 1))
+            pokes[(24 - 1) * 30 + 3] = rng.choice((10, 1))
+    if routine == "bonesrise":
+        s.update(level=rng.choice((3, 3, 3, 3, 4)), VisScrn=rng.choice((1, 1, 1, 1, 2)),
+                 exitopen=rng.choice((1, 1, 1, 0)), KidBlockX=rng.choice((1, 2, 3, 4)))
+        if rng.random() < 0.8:
+            s["ShadFace"] = 86
+        pokes[(1 - 1) * 30 + 15] = rng.choice((21, 21, 21, 1))
+    if routine in ("cutcheck", "cutchar"):
+        rec = "Kid" if routine == "cutcheck" else "Char"
+        s[rec + "Y"] = rng.choice((FLOOR_Y.get(row, 55),) * 3 + (5, 9, 10, 0xEF, 0xF0, 214, 215))
+        s[rec + "X"] = rng.choice((x, x, 40, 50, 54, 55, 60, 190, 197, 200, 201, 208))
+        s[rec + "Posn"] = rng.choice((15, 7, 9, 44, 109, 110, 119, 120, 134, 135, 149, 150,
+                                      162, 163, 165, 166, 168, 169, 102))
+        s[rec + "Action"] = rng.choice((0, 1, 1, 3, 4, 5, 7))
+        s["leftej"] = rng.choice((40, 53, 54, 55, 100, 197, 198, 199))
+        s["rightej"] = rng.choice((50, 56, 57, 58, 100, 200, 201, 202))
+        s["level"] = rng.choice((3, 4, 6, 12, 13, 1))
+        s[rec + "Scrn"] = rng.choice((1, 3, 7, 11, 18, scrn))
+        if rng.random() < 0.4:                               # a panel at the right-hand edge
+            at = (s[rec + "Scrn"] - 1) * 30 + (row if row < 3 else 1) * 10 + 9
+            pokes[at] = rng.choice((7, 12, 1))
+        s["ShadX"] = rng.choice((30, 90, 91, 92, 150, 164, 165, 166, 220))
+        s["ShadBlockY"] = rng.choice((0, 1, 2, 3, 0xFF))
+        s["ShadSword"], s["ShadLife"] = rng.choice((2, 2, 0)), rng.choice((0xFF, 0xFF, 0))
+        if routine == "cutcheck" and rng.random() < 0.3:
+            # the kid runs off a side edge with a guard at his heels and
+            # nobody waiting beyond: is the guard close enough to come too?
+            right = rng.random() < 0.5
+            rr = row if row < 3 else 1
+            s.update(KidFace=0x00 if right else 0xFF, KidX=215 if right else 40, KidPosn=9,
+                     KidAction=1, KidBlockY=rr, KidY=FLOOR_Y[rr], KidScrn=scrn, KidLife=0xFF,
+                     CUTTIMER=0, level=1, ShadFace=rng.choice((0x00, 0xFF)), ShadSword=2,
+                     ShadLife=0xFF, ShadScrn=scrn, ShadID=2,
+                     ShadX=rng.choice((164, 165, 166) if right else (90, 91, 92)))
+            for t in range(1, 25):
+                pokes[2119 - 1 + t] = 0xFF
+            s["_done"] = 1
+        if not s.pop("_done", 0) and rng.random() < 0.3:     # the screen edges that set things off
+            lvl, sc, ex, face_ = rng.choice(((4, 11, 1, 0xFF), (4, 11, 77, 0xFF),
+                                             (3, 7, 0, 0xFF), (12, 18, 0, 0x00),
+                                             (13, 3, 0, 0x00)))
+            s.update({"level": lvl, rec + "Scrn": sc, "exitopen": ex, rec + "Face": face_,
+                      rec + "BlockY": rng.choice((0, 0, 1)), rec + "Posn": 9,
+                      rec + "Action": 1, rec + "Y": 55, "leftej": 50, "rightej": 205})
+            if routine == "cutcheck":
+                s["KidX"] = 50 if face_ else 205
+    if routine == "cutguard":
+        s["ShadY"] = rng.choice((181, 214, 215, 216, 240))
+        s["ShadAction"] = rng.choice((4, 4, 1))
+    if routine == "checkalert":
+        s.update(KidLife=rng.choice((0xFF,) * 5 + (0,)), ShadLife=rng.choice((0xFF,) * 5 + (0,)),
+                 KidPosn=rng.choice((15, 15, 15, 0, 219, 228, 229)))
+        s["KidBlockX"], s["ShadBlockX"] = rng.randrange(10), rng.randrange(10)
+    if routine == "reflection" and not s.pop("_reflect", 0) and rng.random() < 0.7:
+        col = rng.randrange(10)
+        at = (scrn - 1) * 30 + (row if row < 3 else 1) * 10 + col
+        pokes[at] = 13
+        s.update(KidBlockX=col, KidBlockY=row if row < 3 else 1, KidPosn=rng.choice((15, 9, 44)),
+                 KidX=58 + 14 * col + rng.randint(0, 13))
+    if routine == "cut":
+        s["_a_only"] = rng.choice((0, 1, 2, 3, 7))
+    if routine in ("stabchar", "checkstab"):
+        rec = "Char" if routine == "stabchar" else rng.choice(("Kid", "Shad"))
+        s[rec + "Life"] = rng.choice((0xFF, 0xFF, 0xFF, 0))
+        s[rec + "Sword"] = rng.choice((2, 2, 0))
+        if routine == "checkstab":
+            s["KidAction"], s["ShadAction"] = rng.choice((99, 1)), rng.choice((99, 99, 1))
+    s["_noreread"] = 1
+
+
 def random_args(rng, routine, s):
     a, x, y = rng.randrange(256), rng.randrange(256), rng.randrange(30)
     if routine in ("checkledge", "pickitup"):
@@ -652,14 +989,39 @@ class Harness:
     def __init__(self, source):
         self.oracle = Oracle(source)
         self.addr = {n: self.oracle.addr(n, IN_MODULE.get(n)) for n in BYTES + WORDS}
-        self.bufaddr = {n: self.oracle.addr(n) for n, _ in BUFFERS}
+        self.bufaddr = {n: SCRIPT_AT if n == "script" else self.oracle.addr(n)
+                        for n, _ in BUFFERS}
         self.soundtable = self.oracle.addr("soundtable")
         self.dims = image_dims(source)
         self.hooks = []
         self.stray = False
         cpu = self.oracle.cpu
         cpu.traps[self.oracle.addr("dimchar")] = self.trap_dimchar
-        cpu.traps[self.oracle.addr("potioneffect")] = lambda c: self.hooks.append("p")
+        cpu.traps[self.oracle.addr("inverty")] = lambda c: self.hooks.append("v")
+        cpu.traps[self.oracle.addr("addreflobj")] = lambda c: self.hooks.append("r")
+        cpu.traps[self.oracle.addr("attractmode")] = lambda c: self.hooks.append("a")
+        cpu.traps[self.oracle.addr("LoadDesel")] = lambda c: self.hooks.append("e")
+        cpu.traps[self.oracle.addr("getdesel")] = lambda c: None
+        cpu.traps[self.oracle.addr("SaveDesel")] = lambda c: self.hooks.append("f")
+        self.shadprog5 = self.oracle.addr("ShadProg5", "AUTO")
+        if not DEAD_SEQS:                            # where a corpse's sequence stands
+            o = self.oracle
+            for seq in ("dropdead", "impale", "halve", "stabkill"):
+                o.reset()
+                o.poke("CharLife", 0xFF)
+                o.call("JUMPSEQ", o.addr(seq), module="CTRLSUBS")
+                for _ in range(40):
+                    at = o.peek("CharSeq") | (o.peek(o.addr("CharSeq") + 1) << 8)
+                    o.call("ANIMCHAR", module="COLL")
+                    if o.peek("CharPosn") in (185, 177, 178):
+                        DEAD_SEQS.append(at)
+                        break
+            for posn in (15, 9, 44, 109):
+                o.reset()
+                o.set_vars({"CharPosn": posn, "CharID": 0})
+                o.call("GETFRAMEINFO", module="CTRLSUBS")
+                FDY[posn] = o.peek("Fdy")
+            o.reset()
         cpu.on_read[0xC030] = lambda c: self.hooks.append("k")      # the speaker
         # PLAYERCTRL's input step (LoadSelect, getselect, clrjstk), SaveSelect
         # and the demo's own control: one mark each, nothing done
@@ -706,6 +1068,10 @@ class Harness:
             self.hooks = []
             o.load_level(level)
             o.cpu.p = (o.cpu.p & 0xFE) | (carry & 1)
+            if routine == "autoplayback":
+                a, x = self.shadprog5 & 0xFF, self.shadprog5 >> 8
+            elif routine == "playscript":
+                a, x = SCRIPT_AT & 0xFF, SCRIPT_AT >> 8
             try:
                 ra, rx, ry, rp = o.call(label, a, x, y, module=module, max_cycles=400_000)
             except CpuError:
@@ -742,8 +1108,10 @@ def main(argv):
         only = list(COLLISION)
     elif only == ["@mover"]:
         only = list(MOVER)
+    elif only == ["@auto"]:
+        only = list(AUTO)
     elif only == ["@control"]:
-        only = [n for n in ROUTINES if n not in COLLISION and n not in MOVER]
+        only = [n for n in ROUTINES if n not in COLLISION and n not in MOVER and n not in AUTO]
 
     h = Harness(source)
     levels = []
@@ -770,6 +1138,9 @@ def main(argv):
             mover_state(random.Random("%d/%d/%s/mover" % (seed, round_no, routine)),
                         s, pokes, bufs, routine)
             pokes = {i: v for i, v in pokes.items() if 0 <= i < len(level)}
+            auto_state(random.Random("%d/%d/%s/auto" % (seed, round_no, routine)),
+                       s, pokes, bufs, routine)
+            pokes = {i: v for i, v in pokes.items() if 0 <= i < len(level)}
             a, x, y = random_args(rng, routine, s)
             carry = rng.randrange(2)
             if routine in ("markwipe", "markred"):
@@ -790,6 +1161,7 @@ def main(argv):
                                "decstr", "getopdist", "clrall", "facejstk") \
                     and (routine not in MOVER or routine in ("checkpress", "shakeloose",
                                                              "addslicers")) \
+                    and routine not in AUTO \
                     and not noreread and rng.random() < 0.8:
                 steps.insert(0, ("rereadblocks", 0, 0, 0))   # a consistent CharBlockX
             if routine == "getedges":
@@ -829,7 +1201,7 @@ def main(argv):
             expected[-1] = (routine, fixed, s, outcome)
 
     argv_c = [runner, os.path.join(data, "framedef.bin"), os.path.join(data, "seqtable.bin"),
-              os.path.join(data, "imgdims.bin")]
+              os.path.join(data, "imgdims.bin"), os.path.join(data, "autodata.bin")]
     out = subprocess.run(argv_c, input="\n".join(commands) + "\n", capture_output=True,
                          text=True)
     if out.returncode != 0:

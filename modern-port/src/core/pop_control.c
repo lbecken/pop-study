@@ -7,6 +7,7 @@
 
 #include "pop_control.h"
 
+#include "pop_auto.h"
 #include "pop_collide.h"
 #include "pop_mover.h"
 #include "pop_world.h"
@@ -33,11 +34,7 @@ enum { THINNER = 3, GATE_MARGIN = 6, EST_WIDTH = 13, SPIKE_EXT = 5, FCHECKMARK =
 static void anim_sound(void *ctx, uint8_t s) { pop_addsound(&((pop_game *)ctx)->sq, s); }
 static void anim_slicers(void *ctx) { pop_addslicers(ctx); }
 static void anim_upstairs(void *ctx) { pop_goneupstairs(ctx); }
-static void anim_potion(void *ctx)
-{
-    pop_game *g = ctx;
-    if (g->hooks.potion_effect) g->hooks.potion_effect(g->hooks.ctx);
-}
+static void anim_potion(void *ctx) { pop_potioneffect(ctx); }
 
 void pop_g_jumpseq(pop_game *g, uint8_t seq_no)
 {

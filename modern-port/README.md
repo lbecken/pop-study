@@ -14,9 +14,10 @@ checkout of the original source and is never stored in this repository.
 | Floor: `CHECKFLOOR`, starting to fall, ledge grab, landing and fall damage, spikes | ported; same, plus multi-frame traces against the original |
 | Collision with walls, gates, slicers, the mirror (`CHECKBARR`, `COLLISIONS`, bumps, `CHECKGATE`, `CHECKSLICE`, `ENEMYCOLL`) | ported; same |
 | Moving level objects: gates, exit, pressure plates and links, spikes, slicers, loose and falling floors, torches, flasks (`MOVER.S`) | ported; same |
+| Opponents: guard and shadow behaviour, sword contact, strength and potions, guards and the kid changing screens (`AUTO.S`, `MISC.S`) | ported; same. Fight tables are generated data |
 | Sound-effect queue (`ADDSOUND`, `ZEROSOUND`, play order) | ported, tested |
 | Sound-effect rendering (speaker flip list to PCM) | written, tested against the Python renderer; no output device yet |
-| Opponents, strength and death, input devices, screen changes, drawing, SDL3 shell | not started |
+| The top level of a frame and a level, death and restart, input devices, the demo, drawing, SDL3 shell | not started |
 
 There is no runnable game yet and no SDL3 dependency yet. The nearest thing
 is `tests/test_control_original.c`, which stands the kid on a floor of level 1
@@ -67,6 +68,6 @@ Options: `-DPOP_WERROR=ON` (warnings as errors), `-DPOP_SANITIZE=ON`
 
 | Platform | Compiler | Result |
 | --- | --- | --- |
-| Linux x86-64 (Ubuntu 24.04) | GCC 13.3, with `-Werror` and ASan/UBSan | all 15 tests pass |
-| Linux x86-64 (Ubuntu 24.04) | Clang 18.1, with `-Werror`; unit test programs also run under valgrind with no errors | all 15 tests pass |
+| Linux x86-64 (Ubuntu 24.04) | GCC 13.3, with `-Werror` and ASan/UBSan | all 16 tests pass |
+| Linux x86-64 (Ubuntu 24.04) | Clang 18.1, with `-Werror`; unit test programs also run under valgrind with no errors | all 16 tests pass |
 | macOS, Windows | – | **not tested**. The code is plain C17 with no platform calls, and the CMake file has an MSVC branch, but neither has been built. |

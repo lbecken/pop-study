@@ -17,6 +17,8 @@ Output:
                       executing SOUND.S (layout: pop_assets.h)
     pop_sfxnames.h    #define POP_SFX_<NAME> <n> for every effect name
     framedef.bin      assembled FRAMEDEF.S with a 24-byte header
+    autodata.bin      AUTO.S tables: fight parameters per opponent type and
+                      level, the shadow's scripted positions and movement
     imgdims.bin       width and height of every character image, by table,
                       with the four alternative opponent sets (no image data)
 """
@@ -121,6 +123,47 @@ def build_imgdims(source):
     return blob
 
 
+# AUTO.S tables that describe content: label, length.  The first ten are
+# contiguous in memory and are exported as one block, because the original
+# indexes across their ends.
+AUTO_FIGHT = (("strikeprob", 12), ("restrikeprob", 12), ("blockprob", 12),
+              ("impblockprob", 12), ("advprob", 12), ("refractimer", 12),
+              ("specialcolor", 12), ("extrastrength", 12), ("basicstrength", 14),
+              ("basiccolor", 14))
+AUTO_SHADPOS = (("shadpos6a", 8), ("shadpos5", 8), ("shadpos12", 8))
+
+
+def build_autodata(source):
+    """Fight parameters, the shadow's scripted positions and its level-5
+    movement script, cut out of the assembled AUTO.S."""
+    from mos6502 import assemble_6502
+    from pop_sfx import include_resolver
+    src = os.path.join(source, SRC)
+    with open(os.path.join(src, "AUTO.S"), encoding="ascii") as f:
+        asm = assemble_6502(f.read(), include_resolver(
+            src, os.path.join(source, "02 POP Disk Routines", "CP.525")))
+    sym = asm.symbols
+
+    def block(tables):
+        at = sym[tables[0][0]]
+        for name, size in tables:                    # contiguous, in this order
+            if sym[name] != at:
+                raise SystemExit("AUTO.S: %s is not where expected" % name)
+            at += size
+        return asm.image[sym[tables[0][0]] - asm.origin:at - asm.origin]
+
+    fight = block(AUTO_FIGHT)
+    shadpos = block(AUTO_SHADPOS)
+    start = sym["ShadProg5"] - asm.origin
+    prog = bytearray()
+    while True:                                      # (frame, command) pairs up to EndProg
+        prog += asm.image[start + len(prog):start + len(prog) + 2]
+        if prog[-1] in (0xFE, 0xFF) or len(prog) > 254:
+            break
+    return (b"POPAUTO1" + struct.pack("<HHHH", len(fight), len(shadpos), len(prog), 0)
+            + fight + shadpos + bytes(prog))
+
+
 def build_sfx(source):
     mod = SoundModule(os.path.join(source, SRC))
     effects = mod.all_effects()
@@ -165,6 +208,8 @@ def main(argv=None):
     frames = build_framedef(args.source)
     with open(os.path.join(args.out, "framedef.bin"), "wb") as f:
         f.write(frames)
+    with open(os.path.join(args.out, "autodata.bin"), "wb") as f:
+        f.write(build_autodata(args.source))
     dims = build_imgdims(args.source)
     with open(os.path.join(args.out, "imgdims.bin"), "wb") as f:
         f.write(dims)

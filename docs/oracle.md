@@ -50,12 +50,13 @@ the port does not have yet (`modern-port/tests/fuzz_control.py`):
 | Trapped | Why | The trap |
 | --- | --- | --- |
 | `dimchar` (`GRAFIX.S:879-883`) | reads image tables in main memory | answers width and height from the same image files |
-| `potioneffect` | unported subsystem | records the call |
+| `inverty`, `addreflobj`, `attractmode` | drawing and game flow | records the call |
+| `LoadDesel`, `getdesel`, `SaveDesel` | the second input device | records the call |
 | a read of `$C030` | the speaker | recorded through `on_read` |
 | `LoadSelect`, `getselect`, `clrjstk`, `SaveSelect`, `DemoCtrl` | input devices, demo | records the call; the test supplies the joystick variables |
 
 (Earlier milestones also trapped `jamspikes`, `addslicers`, `smashmirror`,
-`GoneUpstairs` and `cuesong`; those now run for real, since their ports
+`GoneUpstairs`, `cuesong` and `potioneffect`; those now run for real, since their ports
 exist.)
 
 A trapped routine is not being tested; what is compared is the caller's
@@ -92,5 +93,5 @@ behaviour given the same answers on both sides.
 | Geometry tables | byte/offset, block edges, floor lines as loaded in memory | agree |
 | Sound effects | `PLAYBACK`, `ADDSOUND` | source of the effect data (`docs/audio-analysis.md`) |
 | World queries, gravity (C) | 39 routines on random states, 15,600 cases per test run | C port and original agree |
-| Player control, floor, landing, collision, moving objects (C) | 87 routines on random states, about 34,400 cases per test run: variables, registers, sounds, level changes, redraw buffers, calls out | C port and original agree |
-| A kid frame over time (C) | the level's moving objects and the ported steps of `DoKid` in order, 60 traces of 60 frames of random input per test run, compared after each call | C port and original agree |
+| Player control, floor, landing, collision, moving objects, opponents (C) | 116 routines on random states, about 45,900 cases per test run: variables, registers, sounds, level changes, redraw buffers, calls out | C port and original agree |
+| A game frame over time (C) | the ported part of `NextFrame`: moving objects, the kid, the opponent, sword contact, strength, screen change; 60 traces of 60 frames of random input per test run, compared after each call | C port and original agree |

@@ -111,6 +111,24 @@ void pop_dimfile_free(pop_dimfile *f);
 /* Make character table 3 describe the given opponent image set. */
 void pop_dimfile_use_opponent(pop_dimfile *f, pop_opponent_set set);
 
+/* autodata.bin layout (all integers little-endian):
+ *   0   8 bytes  magic "POPAUTO1"
+ *   8   u16      length of the fight tables (124)
+ *   10  u16      length of the shadow positions (24)
+ *   12  u16      length of the level-5 movement script
+ *   14  u16      reserved, 0
+ *   then the three blocks in that order
+ */
+#define POP_AUTOFILE_MAGIC "POPAUTO1"
+
+typedef struct pop_autofile {
+    pop_autodata data;   /* views into `storage` */
+    uint8_t     *storage;
+} pop_autofile;
+
+int pop_autofile_load(const char *path, pop_autofile *out, const char **err);
+void pop_autofile_free(pop_autofile *f);
+
 /* Read an original level file (LEVEL0..LEVEL14, 2304 bytes) into g->blueprint. */
 int pop_level_load(const char *path, pop_game *g, const char **err);
 

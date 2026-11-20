@@ -30,21 +30,26 @@ Status of each behaviour in the reconstruction.
 | Player | Control: dispatch by frame, standing / running / turning / crouching / hanging handlers, jumps, careful steps, pick-up, running-jump take-off adjustment | faithful, checked against the original code | `modern-port/src/core/pop_control.c` | fuzzed against the original routine by routine; calls into unported subsystems are hooks |
 | Player | Sword-fight moves of the controlled character (`FightCtrl`, strike, block, advance, retreat, sheathe) | faithful, checked against the original code | same | the opponent's decisions (`AUTO.S`) are missing |
 | Player | Floor checks, starting to fall, ledge grab, landing and fall damage, impalement | faithful, checked against the original code | same | |
-| Player | A whole kid frame | approximate | `modern-port/tests/trace_kidstep.py` | all of `DoKid` except `firstguard`, `unholy` and the death handling, plus the level's moving objects, in the original order: agrees with the original over 60-frame traces; no guards, no screen changes |
+| Player | A whole game frame | approximate | `modern-port/tests/trace_kidstep.py` | `NextFrame` as far as ported (moving objects, the kid, the opponent, sword contact, strength, screen change) in the original order: agrees with the original over 60-frame traces. Missing from it: `firstguard`, `unholy`, the kid's death handling, `addsfx`, drawing |
 | Player | Input devices, joystick flag upkeep, demo playback | missing | – | hook in `pop_playerctrl`; milestone 9c |
-| Player | Strength changes applied, death sequence and messages | missing | – | `ChgKidStr` is set, nothing consumes it yet |
+| Player | Death sequence, "press button to continue", restart | missing | – | milestone 9d |
 | Rendering | Character edges and blocks covered (`GETEDGES`) | faithful, checked against the original code | same | image sizes from a generated table instead of the image data |
 | Rendering | Redraw marks (`MARKRED`, `MARKWIPE`, `INDEXBLOCK`) | faithful, checked against the original code | same | the buffers are filled; nothing draws from them yet |
 | World | Level blueprint and initial states (`SETINITIALS`) | model only | `tools/extract_assets/pop_level.py` | |
 | World | Collision with walls, gates, slicers and the mirror: edge-crossing detection, push-back, soft / hard / air / en-garde bumps, gate knocking a stander aside, being sliced | faithful, checked against the original code | `modern-port/src/core/pop_collide.c` | 8 entry points fuzzed against the original, and inside the kid-frame trace; the end-of-level music is requested (`SongCue`) but nothing plays it |
-| World | Kid running into a guard (`firstguard`) | missing | – | with opponents, milestone 9c |
+| World | Kid running into a guard (`firstguard`) | faithful, checked against the original code | `pop_auto.c` | not yet called in the frame trace (needs `DoKid`) |
 | World | Gates and the exit: opening, waiting, closing, fast drop, jamming | faithful, checked against the original code | `modern-port/src/core/pop_mover.c` | 27 entry points fuzzed against the original, and inside the kid-frame trace |
 | World | Pressure plates, their timers and link chains | faithful, checked against the original code | same | including a dead body's weight and rubble |
 | World | Spikes, slicers | faithful, checked against the original code | same | |
 | World | Loose floors: shaking, falling, landing as rubble, knocking others loose, crushing the kid | faithful, checked against the original code | same | simulated; not drawn (`ADDMOBS` missing) |
 | World | Torch, flask and sword animation states; random numbers (`RND`) | faithful, checked against the original code | same | the seed's start value and the other callers of `RND` are not ported |
 | World | Picking up a flask or sword (`REMOVEOBJ`), level 12's phantom bridge, level 4's mirror appearing, level 13's collapsing floor | faithful, checked against the original code | `pop_control.c`, `pop_mover.c` | the potion's effect is a hook |
-| Opponents | AI, sword fighting | missing | – | |
+| Opponents | Guards: noticing the kid, drawing, advancing, blocking, striking by their type's probabilities, following a kid who drops off a ledge | faithful, checked against the original code | `modern-port/src/core/pop_auto.c` | fight tables generated from the user's checkout; 29 entry points fuzzed, and in the frame trace |
+| Opponents | The shadow's appearances (levels 4, 5, 6, 12), the skeleton, the mouse | faithful, checked against the original code | same | level-specific; exercised by fuzzing, not yet by playing those levels through |
+| Opponents | Sword contact: thrust, block, wound, kill, tie; strength meters; potions | faithful, checked against the original code | same | upside-down potion's redraw is a hook |
+| Opponents | Guards left behind, taken along, remembered dead; guards entering with the screen | faithful, checked against the original code | same | |
+| World | Passing from screen to screen (`CUTCHECK`, `CUT`) | faithful, checked against the original code | same | what is then redrawn (`PrepCut`) is missing |
+| Opponents | The demo level's scripted kid and guard | missing | – | milestone 9d |
 | Audio | Sound-effect queue (`ADDSOUND`, `ZEROSOUND`, play order) | faithful, unverified | `modern-port/src/core/pop_sound.c` | |
 | Audio | Sound-effect waveforms | faithful timing, approximate sound, unverified | `modern-port/src/audio/pop_sfx.c`, generated `sfx.bin` | flip times come from executing the original code; output is the 1-bit signal, not speaker acoustics |
 | Audio | Effects delaying the frame they play in | missing | – | decision D2 |

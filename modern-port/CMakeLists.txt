@@ -40,7 +40,7 @@ endif()
 # Game rules: no I/O, no SDL.
 add_library(pop_core STATIC src/core/pop_seq.c src/core/pop_sound.c src/core/pop_world.c
             src/core/pop_control.c src/core/pop_collide.c
-            src/core/pop_mover.c)
+            src/core/pop_mover.c src/core/pop_auto.c)
 target_include_directories(pop_core PUBLIC src/core)
 
 # Sound: effect data to PCM.  No I/O, no SDL (the SDL3 backend comes later).
@@ -94,6 +94,10 @@ add_executable(test_mover tests/test_mover.c)
 target_link_libraries(test_mover PRIVATE pop_core)
 add_test(NAME mover_unit COMMAND test_mover)
 
+add_executable(test_auto tests/test_auto.c)
+target_link_libraries(test_auto PRIVATE pop_core)
+add_test(NAME auto_unit COMMAND test_auto)
+
 # --- tests on the original data (optional) -----------------------------------
 if(POP_SOURCE_DIR)
   if(NOT EXISTS "${POP_SOURCE_DIR}/01 POP Source/Source/SEQTABLE.S")
@@ -107,7 +111,8 @@ if(POP_SOURCE_DIR)
   set(POP_DATA "${CMAKE_CURRENT_BINARY_DIR}/data")
   set(POP_DATA_FILES "${POP_DATA}/seqtable.bin" "${POP_DATA}/pop_seqnames.h"
                      "${POP_DATA}/sfx.bin" "${POP_DATA}/pop_sfxnames.h"
-                     "${POP_DATA}/framedef.bin" "${POP_DATA}/imgdims.bin")
+                     "${POP_DATA}/framedef.bin" "${POP_DATA}/imgdims.bin"
+                     "${POP_DATA}/autodata.bin")
   add_custom_command(
     OUTPUT ${POP_DATA_FILES}
     COMMAND "${Python3_EXECUTABLE}" "${POP_TOOLS}/export_port_data.py"
@@ -121,6 +126,7 @@ if(POP_SOURCE_DIR)
             "${POP_SOURCE_DIR}/01 POP Source/Source/SOUND.S"
             "${POP_SOURCE_DIR}/01 POP Source/Source/SOUNDNAMES.S"
             "${POP_SOURCE_DIR}/01 POP Source/Source/FRAMEDEF.S"
+            "${POP_SOURCE_DIR}/01 POP Source/Source/AUTO.S"
     COMMENT "Generating port data from the original source"
     VERBATIM)
   add_custom_target(pop_data DEPENDS ${POP_DATA_FILES})

@@ -80,3 +80,27 @@ def test_imgdims_bin(tmp_path):
     assert len({tuple(t) for t in opponents}) == 5
     # the widest character image fits the 16-entry Mult7 table GETEDGES uses
     assert max(w for t in dims for w, _ in t) < 16
+
+
+@needs_source
+def test_autodata_bin(tmp_path):
+    """Opponent tables cut out of the assembled AUTO.S."""
+    import export_port_data
+    assert export_port_data.main(["--source", SOURCE, "--out", str(tmp_path)]) == 0
+    blob = (tmp_path / "autodata.bin").read_bytes()
+    assert blob[:8] == b"POPAUTO1"
+    fight, shadpos, prog, reserved = struct.unpack_from("<HHHH", blob, 8)
+    assert (fight, shadpos, reserved) == (124, 24, 0)
+    assert len(blob) == 16 + fight + shadpos + prog
+    tables = blob[16:16 + fight]
+    # the two colour tables hold only 0 and 1
+    assert set(tables[72:84]) <= {0, 1} and set(tables[110:124]) <= {0, 1}
+    # basic strength per level: a handful of units
+    assert all(1 <= v <= 10 for v in tables[96:110])
+    # three scripted positions: each starts in the standing frame, 15
+    pos = blob[16 + fight:16 + fight + shadpos]
+    assert [pos[i] for i in (0, 8, 16)] == [15, 15, 15]
+    # the script: (frame, command) pairs, frames rising, ending "end of program"
+    script = blob[16 + fight + shadpos:]
+    frames = script[0::2]
+    assert list(frames) == sorted(frames) and script[-1] == 0xFE and frames[-1] == 255

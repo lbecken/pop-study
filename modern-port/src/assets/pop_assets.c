@@ -259,6 +259,47 @@ void pop_dimfile_use_opponent(pop_dimfile *f, pop_opponent_set set)
     }
 }
 
+int pop_autofile_load(const char *path, pop_autofile *out, const char **err)
+{
+    uint8_t header[16];
+    uint8_t *mem;
+    size_t fight, shadpos, prog, total;
+    FILE *fp;
+
+    memset(out, 0, sizeof *out);
+    fp = fopen(path, "rb");
+    if (!fp) return fail(err, "cannot open file", NULL, NULL);
+    if (fread(header, 1, sizeof header, fp) != sizeof header)
+        return fail(err, "file shorter than its header", fp, NULL);
+    if (memcmp(header, POP_AUTOFILE_MAGIC, 8) != 0)
+        return fail(err, "not a POPAUTO1 file", fp, NULL);
+    fight = u16le(header + 8);
+    shadpos = u16le(header + 10);
+    prog = u16le(header + 12);
+    if (fight != POP_FT_SIZE || shadpos != POP_SHADPOS_SIZE || prog < 2 || (prog & 1u))
+        return fail(err, "unexpected table sizes", fp, NULL);
+    total = fight + shadpos + prog;
+    mem = malloc(total + 1u);
+    if (!mem) return fail(err, "out of memory", fp, NULL);
+    if (fread(mem, 1, total + 1u, fp) != total)
+        return fail(err, "file length does not match its header", fp, mem);
+    fclose(fp);
+    out->storage = mem;
+    out->data.fight = mem;
+    out->data.shadpos = mem + fight;
+    out->data.shadprog5 = mem + fight + shadpos;
+    out->data.shadprog5_len = prog;
+    return 0;
+}
+
+void pop_autofile_free(pop_autofile *f)
+{
+    if (f) {
+        free(f->storage);
+        memset(f, 0, sizeof *f);
+    }
+}
+
 int pop_level_load(const char *path, pop_game *g, const char **err)
 {
     uint8_t extra;
