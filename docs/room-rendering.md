@@ -161,7 +161,8 @@ differed on the shipped disk is **not yet verified** (unknown G16).
 ## Not modelled
 
 - Characters, falling floors and other objects; the gate bars that are drawn
-  over the kid when he stands behind them (`DrawGateBF?`, `FRAMEADV.S:829-842`).
+  over the kid when he stands behind them (`DrawGateBF?`, `FRAMEADV.S:829-842`;
+  in the C port since milestone 10b, `docs/port/redraw.md`).
 - The partial redraw (`FAST`) driven by the redraw buffers, wipes, and the
   save-under buffers.
 - Strength meters and messages.

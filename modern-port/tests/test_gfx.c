@@ -1,0 +1,348 @@
+/* test_gfx.c - the display lists and the redraw of a screen, on made-up
+ * piece tables, images and a made-up level.
+ *
+ * New code; no original data.  Expected values were worked out by hand from
+ * GRAFIX.S and FRAMEADV.S (see pop_gfx.h for where each routine starts).
+ * With the original source available, tests/compare_rooms.py compares the
+ * same code with the original's drawing, screen by screen.
+ */
+
+#include <string.h>
+
+#include "pop_gfx.h"
+#include "pop_test.h"
+#include "pop_top.h"
+#include "pop_world.h"
+
+static pop_game g;
+static pop_gfx v;
+static pop_bgdata bg;
+static uint8_t tables[40 * 32];
+/* A made-up image table in the file format: count, pointers from $6000,
+ * images.  Image 1: 1 x 1, dot 0.  Image 2: 2 x 1, all dots.  Image 3: 1 x 2. */
+static const uint8_t images[] = {
+    3, 0x09, 0x60, 0x0C, 0x60, 0x10, 0x60, 0x14, 0x60,
+    1, 1, 0x81,
+    2, 1, 0xFF, 0xFF,
+    1, 2, 0x82, 0x84,
+};
+
+/* Every table gets 32 bytes of zeros; the tests set the entries they use. */
+static void make_tables(void)
+{
+    uint16_t *offsets[] = {
+        &bg.piecea, &bg.pieceay, &bg.maska, &bg.pieceb, &bg.pieceby, &bg.bstripe, &bg.piecec,
+        &bg.pieced, &bg.fronti, &bg.fronty, &bg.frontx, &bg.maskb, &bg.blockb, &bg.blockc,
+        &bg.blockd, &bg.blockfr, &bg.panelb, &bg.panelc, &bg.spaceb, &bg.spaceby, &bg.floorb,
+        &bg.floorby, &bg.loosea, &bg.loosed, &bg.looseby, &bg.spikea, &bg.spikeb,
+        &bg.slicerseq, &bg.slicertop, &bg.slicerbot, &bg.slicerbot2, &bg.slicergap,
+        &bg.slicerfrnt, &bg.gate8b, &bg.gate8c, &bg.torchflame, &bg.bubble,
+    };
+    unsigned i;
+    memset(&bg, 0, sizeof bg);
+    memset(tables, 0, sizeof tables);
+    for (i = 0; i < sizeof offsets / sizeof offsets[0]; i++) *offsets[i] = (uint16_t)(32 * i);
+    bg.image = tables;
+    bg.size = sizeof tables;
+    bg.numblox = 2; bg.numpans = 3; bg.numbpans = 3;
+    bg.panelb0 = 0x70; bg.panelc0 = 0x71;      /* (numbers no test image uses) */
+    bg.gmaxval = 188; bg.Ffalling = 10; bg.spikeExt = 5; bg.slicerRet = 6;
+    bg.gatecmask = 0x21; bg.gatebotSTA = 0x22; bg.gatebotORA = 0x23; bg.gateB1 = 0x24;
+    bg.stairs = 0x25; bg.door = 0x26; bg.doormask = 0x27; bg.toprepair = 0x28;
+    bg.looseb = 0x29; bg.specialflask = 0x2A; bg.archpanel = 0x2B;
+    bg.swordgleam0 = 0x2C; bg.swordgleam1 = 0x2D;
+}
+
+static void put(int scrn, int row, int col, uint8_t type, uint8_t spec)
+{
+    g.blueprint[POP_BLUETYPE + (scrn - 1) * 30 + row * 10 + col] = type;
+    g.blueprint[POP_BLUESPEC + (scrn - 1) * 30 + row * 10 + col] = spec;
+}
+
+/* One screen with no neighbours, all empty space. */
+static void setup(void)
+{
+    memset(&g, 0, sizeof g);
+    make_tables();
+    pop_gfx_init(&v);
+    v.bg = &bg;
+    v.bgtable[0].data = images;
+    v.bgtable[0].size = sizeof images;
+    v.chtable[0] = v.bgtable[0];
+    g.level = 1;
+    g.VisScrn = g.SCRNUM = 1;
+    pop_getscrns(&g);
+    tables[bg.blockb + 0] = 8;                 /* the wall that an absent left screen stands for */
+    tables[bg.pieceby + POP_BLOCK] = 0xFD;     /* drawn 3 lines above the floor line */
+}
+
+static void test_images(void)
+{
+    pop_imgtab t = { images, sizeof images };
+    pop_image im = pop_imgtab_image(&t, 2);
+    CHECK(im.bytes == images + 12);
+    CHECK_EQ(im.bytes[0], 2);
+    CHECK(pop_imgtab_image(&t, 0).bytes == NULL);          /* numbers start at 1 */
+    CHECK(pop_imgtab_image(&t, 200).bytes == NULL);
+}
+
+static void test_adding(void)
+{
+    int i;
+    setup();
+    v.XCO = 8; v.YCO = 100; v.IMAGE = 0x85; v.OPACITY = POP_OP_ORA;
+    pop_addback(&v);
+    CHECK_EQ(v.bgX[0], 1);
+    CHECK_EQ(v.bgX[1], 8);
+    CHECK_EQ(v.bgY[1], 100);
+    CHECK_EQ(v.bgIMG[1], 0x85);
+    CHECK_EQ(v.bgOP[1], POP_OP_ORA);
+    v.YCO = 192;                               /* off the bottom, or wrapped past the top: dropped */
+    pop_addback(&v);
+    pop_addfore(&v);
+    CHECK_EQ(v.bgX[0], 1);
+    CHECK_EQ(v.fgX[0], 0);
+    v.YCO = 5;
+    for (i = 0; i < 300; i++) pop_addback(&v); /* the list holds 199 */
+    CHECK_EQ(v.bgX[0], POP_MAXBACK - 1);
+
+    v.OFFSET = 3; v.TABLE = 2;
+    pop_addmidezo(&v, POP_MID_LAY);            /* a piece: the whole screen is its area */
+    CHECK_EQ(v.midX[0], 1);
+    CHECK_EQ(v.midOFF[1], 3);
+    CHECK_EQ(v.midCL[1], 0);
+    CHECK_EQ(v.midCR[1], 40);
+    CHECK_EQ(v.midCU[1], 0);
+    CHECK_EQ(v.midCD[1], 192);
+    g.FCharFace = 0x00;                        /* a character facing right is mirrored */
+    g.FCharCL = 4; g.FCharCR = 36; g.FCharCU = 10; g.FCharCD = 180;
+    v.OPACITY = POP_OP_MASK;
+    pop_addmid(&v, &g, POP_MID_LAYSAVE | POP_MID_CHARTABLE);
+    CHECK_EQ(v.midOP[2], POP_OP_MASK | POP_OP_MIRROR);
+    CHECK_EQ(v.midCL[2], 4);
+    CHECK_EQ(v.midCD[2], 180);
+    CHECK_EQ(v.midTAB[2], 2);
+    g.FCharFace = 0xFF;                        /* facing left: as stored */
+    pop_addmid(&v, &g, POP_MID_LAYSAVE | POP_MID_CHARTABLE);
+    CHECK_EQ(v.midOP[3], POP_OP_MASK);
+
+    v.width = 4; v.height = 20;
+    pop_addwipe(&v, 0x80);
+    CHECK_EQ(v.wipeX[0], 1);
+    CHECK_EQ(v.wipeW[1], 4);
+    CHECK_EQ(v.wipeCOL[1], 0x80);
+
+    pop_zerolsts(&v);                          /* a new frame: all lists but the peel lists */
+    CHECK_EQ(v.bgX[0] | v.fgX[0] | v.midX[0] | v.wipeX[0] | v.msgX[0], 0);
+}
+
+static void test_peel_lists(void)
+{
+    setup();
+    v.hr.PEELIMG = 0;                          /* nothing was saved: nothing listed */
+    pop_addpeel(&v);
+    CHECK_EQ(v.peelX[0], 0);
+    v.hr.PEELIMG = 0xD012; v.hr.PEELXCO = 7; v.hr.PEELYCO = 99;
+    pop_addpeel(&v);                           /* page 1: the first list */
+    CHECK_EQ(v.peelX[0], 1);
+    CHECK_EQ(v.peelX[1], 7);
+    CHECK_EQ(v.peelY[1], 99);
+    CHECK_EQ(v.peelIMGL[1], 0x12);
+    CHECK_EQ(v.peelIMGH[1], 0xD0);
+    v.hr.PAGE = 0x20;                          /* page 2: the second, 46 entries on */
+    pop_addpeel(&v);
+    CHECK_EQ(v.peelX[POP_MAXPEEL], 1);
+    CHECK_EQ(v.peelX[POP_MAXPEEL + 1], 7);
+    pop_zeropeel(&v);                          /* emptied per page, with its buffer */
+    CHECK_EQ(v.peelX[POP_MAXPEEL], 0);
+    CHECK_EQ(v.peelX[0], 1);
+    CHECK_EQ(v.hr.PEELBUF, POP_PEELBUF2);
+
+    /* The copy protection: on a palace level DRAWALL clears the first
+     * entry of a two-entry table, and page 2's list is found through
+     * table[purpleflag].  With the flag at 1 nothing changes ... */
+    g.BGset1 = 1;
+    pop_drawall(&v, &g);
+    v.hr.PEELIMG = 0xD012;
+    pop_addpeel(&v);
+    CHECK_EQ(v.peelX[POP_MAXPEEL], 1);
+    v.purpleflag = 0;                          /* ... with it at 0, page 2's saves land in page 1's list */
+    pop_addpeel(&v);
+    CHECK_EQ(v.peelX[POP_MAXPEEL], 1);
+    CHECK_EQ(v.peelX[0], 2);
+    CHECK_EQ(v.unmodelled, 0);
+}
+
+static void test_drawall(void)
+{
+    setup();
+    v.genCLS = 1;
+    v.XCO = 3; v.YCO = 10; v.IMAGE = 2; v.OPACITY = POP_OP_STA;      /* background: all dots */
+    pop_addback(&v);
+    v.IMAGE = 1; v.OPACITY = POP_OP_EOR;                             /* foreground, drawn after: */
+    pop_addfore(&v);                                                 /* XOR takes dot 0 and bit 7 off */
+    v.XCO = 20; v.YCO = 50; v.IMAGE = 3; v.OFFSET = 0; v.TABLE = 0; v.OPACITY = POP_OP_STA;
+    g.FCharFace = 0xFF; g.FCharCR = 40; g.FCharCD = 192;
+    pop_addmid(&v, &g, POP_MID_LAYSAVE | POP_MID_CHARTABLE);         /* a "character" */
+    pop_drawall(&v, &g);
+    CHECK_EQ(pop_hr_row(&v.hr, 1, 10)[3], 0x7E);
+    CHECK_EQ(pop_hr_row(&v.hr, 1, 10)[4], 0xFF);
+    CHECK_EQ(pop_hr_row(&v.hr, 1, 0)[0], 0x80);            /* the page was cleared first */
+    CHECK_EQ(pop_hr_row(&v.hr, 1, 50)[20], 0x82);
+    CHECK_EQ(pop_hr_row(&v.hr, 1, 49)[20], 0x84);
+    CHECK_EQ(v.peelX[0], 1);                               /* what was under it is on the peel list */
+    CHECK_EQ(v.unmodelled, 0);
+
+    pop_zerolsts(&v);                          /* next frame on this page: nothing new to draw; */
+    pop_drawall(&v, &g);                       /* the character is taken off again */
+    CHECK_EQ(pop_hr_row(&v.hr, 1, 50)[20], 0x80);
+    CHECK_EQ(pop_hr_row(&v.hr, 1, 10)[4], 0xFF);           /* the background stays */
+    CHECK_EQ(v.peelX[0], 0);
+
+    setup();                                   /* an image number the table does not have */
+    v.XCO = 3; v.YCO = 10; v.IMAGE = 9;
+    pop_addback(&v);
+    pop_drawall(&v, &g);
+    CHECK_EQ(v.unmodelled, 1);
+}
+
+static void test_empty_screen(void)
+{
+    int i;
+    setup();
+    tables[bg.piecea + POP_FLOOR] = 5;
+    tables[bg.pieced + POP_FLOOR] = 6;
+    put(1, 1, 2, POP_FLOOR, 0);                /* one floor piece: row 1, column 2 */
+    pop_zerolsts(&v);
+    pop_sure(&v, &g);
+    CHECK_EQ(v.genCLS, 1);
+    CHECK_EQ(v.bgX[0], 15);
+    CHECK_EQ(v.fgX[0], 0);
+    /* rows from the bottom up; in each, the wall to the left shows its B-section */
+    CHECK_EQ(v.bgIMG[1], 8); CHECK_EQ(v.bgX[1], 0); CHECK_EQ(v.bgY[1], 188 - 3);
+    CHECK_EQ(v.bgIMG[2], 8); CHECK_EQ(v.bgY[2], 125 - 3);
+    /* the floor piece: its front edge (D), then its top (A) */
+    CHECK_EQ(v.bgIMG[3], 6); CHECK_EQ(v.bgX[3], 8); CHECK_EQ(v.bgY[3], 128);
+    CHECK_EQ(v.bgOP[3], POP_OP_STA);
+    CHECK_EQ(v.bgIMG[4], 5); CHECK_EQ(v.bgX[4], 8); CHECK_EQ(v.bgY[4], 125);
+    CHECK_EQ(v.bgOP[4], POP_OP_ORA);
+    CHECK_EQ(v.bgIMG[5], 8); CHECK_EQ(v.bgY[5], 62 - 3);
+    /* no screen above: its bottom row is taken to be floor, whose front
+     * edges show in the top three lines */
+    for (i = 0; i < 10; i++) {
+        CHECK_EQ(v.bgIMG[6 + i], 6);
+        CHECK_EQ(v.bgX[6 + i], 4 * i);
+        CHECK_EQ(v.bgY[6 + i], 2);
+    }
+    CHECK_EQ(v.unmodelled | g.unmodelled, 0);
+}
+
+static void test_pieces_with_state(void)
+{
+    setup();
+    put(1, 1, 3, POP_GATE, 0);                 /* a shut gate: seen from the block to its right */
+    pop_zerolsts(&v);
+    pop_sure(&v, &g);
+    /* its bottom piece crosses the floor line, so what it hides is redrawn
+     * first and the piece ORed in two lines higher: 125 - 1 - 2 */
+    {
+        int i, found = 0, bars = 0;
+        for (i = 1; i <= v.bgX[0]; i++) {
+            if (v.bgIMG[i] == bg.gatebotORA) { found++; CHECK_EQ(v.bgY[i], 122); CHECK_EQ(v.bgX[i], 16); }
+            if (v.bgIMG[i] == bg.gateB1) bars++;
+        }
+        CHECK_EQ(found, 1);
+        CHECK_EQ(bars, 5);                     /* 8-line bars at 112 ... 80; the next would */
+                                               /* pass the block's top at line 66 */
+    }
+
+    setup();
+    put(1, 1, 3, POP_GATE, 188);               /* fully open: bottom at 125 - 48 */
+    pop_zerolsts(&v);
+    pop_sure(&v, &g);
+    {
+        int i, found = 0;
+        for (i = 1; i <= v.bgX[0]; i++) {
+            if (v.bgIMG[i] == bg.gatebotSTA) { found++; CHECK_EQ(v.bgY[i], 125 - 48); }
+        }
+        CHECK_EQ(found, 1);
+    }
+
+    setup();
+    for (int k = 0; k < 8; k++) tables[bg.gate8b + k] = (uint8_t)(0x30 + k);
+    put(1, 1, 3, POP_GATE, 0);                 /* shut: above the 5 bars a top piece of 7 lines */
+    pop_zerolsts(&v);
+    pop_sure(&v, &g);
+    {
+        int i, top = 0;
+        for (i = 1; i <= v.bgX[0]; i++) if (v.bgIMG[i] == 0x36) { top++; CHECK_EQ(v.bgY[i], 72); }
+        CHECK_EQ(top, 1);
+    }
+    put(1, 1, 3, POP_GATE, 28);                /* 28 units open: the bars end exactly at the */
+    pop_zerolsts(&v);                          /* block's top, and there is no top piece */
+    pop_sure(&v, &g);
+    {
+        int i, bars = 0, top = 0;
+        for (i = 1; i <= v.bgX[0]; i++) {
+            if (v.bgIMG[i] == bg.gateB1) bars++;
+            if (v.bgIMG[i] >= 0x30 && v.bgIMG[i] <= 0x37) top++;
+        }
+        CHECK_EQ(bars, 5);                     /* at 105, 97, 89, 81, 73 */
+        CHECK_EQ(top, 0);
+    }
+    CHECK_EQ(v.unmodelled | g.unmodelled, 0);
+
+    setup();                                   /* screen 0, beyond the map: black, with the wall */
+    g.VisScrn = g.SCRNUM = 0;                  /* an absent left screen stands for and the floor */
+    pop_getscrns(&g);                          /* an absent upper one stands for */
+    tables[bg.pieced + POP_FLOOR] = 6;
+    pop_zerolsts(&v);
+    pop_sure(&v, &g);
+    CHECK_EQ(v.bgX[0], 3 + 10);
+    CHECK_EQ(v.unmodelled | g.unmodelled, 0);
+
+    setup();                                   /* the bars are drawn again in front of the */
+    put(1, 1, 3, POP_GATE, 0);                 /* kid when he stands in the gate's block */
+    g.kid.scrn = 1; g.kid.block_x = 3; g.kid.block_y = 1;
+    pop_zerolsts(&v);
+    pop_sure(&v, &g);
+    CHECK_EQ(v.fgX[0], 6);                     /* the bottom piece and the 5 bars */
+    CHECK_EQ(v.fgIMG[1], bg.gatebotORA);
+    CHECK_EQ(v.fgOP[1], POP_OP_ORA);
+    g.kid.block_x = 4;                         /* one block on: behind them no longer */
+    pop_zerolsts(&v);
+    pop_sure(&v, &g);
+    CHECK_EQ(v.fgX[0], 0);
+    /* The test does not ask which screen the kid is on, only that he is
+     * not on the screen to the right (the same block there is another). */
+    g.kid.block_x = 3; g.kid.scrn = 5; g.scrnRight = 5;
+    pop_zerolsts(&v);
+    pop_sure(&v, &g);
+    CHECK_EQ(v.fgX[0], 0);
+    g.scrnRight = 0;
+
+    setup();
+    put(1, 1, 3, POP_UPRESSPLATE, 2);          /* a plate that opens: down, it looks like floor */
+    tables[bg.pieced + POP_FLOOR] = 6;
+    tables[bg.pieced + POP_UPRESSPLATE] = 7;
+    g.blueprint[POP_LINKMAP + 2] = 5;          /* its timer is running: pressed */
+    pop_zerolsts(&v);
+    pop_sure(&v, &g);
+    {
+        int i, floor_d = 0;
+        for (i = 1; i <= v.bgX[0]; i++) if (v.bgIMG[i] == 6 && v.bgY[i] == 128) floor_d++;
+        CHECK_EQ(floor_d, 1);
+    }
+    CHECK_EQ(v.unmodelled | g.unmodelled, 0);
+}
+
+int main(void)
+{
+    RUN(test_images);
+    RUN(test_adding);
+    RUN(test_peel_lists);
+    RUN(test_drawall);
+    RUN(test_empty_screen);
+    RUN(test_pieces_with_state);
+    return pop_test_summary();
+}

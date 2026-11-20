@@ -17,6 +17,8 @@ Output:
                       executing SOUND.S (layout: pop_assets.h)
     pop_sfxnames.h    #define POP_SFX_<NAME> <n> for every effect name
     framedef.bin      assembled FRAMEDEF.S with a 24-byte header
+    bgdata.bin        BGDATA.S piece tables (which image shows which part of
+                      which level piece), with a symbol directory
     autodata.bin      AUTO.S tables: fight parameters per opponent type and
                       level, the shadow's scripted positions and movement
     imgdims.bin       width and height of every character image, by table,
@@ -174,6 +176,31 @@ def build_autodata(source):
             + fight + shadpos + bytes(prog) + bytes(demo))
 
 
+def build_bgdata(source):
+    """The piece tables: BGDATA.S assembled as one block, with the flame and
+    bubble tables of GAMEBG.S appended, and a directory of every symbol
+    (table offsets, and the image numbers and limits the drawing code
+    compares with)."""
+    from merlin_data import assemble
+    from pop_room import extract_table
+    src = os.path.join(source, SRC)
+
+    def read(name):
+        with open(os.path.join(src, name), encoding="ascii") as f:
+            return f.read()
+    asm = assemble(" org 0\n" + read("BGDATA.S"))
+    image = bytearray(asm.image)
+    symbols = {n: v & 0xFFFF for n, v in asm.symbols.items()}
+    gamebg = read("GAMEBG.S")
+    for name in ("torchflame", "bubble"):
+        symbols[name] = len(image)
+        image += extract_table(gamebg, name)
+    directory = b"".join(bytes([len(n)]) + n.encode("ascii") + struct.pack("<H", v)
+                         for n, v in sorted(symbols.items()) if len(n) < 256)
+    return (b"POPBGDT1" + struct.pack("<HH", len(image), len(symbols)) + bytes(image)
+            + directory)
+
+
 def build_sfx(source):
     mod = SoundModule(os.path.join(source, SRC))
     effects = mod.all_effects()
@@ -220,6 +247,8 @@ def main(argv=None):
         f.write(frames)
     with open(os.path.join(args.out, "autodata.bin"), "wb") as f:
         f.write(build_autodata(args.source))
+    with open(os.path.join(args.out, "bgdata.bin"), "wb") as f:
+        f.write(build_bgdata(args.source))
     dims = build_imgdims(args.source)
     with open(os.path.join(args.out, "imgdims.bin"), "wb") as f:
         f.write(dims)

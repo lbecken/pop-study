@@ -107,3 +107,27 @@ def test_autodata_bin(tmp_path):
     # the demo's script ends with "end of demo"
     demo_script = blob[16 + fight + shadpos + prog:]
     assert list(demo_script[0::2]) == sorted(demo_script[0::2]) and demo_script[-1] == 0xFF
+
+
+@needs_source
+def test_bgdata_bin(tmp_path):
+    """Piece tables for the redraw: BGDATA.S as one block with a symbol
+    directory, flame and bubble tables appended."""
+    import export_port_data
+    assert export_port_data.main(["--source", SOURCE, "--out", str(tmp_path)]) == 0
+    blob = (tmp_path / "bgdata.bin").read_bytes()
+    assert blob[:8] == b"POPBGDT1"
+    size, count = struct.unpack_from("<HH", blob, 8)
+    image, pos, symbols = blob[12:12 + size], 12 + size, {}
+    for _ in range(count):
+        n = blob[pos]
+        symbols[blob[pos + 1:pos + 1 + n].decode()] = struct.unpack_from("<H", blob, pos + 1 + n)[0]
+        pos += n + 3
+    assert pos == len(blob)
+    # the tables indexed by piece number have one entry per piece (30)
+    assert symbols["pieceay"] - symbols["piecea"] == 30
+    # flame: 18 frames; bubbles: 9; both lie inside the block, flame first
+    assert symbols["bubble"] - symbols["torchflame"] == 18 and symbols["bubble"] + 9 == size
+    # image numbers: 1-127, or with bit 7 for the second table
+    assert all(image[symbols["piecea"] + i] <= 0xFF for i in range(30))
+    assert symbols["gmaxval"] == 188 and symbols["numblox"] >= 1

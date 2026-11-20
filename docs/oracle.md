@@ -165,3 +165,4 @@ Three things in it are this project's, not the original's:
 | The Python blitter model (milestone 3) | the original `HIRES.S` blitter, called through `GRAFIX`, on the real character and background images at random positions, offsets and modes, 330 calls | page bytes identical |
 | The Python room model (milestone 5) | the original's `DoSure` for all 336 screens of the 15 levels | page bytes identical |
 | The blitter (C) | every `HIRES.S` routine on random images, positions, cuts, offsets and modes over random page contents | C port and original agree on both pages and the save-under buffers |
+| The full redraw (C) | `DoSure` for every screen and null screen of the 15 levels, and for screens with random gadget states, extra pieces and kid positions: the page and the three display lists | C port and original agree |

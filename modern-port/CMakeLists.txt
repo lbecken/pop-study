@@ -43,18 +43,20 @@ add_library(pop_core STATIC src/core/pop_seq.c src/core/pop_sound.c src/core/pop
             src/core/pop_mover.c src/core/pop_auto.c src/core/pop_top.c src/core/pop_loop.c)
 target_include_directories(pop_core PUBLIC src/core)
 
-# Video: the blitter.  No I/O, no SDL.
-add_library(pop_video STATIC src/video/pop_hires.c)
+# Video: the blitter, the display lists, the redraw of a screen.  No I/O, no SDL.
+add_library(pop_video STATIC src/video/pop_hires.c src/video/pop_lists.c
+            src/video/pop_frameadv.c)
 target_include_directories(pop_video PUBLIC src/video)
+target_link_libraries(pop_video PUBLIC pop_core)
 
 # Sound: effect data to PCM.  No I/O, no SDL (the SDL3 backend comes later).
 add_library(pop_audio STATIC src/audio/pop_sfx.c)
 target_include_directories(pop_audio PUBLIC src/audio)
 
 # Loading generated data files.
-add_library(pop_assets STATIC src/assets/pop_assets.c)
+add_library(pop_assets STATIC src/assets/pop_assets.c src/assets/pop_gfxfiles.c)
 target_include_directories(pop_assets PUBLIC src/assets)
-target_link_libraries(pop_assets PUBLIC pop_core pop_audio)
+target_link_libraries(pop_assets PUBLIC pop_core pop_audio pop_video)
 
 add_executable(pop_seqdump tools/pop_seqdump.c)
 target_link_libraries(pop_seqdump PRIVATE pop_assets)
@@ -67,6 +69,9 @@ target_link_libraries(pop_worldrun PRIVATE pop_assets)
 
 add_executable(pop_hiresrun tools/pop_hiresrun.c)
 target_link_libraries(pop_hiresrun PRIVATE pop_video)
+
+add_executable(pop_gfxrun tools/pop_gfxrun.c)
+target_link_libraries(pop_gfxrun PRIVATE pop_assets)
 
 enable_testing()
 
@@ -117,6 +122,10 @@ add_executable(test_hires tests/test_hires.c)
 target_link_libraries(test_hires PRIVATE pop_video)
 add_test(NAME hires_unit COMMAND test_hires)
 
+add_executable(test_gfx tests/test_gfx.c)
+target_link_libraries(test_gfx PRIVATE pop_video)
+add_test(NAME gfx_unit COMMAND test_gfx)
+
 # --- tests on the original data (optional) -----------------------------------
 if(POP_SOURCE_DIR)
   if(NOT EXISTS "${POP_SOURCE_DIR}/01 POP Source/Source/SEQTABLE.S")
@@ -131,14 +140,14 @@ if(POP_SOURCE_DIR)
   set(POP_DATA_FILES "${POP_DATA}/seqtable.bin" "${POP_DATA}/pop_seqnames.h"
                      "${POP_DATA}/sfx.bin" "${POP_DATA}/pop_sfxnames.h"
                      "${POP_DATA}/framedef.bin" "${POP_DATA}/imgdims.bin"
-                     "${POP_DATA}/autodata.bin")
+                     "${POP_DATA}/autodata.bin" "${POP_DATA}/bgdata.bin")
   add_custom_command(
     OUTPUT ${POP_DATA_FILES}
     COMMAND "${Python3_EXECUTABLE}" "${POP_TOOLS}/export_port_data.py"
             --source "${POP_SOURCE_DIR}" --out "${POP_DATA}"
     DEPENDS "${POP_TOOLS}/export_port_data.py" "${POP_TOOLS}/merlin_data.py"
             "${POP_TOOLS}/pop_animdata.py" "${POP_TOOLS}/mos6502.py"
-            "${POP_TOOLS}/pop_imgtable.py"
+            "${POP_TOOLS}/pop_imgtable.py" "${POP_TOOLS}/pop_room.py"
             "${POP_AUDIO_TOOLS}/pop_sfx.py"
             "${POP_SOURCE_DIR}/01 POP Source/Source/SEQTABLE.S"
             "${POP_SOURCE_DIR}/01 POP Source/Source/SEQDATA.S"
@@ -147,6 +156,8 @@ if(POP_SOURCE_DIR)
             "${POP_SOURCE_DIR}/01 POP Source/Source/FRAMEDEF.S"
             "${POP_SOURCE_DIR}/01 POP Source/Source/AUTO.S"
             "${POP_SOURCE_DIR}/01 POP Source/Source/SUBS.S"
+            "${POP_SOURCE_DIR}/01 POP Source/Source/BGDATA.S"
+            "${POP_SOURCE_DIR}/01 POP Source/Source/GAMEBG.S"
     COMMENT "Generating port data from the original source"
     VERBATIM)
   add_custom_target(pop_data DEPENDS ${POP_DATA_FILES})
@@ -163,6 +174,7 @@ if(POP_SOURCE_DIR)
   add_dependencies(test_sfx_original pop_data)
   add_dependencies(pop_sfxdump pop_data)
   add_dependencies(pop_worldrun pop_data)
+  add_dependencies(pop_gfxrun pop_data)
 
   add_test(NAME seq_original COMMAND test_seq_original "${POP_DATA}/seqtable.bin")
   add_test(NAME seq_c_vs_python
@@ -196,6 +208,10 @@ if(POP_SOURCE_DIR)
            COMMAND "${Python3_EXECUTABLE}"
                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/fuzz_hires.py"
                    "$<TARGET_FILE:pop_hiresrun>" "${POP_SOURCE_DIR}" 1200 1989)
+  add_test(NAME rooms_c_vs_original
+           COMMAND "${Python3_EXECUTABLE}"
+                   "${CMAKE_CURRENT_SOURCE_DIR}/tests/compare_rooms.py"
+                   "$<TARGET_FILE:pop_gfxrun>" "${POP_DATA}" "${POP_SOURCE_DIR}" 15 1989)
   add_test(NAME demo_c_vs_original
            COMMAND "${Python3_EXECUTABLE}"
                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/replay_demo.py"

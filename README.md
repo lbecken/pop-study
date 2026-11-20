@@ -29,7 +29,7 @@ licensing position this policy is based on.
 | `docs/port/` | Per-subsystem port notes: interface, pseudocode, pitfalls, tests |
 | `docs/verification.md` | Test commands, recorded results, what has not been verified |
 | `docs/compatibility-matrix.md` | Which behaviours are faithful, approximate, missing or unverified |
-| `modern-port/` | The C17 port (see its README): animation, level queries, player control, falling and landing, collision, moving level objects, opponents and sword fighting, the whole game loop (frame, input state, clock, messages, level change), the blitter, sound effects; no window yet |
+| `modern-port/` | The C17 port (see its README): animation, level queries, player control, falling and landing, collision, moving level objects, opponents and sword fighting, the whole game loop (frame, input state, clock, messages, level change), the blitter and the full redraw of a screen, sound effects; no window yet |
 | `docs/unknowns.md` | Open questions, each with the next inspection step |
 | `docs/milestones.md` | Milestone plan, directory layout, decisions awaiting input |
 | `assets/manifest.json` | Hashed inventory of all 582 original files (metadata only) |
@@ -72,7 +72,7 @@ python3 tools/extract_assets/make_manifest.py --source ../pop-original --out ass
 POP_SOURCE_DIR=../pop-original python3 -m pytest tests -q
 ```
 
-Without `POP_SOURCE_DIR` the 48 integration tests are skipped and only the
+Without `POP_SOURCE_DIR` the 49 integration tests are skipped and only the
 synthetic-data unit tests run. `build/` is git-ignored.
 
 The C port:
@@ -111,12 +111,12 @@ messages, song cues, the step to the next level; all verified the same way,
 and the original's demo level replays in the C port, one pass of the
 original's main loop at a time, with the same result as the original code
 after every pass). All game rules that do not draw are now in C. Of the
-drawing, the blitter is (milestone 10a: each routine equals the original
-blitter byte for byte), and the original's own drawing code can now be run
-in the simulator, which confirmed the earlier Python models of the blitter
-and of the room redraw. What decides *what* to draw each frame, the hardware
-side of input and sound, and a window are not ported, so there is no
-runnable game yet. See
+drawing, the blitter and the full redraw of a screen are (milestones 10a
+and 10b: every screen of every level comes out byte for byte as the
+original code draws it), and the original's own drawing code can now be run
+in the simulator, which also confirmed the earlier Python models. Drawing
+only what changed, characters, colour, the hardware side of input and
+sound, and a window are not ported, so there is no runnable game yet. See
 `docs/milestones.md`.
 
 ## Conventions
