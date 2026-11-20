@@ -177,5 +177,18 @@ differed on the shipped disk is **not yet verified** (unknown G16).
 - **By eye:** level 1 screen 1 shows the start room as the game is known to
   look (brick walls, two torches, pillars, a gate at the upper left); the
   palace exit screen of level 5 shows columns, the exit door and gates.
-- **Not done:** comparison with an emulator screenshot. The hash above locks
-  the current output; it is not evidence that the output is right.
+- **Against the original code** (since milestone 10a). The original's own
+  redraw (`SETINITIALS`, `GETSCRNS`, then `DoSure`: `SURE` builds the image
+  lists and `DRAWALL` hands them to the blitter in `HIRES.S`) is run in the
+  two-bank 6502 simulator on each level file with the image tables loaded
+  (`docs/oracle.md`). For every screen the level files declare, 336 in all
+  15 levels, the 8,192 bytes of the resulting hi-res page are identical to
+  this model's (`tests/test_gfx_oracle.py`). So the model's reading of
+  `SURE`, of the list drawing and of the blitters agrees with what the
+  original code does, including the points listed under "Things a port
+  must reproduce". What that does not cover: screens with other piece
+  states than a level's start (gates part open, loose floors fallen), and
+  the assumption about background set 2 (same image files as set 0).
+- **Not done:** comparison with an emulator screenshot or a real machine.
+  The simulator runs the original code as assembled by this project's
+  assembler; it has no video output to look at.

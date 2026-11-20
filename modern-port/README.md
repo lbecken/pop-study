@@ -19,7 +19,8 @@ checkout of the original source and is never stored in this repository.
 | Sound-effect rendering (speaker flip list to PCM) | written, tested against the Python renderer; no output device yet |
 | A whole frame (`NextFrame`, `DoKid`), the kid's death, entering a screen, the start of a level, the demo's player (`TOPCTRL.S`, `SUBS.S`) | ported; same, plus a replay of the whole demo level against the original |
 | The loop around the frame: input-device state and press flags, the clock and its messages, song cues, flashes, `MainLoop`, the next level (`TOPCTRL.S`, `SPECIALK.S`, `SUBS.S`) | ported; same. `pop_mainloop` is one complete frame |
-| Drawing, reading keys and joystick, sound output, music, SDL3 shell | not started (hooks) |
+| The blitter: images onto a hi-res page in every mode, shifted, mirrored, cropped; save-under (`HIRES.S`) | ported; each routine compared with the original blitter over whole pages |
+| Deciding what to draw (image lists, full and partial redraw, characters), colour, reading keys and joystick, sound output, music, SDL3 shell | not started (hooks) |
 
 There is no runnable game yet and no SDL3 dependency yet. The nearest thing
 is `tests/replay_demo.py`, which plays the original's demo level in the port,
@@ -32,11 +33,13 @@ See `../docs/port/` for per-subsystem notes and `../docs/milestones.md` for the 
 ```
 src/core/     game rules; no I/O, no SDL
 src/audio/    effect data to PCM; no I/O, no SDL
+src/video/    the blitter: images to hi-res page bytes; no I/O, no SDL
 src/assets/   loaders for generated data files
-tools/        command-line helpers (pop_seqdump, pop_sfxdump, pop_worldrun)
+tools/        command-line helpers (pop_seqdump, pop_sfxdump, pop_worldrun,
+              pop_hiresrun)
 tests/        C tests, C-versus-Python comparisons, and C-versus-original
               comparisons (fuzz_world.py, fuzz_control.py, trace_kidstep.py,
-              replay_demo.py)
+              replay_demo.py, fuzz_hires.py)
 ```
 
 ## Build and test
@@ -72,6 +75,6 @@ Options: `-DPOP_WERROR=ON` (warnings as errors), `-DPOP_SANITIZE=ON`
 
 | Platform | Compiler | Result |
 | --- | --- | --- |
-| Linux x86-64 (Ubuntu 24.04) | GCC 13.3, with `-Werror` and ASan/UBSan | all 19 tests pass |
-| Linux x86-64 (Ubuntu 24.04) | Clang 18.1, with `-Werror`; unit test programs also run under valgrind with no errors | all 19 tests pass |
+| Linux x86-64 (Ubuntu 24.04) | GCC 13.3, with `-Werror` and ASan/UBSan | all 21 tests pass |
+| Linux x86-64 (Ubuntu 24.04) | Clang 18.1, with `-Werror`; unit test programs also run under valgrind with no errors | all 21 tests pass |
 | macOS, Windows | – | **not tested**. The code is plain C17 with no platform calls, and the CMake file has an MSVC branch, but neither has been built. |

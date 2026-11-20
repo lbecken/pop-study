@@ -43,6 +43,10 @@ add_library(pop_core STATIC src/core/pop_seq.c src/core/pop_sound.c src/core/pop
             src/core/pop_mover.c src/core/pop_auto.c src/core/pop_top.c src/core/pop_loop.c)
 target_include_directories(pop_core PUBLIC src/core)
 
+# Video: the blitter.  No I/O, no SDL.
+add_library(pop_video STATIC src/video/pop_hires.c)
+target_include_directories(pop_video PUBLIC src/video)
+
 # Sound: effect data to PCM.  No I/O, no SDL (the SDL3 backend comes later).
 add_library(pop_audio STATIC src/audio/pop_sfx.c)
 target_include_directories(pop_audio PUBLIC src/audio)
@@ -60,6 +64,9 @@ target_link_libraries(pop_sfxdump PRIVATE pop_assets)
 
 add_executable(pop_worldrun tools/pop_worldrun.c)
 target_link_libraries(pop_worldrun PRIVATE pop_assets)
+
+add_executable(pop_hiresrun tools/pop_hiresrun.c)
+target_link_libraries(pop_hiresrun PRIVATE pop_video)
 
 enable_testing()
 
@@ -105,6 +112,10 @@ add_test(NAME top_unit COMMAND test_top)
 add_executable(test_loop tests/test_loop.c)
 target_link_libraries(test_loop PRIVATE pop_core)
 add_test(NAME loop_unit COMMAND test_loop)
+
+add_executable(test_hires tests/test_hires.c)
+target_link_libraries(test_hires PRIVATE pop_video)
+add_test(NAME hires_unit COMMAND test_hires)
 
 # --- tests on the original data (optional) -----------------------------------
 if(POP_SOURCE_DIR)
@@ -181,6 +192,10 @@ if(POP_SOURCE_DIR)
            COMMAND "${Python3_EXECUTABLE}"
                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/fuzz_control.py"
                    "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}" "${POP_SOURCE_DIR}" 400 1989)
+  add_test(NAME hires_c_vs_original
+           COMMAND "${Python3_EXECUTABLE}"
+                   "${CMAKE_CURRENT_SOURCE_DIR}/tests/fuzz_hires.py"
+                   "$<TARGET_FILE:pop_hiresrun>" "${POP_SOURCE_DIR}" 1200 1989)
   add_test(NAME demo_c_vs_original
            COMMAND "${Python3_EXECUTABLE}"
                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/replay_demo.py"

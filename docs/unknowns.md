@@ -19,7 +19,7 @@ Items move to the relevant document once resolved.
 | G1 | Masking for draw paths other than `LayMask`: `FASTMASK`, the "visible mask" opacity 5, and what floor pieces use. (`LayMask` itself is resolved: `docs/run-cycle-analysis.md`.) | Read `FASTMASK` and `LayGen` callers in `HIRES.S` / `FRAMEADV.S`. |
 | G2 | Effect of mirroring on colour: a mirrored byte swaps dot parity. (Geometry is resolved: exact mirror.) | Decide with G3. |
 | G3 | Colour: how dot parity and bit 7 map to the colours seen on screen, and what the game does to keep sprite colours stable when shifted. | Read `SHIFTn`/`CARRYn` generation and `LayXOR`; then pick a rendering model (decision D3). |
-| G4 | When and how image-table pointers are relocated from `$6000` to their load addresses. | Read `relocate` in `04 Support/MakeDisk/DRAZ/DRAZ.S:3081-3101`. |
+| G4 | When and how image-table pointers are relocated from `$6000` to their load addresses. Narrowed: the blitter uses the pointers as they are (`HIRES.S:264-277`) and no loaded game module rewrites them, so the tables on the game disk must already hold relocated pointers; the test oracle relocates on load (`docs/port/blitter.md` §8). `MASTER.S` (the loader) has not been searched line by line. | Read `relocate` in `04 Support/MakeDisk/DRAZ/DRAZ.S:3081-3101` and the table loading in `MASTER.S`. |
 | G5 | `PAC.*` packed picture format. | Read `SNGEXPAND` in `UNPACK.S`; test against one `PAC.*` + its raw sibling (e.g. `SS/PAC.SS1` and `SS/SS1`). |
 | G6 | Whether the title/prologue/epilog screens exist among the `PAC.*` files. | Decode after G5. |
 | G7 | Why `04 Support/DRAZ/IP/IMG.CHTABLE3` does not parse. | Hex-inspect; may be an older table layout. |

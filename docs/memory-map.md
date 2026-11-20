@@ -25,14 +25,16 @@ Target machine: 128K Apple IIe / IIc / IIGS. The game uses main and auxiliary
 | `$8400` | `chtable2` | same |
 | `$A800` | `chtable5` | same |
 | `$D000` LC bank 1 | RW18 disk routines | `EQ.S:11`, `MASTER.S:178` |
-| `$D000`, `$D800` | `peelbuf1`, `peelbuf2` (save-under buffers) | `EQ.S:12-13` |
+| `$D000`, `$D800` | `peelbuf1`, `peelbuf2` (save-under buffers, one per hi-res page) | `EQ.S:12-13`, `GRAFIX.S:997-1016` |
 | `$E000-$E9AF` | `hrtables`: `YLO` `$E000`, `YHI` `$E0C0`, `SHIFT0-6` `$E180`, `CARRY0-6` `$E500`, `MIRROR` `$E880`, `MASKTAB` `$E900`, pointer and edge-mask tables `$E980` (addresses **confirmed** by assembling `HRTABLES.S`) | `EQ.S:14`, `HRPARAMS.S:4-40` |
 | `$EA00` | `unpack` | `EQ.S:15` |
 | `$EE00` | `hires` blitters | `EQ.S:16` |
 | `$F880` | `master` | `EQ.S:17` |
 
 `HIRES.S:40-41` declares `peelbuf2 = $d600` while `EQ.S:13` says `$d800`.
-Which value is live is **not yet verified**.
+The live value is `$D800` (**confirmed**: the only code that uses either
+name is `ZEROPEEL`, `GRAFIX.S:1004-1013`, and `GRAFIX.S` takes its equates
+from `EQ.S`; `HIRES.S` never uses its own two). Each buffer is 2,048 bytes.
 
 ## Auxiliary memory
 

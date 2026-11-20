@@ -19,9 +19,9 @@ Status of each behaviour in the reconstruction.
 | Animation | Frame definitions, alternate frame sets, sword table | faithful (data) | generated `framedef.bin`, `tools/extract_assets/pop_animdata.py` | the assembled tables, loaded by the port; the sword table is not used yet |
 | Animation | Extra `animchar` calls within a tick (33 sites) | faithful, checked against the original code | `pop_control.c`, `pop_collide.c`, `pop_auto.c`, `pop_top.c` | ported with the routines that make them; the sites in drawing and cut-scene code are not |
 | Rendering | Character position (`SETUPCHAR`, `GETBASEX`) | faithful, checked against the original code | `modern-port/src/core/pop_control.c`, `pop_world.c` | also as a Python model, `tools/extract_assets/pop_charpos.py`; `CVTX` model only |
-| Rendering | Mask blitter, normal and mirrored, on-screen images | model only | `tools/extract_assets/pop_hires.py` | no cropping |
-| Rendering | Cropping, save-under buffers, XOR and other draw modes | missing | – | unknowns G13–G15 |
-| Rendering | Full-screen background redraw (`SURE`), background/mid/foreground lists, fast blitters | model only | `tools/extract_assets/pop_room.py`, `pop_hires.py` | all 299 screens render; no characters |
+| Rendering | The blitter: six draw modes, dot shifting, mirroring, cropping to a usable area, byte-aligned fast routines, rectangle fill, page copy, upside-down line table | faithful, checked against the original code | `modern-port/src/video/pop_hires.c` | every routine of `HIRES.S` compared with the original blitter byte for byte over both pages; nothing draws with it yet |
+| Rendering | Save-under buffers (`LAYRSAVE`, `PEEL`) | faithful, checked against the original code | same | the lists that drive them (`ADDPEEL`, `SNGPEEL`) are missing |
+| Rendering | Full-screen background redraw (`SURE`), background/mid/foreground lists | model only, checked against the original code | `tools/extract_assets/pop_room.py`, `pop_hires.py` | the Python model's page equals the original code's for all 336 screens of the 15 levels; not in C yet (milestone 10b); no characters |
 | Rendering | Partial redraw, redraw buffers, wipes, page flipping | missing | – | unknown G17 |
 | Rendering | Colour | missing | – | decision D3 |
 | World | Block reading across screens, foot position, distances, coordinate conversion, piece classes | faithful, checked against the original code | `modern-port/src/core/pop_world.c` | 39 routines fuzzed against the original in the simulator; not compared with a running game |

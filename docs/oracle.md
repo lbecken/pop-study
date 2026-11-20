@@ -77,6 +77,53 @@ assembled routine for that instruction (`Harness.restart_level` in
 A trapped routine is not being tested; what is compared is the caller's
 behaviour given the same answers on both sides.
 
+## Two memory banks: running the drawing code
+
+The game's code and data are in auxiliary memory; its blitters
+(`HIRES.S`), their tables (`HRTABLES.S`) and the hi-res pages are in main
+memory at overlapping addresses, and the two are crossed with the Apple
+IIe's soft switches. The flat oracle cannot run any of that.
+`tools/oracle/pop_banked.py` adds the three switch pairs the game uses
+(`ALTZP`: zero page, stack and `$D000-$FFFF`; `RAMRD` and `RAMWRT`:
+`$0200-$BFFF`) to the simulator, and `tools/oracle/pop_gfx_oracle.py` builds
+the 128K layout of `docs/memory-map.md`:
+
+| Bank | Loaded |
+| --- | --- |
+| auxiliary | the 17 game modules, the level, `bgtable1`/`bgtable2` (`$6000`, `$8400`), `chtable4` and `chtable7` |
+| main | `HRTABLES` (`$E000`), `HIRES` (`$EE00-$F843`), `chtable1`, `2`, `3`, `5`, both hi-res pages |
+
+Routines are started as the game runs, with all three switches on
+(auxiliary). A drawing call goes through its `GRAFIX.S` entry point, which
+copies the parameters to the main zero page, switches, calls the blitter and
+switches back; every instruction of that path is the original's.
+
+```python
+from pop_gfx_oracle import GfxOracle
+o = GfxOracle("../pop-original")
+o.load_table("bgtable1", "IMG.BGTAB1.DUN")
+o.load_table("bgtable2", "IMG.BGTAB2.DUN")
+o.load_level(open("../pop-original/01 POP Source/Levels/LEVEL1", "rb").read())
+o.call("setinitials")
+o.set_vars({"VisScrn": 1, "PAGE": 0})
+o.call("getscrns")
+o.call("DoSure", module="TOPCTRL")       # the original's full-screen redraw
+page = o.page(1)                          # 8192 bytes of hi-res page 1
+```
+
+Three things in it are this project's, not the original's:
+
+- **Image tables are relocated on loading.** The pointers in the image files
+  assume `$6000`; tables kept elsewhere need them moved, and no game code
+  does it (`docs/port/blitter.md` §8, unknown G4).
+- **`UNPACK.S` is not loaded** (its macros are beyond the assembler). The
+  one routine of it that the game calls during play, `INVERTY`, has an
+  identical twin in `HIRES.S`; a jump to the twin stands at `UNPACK`'s
+  jump-table slot. A test compares the two source texts.
+- **Not modelled**: the two `$D000` banks of each language card, the ROM
+  switches, 80STORE, and all video output. The oracle produces page bytes,
+  never a picture.
+
 ## Limits
 
 - **Decimal mode** is modelled as the NMOS 6502 does it; the one routine
@@ -115,3 +162,6 @@ behaviour given the same answers on both sides.
 | The game loop over time (C) | `FirstFrame`, then whole passes of `MainLoop` with random keyboard input; 60 traces of up to 60 frames per test run, compared after each pass | C port and original agree |
 | The demo (C) | `StartGame`, the level start, then `MainLoop` passes until the demo ends itself: 393 frames | C port and original agree after every pass |
 | The clock's end and the start of level 1 | `MainLoop` run in the simulator from `StartGame` on level 1, and through counted frames 43,380 to 43,505 | source of the observations in `docs/port/game-loop.md` §3, §10 |
+| The Python blitter model (milestone 3) | the original `HIRES.S` blitter, called through `GRAFIX`, on the real character and background images at random positions, offsets and modes, 330 calls | page bytes identical |
+| The Python room model (milestone 5) | the original's `DoSure` for all 336 screens of the 15 levels | page bytes identical |
+| The blitter (C) | every `HIRES.S` routine on random images, positions, cuts, offsets and modes over random page contents | C port and original agree on both pages and the save-under buffers |
