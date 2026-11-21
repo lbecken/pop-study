@@ -46,7 +46,7 @@ target_include_directories(pop_core PUBLIC src/core)
 
 # Video: the blitter, the display lists, the redraw of a screen.  No I/O, no SDL.
 add_library(pop_video STATIC src/video/pop_hires.c src/video/pop_lists.c src/video/pop_screen.c
-            src/video/pop_frameadv.c)
+            src/video/pop_frameadv.c src/video/pop_present.c)
 target_include_directories(pop_video PUBLIC src/video)
 target_link_libraries(pop_video PUBLIC pop_core)
 
@@ -129,6 +129,9 @@ add_test(NAME hires_unit COMMAND test_hires)
 add_executable(test_gfx tests/test_gfx.c)
 target_link_libraries(test_gfx PRIVATE pop_video)
 add_test(NAME gfx_unit COMMAND test_gfx)
+add_executable(test_present tests/test_present.c)
+target_link_libraries(test_present PRIVATE pop_video)
+add_test(NAME present_unit COMMAND test_present)
 
 # --- tests on the original data (optional) -----------------------------------
 if(POP_SOURCE_DIR)
@@ -228,6 +231,12 @@ if(POP_SOURCE_DIR)
            COMMAND "${Python3_EXECUTABLE}"
                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/trace_kidstep.py"
                    "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}" "${POP_SOURCE_DIR}" 60 1989)
+  # the demo as the port alone draws it: PNG frames and a contact sheet to look at
+  add_test(NAME render_demo
+           COMMAND "${Python3_EXECUTABLE}"
+                   "${CMAKE_CURRENT_SOURCE_DIR}/tools/render_demo.py"
+                   "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}" "${POP_SOURCE_DIR}"
+                   "${CMAKE_BINARY_DIR}/demo_frames")
   add_test(NAME frames_demo_c_vs_original
            COMMAND "${Python3_EXECUTABLE}"
                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/replay_frames.py"

@@ -21,6 +21,7 @@
  *                                 longer leave a letter in the hook list)
  *   T <n> <path>                  with V: an image table, 1-2 = bgtable1-2,
  *                                 11-17 = chtable1-7
+ *   W <mono|colour> <scale> <path>   with V: write what the monitor is shown as a PNG
  *
  * For each R line one line is printed: "a=<n> <name>=<n> ..." listing the
  * returned value and every state variable, then
@@ -49,6 +50,8 @@
 #include "pop_auto.h"
 #include "pop_gfx.h"
 #include "pop_gfxfiles.h"
+#include "pop_png.h"
+#include "pop_present.h"
 #include "pop_collide.h"
 #include "pop_control.h"
 #include "pop_loop.h"
@@ -623,6 +626,21 @@ int main(int argc, char **argv)
                 table_dims[t] = pop_imgtab_dims(&tables[slot].tab, &dims.dims.count[t]);
                 dims.dims.wh[t] = table_dims[t];
                 if (!table_dims[t]) { fprintf(stderr, "%s: not an image table\n", path); return 2; }
+            }
+        } else if (line[0] == 'W') {           /* the picture, as a PNG file */
+            static uint8_t rgb[POP_SCREEN_W * POP_SCREEN_H * 3];
+            char mode[8];
+            unsigned scale = 1;
+            int at = 0;
+            if (!video || sscanf(line + 1, "%7s %u %n", mode, &scale, &at) != 2 || at == 0) {
+                fprintf(stderr, "bad W line\n");
+                return 2;
+            }
+            line[strcspn(line, "\n")] = 0;
+            (void)pop_present(&gfx, mode[0] == 'm' ? POP_PRESENT_MONO : POP_PRESENT_COLOUR, rgb);
+            if (pop_png_write(line + 1 + at, rgb, POP_SCREEN_W, POP_SCREEN_H, scale) != 0) {
+                fprintf(stderr, "%s: cannot write\n", line + 1 + at);
+                return 2;
             }
         } else if (line[0] == 'K') {           /* K 1: level changes persist; K 0: undone */
             keep = line[1] && line[2] == '1';

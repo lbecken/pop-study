@@ -515,6 +515,7 @@ def main(argv):
     world = [f for f in fixed if not f.endswith("pop_gfxrun.c")] \
         + [os.path.join(PORT, "src", "assets", "pop_assets.c"),
            os.path.join(PORT, "src", "audio", "pop_sfx.c"),
+           os.path.join(PORT, "src", "video", "pop_present.c"),
            os.path.join(PORT, "tools", "pop_worldrun.c")]
     video = ("pop_hires.c", "pop_lists.c", "pop_frameadv.c", "pop_screen.c")
     includes = ["-I" + os.path.join(PORT, "src", d) for d in ("core", "video", "assets", "audio")]

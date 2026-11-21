@@ -841,7 +841,8 @@ def main(argv):
         ("src", "assets", "pop_assets.c"), ("src", "assets", "pop_gfxfiles.c"),
         ("src", "audio", "pop_sfx.c"), ("src", "video", "pop_hires.c"),
         ("src", "video", "pop_lists.c"), ("src", "video", "pop_frameadv.c"),
-        ("src", "video", "pop_screen.c"), ("tools", "pop_worldrun.c"))]
+        ("src", "video", "pop_screen.c"), ("src", "video", "pop_present.c"),
+        ("tools", "pop_worldrun.c"))]
     includes = ["-I" + os.path.join(PORT, "src", d) for d in ("core", "assets", "audio", "video")]
 
     jobs = []
