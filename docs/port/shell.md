@@ -35,8 +35,8 @@ itself at run time. Without SDL3 everything else still builds, and
 
 Options: `--level n` (0, the default, is the self-running demo; a key
 turns it into a game on level 1), `--scale n`, `--mono`, `--rate n`
-(frames per minute), `--stretch`, `--mute`, and for tests `--frames n`,
-`--no-wait`, `--screenshot file`.
+(frames per minute), `--stretch`, `--mute`, `--images dir` (section 6), and
+for tests `--frames n`, `--no-wait`, `--screenshot file`.
 
 ## 2. Keys
 
@@ -130,13 +130,22 @@ dungeon, and opponent sets are matched to files by who lives on their
 levels (**inferred**; `pop_app.c` has the list). The game logic is given
 the image sizes of the tables that are loaded (frame-drawing.md §6).
 
+With `--images <dir>` the image tables, all of them, come from a directory
+of replacement pictures instead (blender-to-sdl3.md §4). The directory must
+say where its pictures come from (`PROVENANCE.txt`), and its character
+tables must have the original's image sizes, or the shell does not start;
+the window title says that the pictures are not the original's. The only
+such set that exists is the generated placeholder set
+(`tools/assets/make_placeholder_set.py`), which shows the game as boxes.
+
 ## 7. What has been checked, and what has not
 
 | Check | Shows |
 | --- | --- |
 | `tests/check_app.py` (`app_matches_runner`) | The game through `pop_app` (the demo, and levels 1–14 with random keys, 3,025 frames) leaves the same bytes in both hi-res pages and touches the same display switches as the same games through `pop_worldrun`, the runner that `replay_frames.py` compares with the original. So the shell's game is the tested game |
 | `tests/check_sdl.py` (`sdl_shell_headless`) | With SDL's dummy drivers: the shell starts, plays 150 frames of the demo, queues sound, leaves with status 0; its last picture is `pop_headless`'s picture of that frame; 60 timed frames take the time they should |
-| by eye | Frames written by `pop_headless` (level 1's first room) look like the game |
+| `tests/check_images.py` (`images_option`) | `--images`: copies of the original tables give the same frames as the checkout; placeholder pictures give the same game state after every frame and other pictures; unlabelled, incomplete and wrongly sized directories are refused |
+| by eye | Frames written by `pop_headless` (level 1's first room) look like the game; with the placeholder set, like the game's boxes |
 
 **Not verified**, because it needs a screen, a sound device or a person:
 

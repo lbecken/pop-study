@@ -26,6 +26,11 @@
 typedef struct pop_app_config {
     const char *data_dir;        /* generated at build time: framedef.bin, seqtable.bin, ... */
     const char *source_dir;      /* the user's checkout of the original repository */
+    const char *images_dir;      /* NULL, or a directory of replacement image tables: every
+                                  * IMG.* file is then read from it and none from the checkout.
+                                  * It must hold a PROVENANCE.txt, and its character tables
+                                  * must have the original's image sizes, which the rules use
+                                  * (docs/blender-to-sdl3.md) */
     uint32_t    audio_rate;      /* samples per second; 0 = render no sound */
 } pop_app_config;
 
@@ -53,6 +58,7 @@ typedef struct pop_app {
 
     pop_imgfile tables[9];       /* bgtable1-2, chtable1-7 */
     uint8_t *table_dims[POP_CHTABLES];
+    pop_imgdims expect;          /* the sizes of the original's character tables (imgdims.bin) */
     int bgset1, bgset2, chset;   /* the sets in memory, -1 none */
 
     pop_app_input input;

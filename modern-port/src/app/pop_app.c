@@ -17,11 +17,18 @@ static int path(char *out, size_t size, const char *dir, const char *sub, const 
     return n > 0 && (size_t)n < size ? 0 : -1;
 }
 
-static int load_table(pop_app *a, int slot, const char *name)
+/* `opp`: for the opponents' table, which of the original's sets the file
+ * stands for; its sizes are what a replacement is held to. */
+static int load_table(pop_app *a, int slot, const char *name, pop_opponent_set opp)
 {
     char file[1024];
     const char *err = NULL;
-    if (path(file, sizeof file, a->config.source_dir, "01 POP Source/Images/", name) != 0) return -1;
+    const int replaced = a->config.images_dir != NULL;
+    if (replaced) {
+        if (path(file, sizeof file, a->config.images_dir, "", name) != 0) return -1;
+    } else if (path(file, sizeof file, a->config.source_dir, "01 POP Source/Images/", name) != 0) {
+        return -1;
+    }
     pop_imgfile_free(&a->tables[slot]);
     if (pop_imgfile_load(file, &a->tables[slot], &err) != 0) {
         a->error = err ? err : "cannot load an image table";
@@ -40,6 +47,18 @@ static int load_table(pop_app *a, int slot, const char *name)
             a->error = "not an image table";
             return -1;
         }
+        if (replaced) {
+            /* The rules read image sizes (GETEDGES): new pictures must not
+             * change them. */
+            uint16_t count = t == 3 ? a->dims.opp_count[opp] : a->expect.count[t];
+            const uint8_t *wh = t == 3 ? a->dims.opp_wh[opp] : a->expect.wh[t];
+            if (a->dims.dims.count[t] != count
+                    || memcmp(a->table_dims[t], wh, 2u * count) != 0) {
+                a->error = "a replacement character table does not have the original's "
+                           "image sizes";
+                return -1;
+            }
+        }
     }
     return 0;
 }
@@ -54,6 +73,9 @@ static const char *bg_suffix(int set) { return set == 1 ? "PAL" : "DUN"; }
  * use each set: guards, the skeleton of level 3, guards again, the fat
  * guard of level 6, the shadow of level 12, the vizier. */
 static const char *const CH_SUFFIX[6] = { "GD", "SKEL", "GD", "FAT", "SHAD", "VIZ" };
+static const pop_opponent_set CH_OPP[6] = {
+    POP_OPP_GUARD, POP_OPP_SKELETON, POP_OPP_GUARD, POP_OPP_FAT, POP_OPP_SHADOW, POP_OPP_VIZIER,
+};
 
 static int load_level(pop_app *a, uint8_t level)
 {
@@ -77,17 +99,17 @@ static int load_level(pop_app *a, uint8_t level)
     if (chset > 5) { a->error = "unknown opponent set"; return -1; }
     if (set1 != a->bgset1) {
         snprintf(name, sizeof name, "IMG.BGTAB1.%s", bg_suffix(set1));
-        if (load_table(a, TAB_BG1, name) != 0) return -1;
+        if (load_table(a, TAB_BG1, name, POP_OPP_GUARD) != 0) return -1;
         a->bgset1 = set1;
     }
     if (set2 != a->bgset2) {
         snprintf(name, sizeof name, "IMG.BGTAB2.%s", bg_suffix(set2));
-        if (load_table(a, TAB_BG2, name) != 0) return -1;
+        if (load_table(a, TAB_BG2, name, POP_OPP_GUARD) != 0) return -1;
         a->bgset2 = set2;
     }
     if (chset != a->chset) {
         snprintf(name, sizeof name, "IMG.CHTAB4.%s", CH_SUFFIX[chset]);
-        if (load_table(a, TAB_CH1 + 3, name) != 0) return -1;
+        if (load_table(a, TAB_CH1 + 3, name, CH_OPP[chset]) != 0) return -1;
         a->chset = chset;
     }
     a->g.BGset1 = (uint8_t)set1;
@@ -215,8 +237,25 @@ int pop_app_open(pop_app *a, const pop_app_config *config, const char **err)
     }
     pop_gfx_init(&a->v);
     a->v.bg = &a->bg.data;
+    a->expect = a->dims.dims;
+    if (config->images_dir) {
+        /* new pictures are never used unlabelled */
+        FILE *f = NULL;
+        int labelled = 0;
+        if (path(file, sizeof file, config->images_dir, "", "PROVENANCE.txt") == 0
+                && (f = fopen(file, "rb")) != NULL) {
+            labelled = fgetc(f) != EOF;
+            fclose(f);
+        }
+        if (!labelled) {
+            *err = "the image directory has no PROVENANCE.txt saying where its pictures "
+                   "come from";
+            pop_app_close(a);
+            return -1;
+        }
+    }
     for (i = 0; i < sizeof fixed / sizeof fixed[0]; i++) {
-        if (load_table(a, fixed[i].slot, fixed[i].name) != 0) {
+        if (load_table(a, fixed[i].slot, fixed[i].name, POP_OPP_GUARD) != 0) {
             *err = a->error;
             pop_app_close(a);
             return -1;

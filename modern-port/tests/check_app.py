@@ -37,8 +37,12 @@ CHSET_FILE = ("GD", "SKEL", "GD", "FAT", "SHAD", "VIZ")
 FRAMES = 200
 
 
-def runner_commands(source, data, bg, level_no, inputs):
-    """What pop_worldrun is told, to do what pop_app does by itself."""
+def runner_commands(source, data, bg, level_no, inputs, images=None):
+    """What pop_worldrun is told, to do what pop_app does by itself.
+
+    `images`: a directory to take the image tables from instead of the
+    checkout (check_images.py)."""
+    images = images or os.path.join(source, IMAGES)
     set1, set2 = bg.level_bgset1[level_no], bg.level_bgset2[level_no]
     tables = [(1, "IMG.BGTAB1." + bgset_file_suffix(set1)),
               (2, "IMG.BGTAB2." + bgset_file_suffix(set2)), (11, "IMG.CHTAB1"),
@@ -47,7 +51,7 @@ def runner_commands(source, data, bg, level_no, inputs):
     with open(os.path.join(source, "01 POP Source", "Levels", "LEVEL%d" % level_no), "rb") as f:
         level = f.read()
     commands = ["V " + os.path.join(data, "bgdata.bin")]
-    commands += ["T %d %s" % (n, os.path.join(source, IMAGES, name)) for n, name in tables]
+    commands += ["T %d %s" % (n, os.path.join(images, name)) for n, name in tables]
     commands += ["K 1", "L " + level.hex(), "S yellowflag=128 ShadFace=86 blue=1",
                  "R startgame %d 0 0" % level_no, "S BGset1=%d" % set1, "R restartlevel 0 0 0"]
     for x, y, button, key in inputs:

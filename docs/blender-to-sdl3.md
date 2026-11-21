@@ -2,11 +2,16 @@
 
 Milestone 12 (optional). A proposal for how newly made character art could
 be used with the port in place of the original's, and what such art has to
-supply to work. **Nothing in this document has been tried**: there is no
-Blender in this environment, and no replacement art exists. It is derived
-from what the earlier milestones established about how the original's
-frames are stored, placed and timed; each requirement cites where that was
-established. Read it as a specification to test, not as a tested recipe.
+supply to work. **The Blender half of this document has not been tried**:
+there is no Blender in this environment, and no replacement art exists.
+Sections 2 and 3 are derived from what the earlier milestones established
+about how the original's frames are stored, placed and timed; each
+requirement cites where that was established. Read them as a specification
+to test, not as a tested recipe.
+
+The other half, from finished 1-bit pictures to the running port
+(sections 4 to 6), exists and is tested, with generated placeholder
+pictures standing in for the artwork that does not exist.
 
 ## 1. Why one would
 
@@ -88,16 +93,35 @@ The simplest target is the original's own container: an image table with
 the same count, the same per-image sizes and new pixels. The port and every
 tool then work unchanged.
 
-Needed, not yet written:
+The tools (new code, `tools/assets`):
 
-- `make_imgtable`: a directory of 1-bit images named by image number, plus
-  the sizes expected, → a table in the `IMG.*` format (count, pointers from
-  `$6000`, per image width, height and rows bottom-up with bit 7 set).
-  Its test is ready-made: decoding an original table and encoding it again
-  must give the original bytes up to the table's end.
-- an option of `pop_app` / `pop_sdl` to take the image directory separately
-  from the levels (`--images <dir>`), refusing a directory that has no
-  provenance file.
+| Tool | What it does |
+| --- | --- |
+| `make_imgtable.py decode <table> <dir>` | one PNG per image, `001.png` …, one pixel per dot: the boxes to draw in |
+| `make_imgtable.py encode <dir> <table> [--like <original table>]` | numbered PNGs → a table in the `IMG.*` format (count, pointers from `$6000`, per image width, height and rows bottom-up with bit 7 set). A pixel is lit if it is more than half opaque and at least half bright. With `--like` the count and every size must be the given table's |
+| `check_imgset.py <dir> <checkout>` | the mechanical check of a whole directory: section 5 |
+| `make_placeholder_set.py <checkout> <dir>` | a complete set with a frame in place of every picture (in the character tables, a frame with a diagonal): nothing of the original's dots, only its sizes. For testing this route, and for seeing the boxes the rules work with |
+
+The encoder's proof is the round trip: every one of the original's 16
+tables, decoded to dots and encoded again, gives the original's bytes up to
+the table's end (`tests/test_make_imgtable.py`). It works because bit 7 is
+set in every image byte of all 16 files, so the dots are all there is.
+
+The port takes such a directory with `--images <dir>` (`pop_sdl`,
+`pop_headless`; `pop_app_config.images_dir`). The rules:
+
+- **All or nothing.** With `--images`, every image table is read from that
+  directory and none from the checkout: a missing table is an error, not a
+  reason to fall back on the original's. (Levels and the generated tables
+  still come from the checkout: they are game data, not pictures.)
+- **Labelled.** A directory without a `PROVENANCE.txt`, or with an empty
+  one, is refused. The window title and `pop_headless`'s messages say that
+  replacement pictures are shown.
+- **Sizes are held.** A character table whose image count or any image's
+  size is not the original's is refused, because the rules read those sizes
+  (section 2). The comparison is with the sizes generated at build time
+  from the checkout (`imgdims.bin`), for the fixed tables and for each
+  level's opponent set.
 
 ## 5. Checking a replacement set
 
@@ -105,15 +129,27 @@ Because the game's tests compare page bytes with the original, they cannot
 pass with other pictures and are not the right tests. What can be checked
 mechanically:
 
-| Check | Why |
-| --- | --- |
-| Every image has the original's width and height | the rules use them |
-| The game state after every frame of the demo and of the traces is the same with either set (`replay_demo.py`-style, state only, no pages) | art must not change behaviour; this would catch a size or table mistake |
-| Per stance, the foot column moves no more than the original's 2 units (the run-cycle sheet tool, run on the new set) | feet must not slide |
-| No lit dot outside the box; lone dots listed for review | colour and outline surprises |
+| Check | Why | State |
+| --- | --- | --- |
+| Every image has the original's width and height; bit 7 set; a provenance file | the rules use the sizes | `tools/assets/check_imgset.py` |
+| No image has exactly the original's dots | new and original pictures are not mixed unlabelled | `check_imgset.py` reports them |
+| Lit dots without a lit neighbour, listed for review | colour and outline surprises | `check_imgset.py` counts them per table |
+| The game state after every frame of the demo and of levels 1–14 under random keys is the same with either set | art must not change behaviour; this would catch a size or table mistake | `modern-port/tests/check_images.py … --set <dir>` |
+| Per stance, the foot column moves no more than the original's 2 units | feet must not slide | **not written**: needs the run-cycle sheet tool run on the new set, and a way to find the foot in a picture |
 
-And by eye: contact sheets and the demo rendered by `render_demo.py` from
-the replacement directory.
+And by eye: `pop_headless … --images <dir> --png <out> <every>` writes
+frames of any level with the replacement set.
+
+What has been run: all of this with the placeholder set
+(`check_images.py`, in CTest as `images_option`). With it, copies of the
+original tables read through `--images` give byte for byte the frames the
+checkout gives; the placeholders give the same game state after each of
+2,115 frames and other pictures; and 15 faulty directories are refused (no
+or empty provenance file, a missing table, one image a line taller in each
+character table, one opponent's sizes in another's table). That shows the
+route works and is guarded. It says nothing about real artwork, which
+would meet problems placeholders cannot have: feet, readable poses, colour
+fringes.
 
 ## 6. Provenance
 

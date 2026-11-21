@@ -263,6 +263,12 @@ if(POP_SOURCE_DIR)
                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_app.py"
                    "$<TARGET_FILE:pop_headless>" "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}"
                    "${POP_SOURCE_DIR}")
+  # replacement pictures (--images): the same game with other pictures, or refused
+  add_test(NAME images_option
+           COMMAND "${Python3_EXECUTABLE}"
+                   "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_images.py"
+                   "$<TARGET_FILE:pop_headless>" "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}"
+                   "${POP_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/images_test")
   if(SDL3_FOUND)
     add_test(NAME sdl_shell_headless
              COMMAND "${Python3_EXECUTABLE}"

@@ -13,7 +13,10 @@ shown or heard.  What can be checked that way:
     pop_headless writes for the same frame: the shell shows what the
     tested code draws;
   - with the clock on, frames take the time they are given (loosely: the
-    machine may be busy).
+    machine may be busy);
+  - with --images and a set of placeholder pictures, its picture is again
+    pop_headless's, and is not the original's; a directory without a
+    PROVENANCE.txt is refused.
 
 What it cannot check is everything a person would: that the window looks
 right, that the keys feel right, that the sound is right.  Those are
@@ -30,6 +33,11 @@ import sys
 import tempfile
 import time
 import zlib
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", "..", "tools", "assets"))
+
+import make_placeholder_set  # noqa: E402
 
 
 def read_png(path):
@@ -81,6 +89,36 @@ def main(argv):
             print("the shell's picture of frame %d is not pop_headless's" % frames)
             return 1
 
+        # replacement pictures
+        placeholders = os.path.join(work, "placeholders")
+        make_placeholder_set.make_set(source, placeholders)
+        out = subprocess.run([shell, "--source", source, "--data", data, "--level", "0",
+                              "--frames", "40", "--no-wait", "--mute", "--screenshot", shot,
+                              "--images", placeholders],
+                             capture_output=True, text=True, env=env, timeout=300)
+        if out.returncode != 0:
+            print("pop_sdl --images failed (%d): %s" % (out.returncode, out.stderr[-400:]))
+            return 1
+        _, _, replaced = read_png(shot)
+        pictures = {}
+        for name, extra in (("new", ["--images", placeholders]), ("original", [])):
+            subprocess.run([headless, data, source, "0", "40", "--png", work, "40"] + extra,
+                           capture_output=True, text=True, check=True)
+            _, _, big = read_png(os.path.join(work, "frame_0040.png"))
+            pictures[name] = [bytes(b for x in range(w1) for b in row[6 * x:6 * x + 3])
+                              for row in big[::2]]
+        if replaced != pictures["new"] or replaced == pictures["original"]:
+            print("with --images the shell's picture is not pop_headless's with --images, "
+                  "or it is the original's")
+            return 1
+        os.remove(os.path.join(placeholders, "PROVENANCE.txt"))
+        out = subprocess.run([shell, "--source", source, "--data", data, "--frames", "1",
+                              "--no-wait", "--mute", "--images", placeholders],
+                             capture_output=True, text=True, env=env, timeout=300)
+        if out.returncode == 0 or "PROVENANCE.txt" not in out.stderr:
+            print("pop_sdl accepted an image directory without a PROVENANCE.txt")
+            return 1
+
         # with the clock: 60 frames at ten times the game's rate is about half a second
         start = time.monotonic()
         out = subprocess.run([shell, "--source", source, "--data", data, "--level", "1",
@@ -93,7 +131,9 @@ def main(argv):
             return 1
     print("the SDL3 shell ran without a display: %d frames of the demo, %s sound samples "
           "queued, its last picture equal to pop_headless's; 60 timed frames took %.2f s "
-          "(0.50 s by the clock, plus starting up)" % (frames, words[3], elapsed))
+          "(0.50 s by the clock, plus starting up); with placeholder pictures it shows "
+          "pop_headless's picture of them, and refuses them unlabelled"
+          % (frames, words[3], elapsed))
     return 0
 
 

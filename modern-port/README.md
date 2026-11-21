@@ -42,6 +42,11 @@ importantly, what of it has never been tried: it was written and tested on a
 machine without a display. Without SDL3, `build/pop_headless` plays the game
 into PNG frames and a WAV file.
 
+Both take `--images <dir>`: a directory of replacement image tables to use
+instead of the checkout's pictures (`../docs/blender-to-sdl3.md`). No such
+artwork exists yet; `../tools/assets/make_placeholder_set.py` makes a set of
+boxes, which shows the route working and the geometry the rules use.
+
 The strongest evidence that the port is right
 is `tests/replay_frames.py demo`, which plays the original's demo level in
 the port, one `pop_mainloop` call per frame with the drawing code behind its
@@ -71,7 +76,8 @@ tools/        command-line helpers (pop_seqdump, pop_sfxdump, pop_worldrun,
 tests/        C tests, C-versus-Python comparisons, and C-versus-original
               comparisons (fuzz_world.py, fuzz_control.py, trace_kidstep.py,
               replay_demo.py, fuzz_hires.py, compare_rooms.py, compare_fast.py,
-              replay_frames.py), checks of the shell (check_app.py, check_sdl.py)
+              replay_frames.py), checks of the shell (check_app.py, check_sdl.py,
+              check_images.py)
 ```
 
 ## Build and test

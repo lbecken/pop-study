@@ -65,6 +65,13 @@ python3 modern-port/tests/mutation_check.py build/port/data ../pop-original
 python3 modern-port/tests/mutation_gfx.py build/port/data ../pop-original
 ```
 
+Replacement pictures: the converter's round trip is in pytest; the route
+into the port, with generated placeholders:
+
+```bash
+python3 modern-port/tests/check_images.py build/port/pop_headless build/port/pop_worldrun build/port/data ../pop-original build/images_test
+```
+
 Frames to look at, drawn by the port alone:
 
 ```bash
@@ -194,6 +201,9 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | 2026-11-21 | CTest with the shell | GCC 13.3 `-Werror` ASan/UBSan, SDL3 3.2.0 | 31/31 (15 unit tests, the comparisons with the original, `app_matches_runner`, `sdl_shell_headless`, `render_demo`) |
 | 2026-11-21 | CTest with the shell, the other configurations | Clang 18.1 `-Werror`, SDL3 3.2.0; GCC 13.3 without the original source | 31/31; 14/14 (the tests that need the original are not built) |
 | 2026-11-21 | CTest in a coverage build (`--coverage`, GCC 13.3, `gcov`) | – | 30/30 (the SDL shell not built in this configuration); figures in "Where things stand" below |
+| 2026-11-21 | `tests/test_make_imgtable.py` (pytest) | Python 3 | 41 tests. The image-table encoder (`tools/assets/make_imgtable.py`): each of the original's 16 `IMG.*` files, decoded to dots and encoded again, gives the original's bytes up to the table's end; two of them also by way of PNG files. The PNG reader on made-up files of every colour type it accepts and every filter type; what it refuses. The placeholder set passes `check_imgset.py` and shares no image with the original; a set with planted faults is reported as such |
+| 2026-11-21 | `check_images.py` (`images_option`); `check_sdl.py` extended | ASan builds; SDL3 dummy drivers | `--images`: copies of the original tables give the checkout's frames byte for byte (15 games, 2,088 frames); placeholder pictures give the same game state after each of 2,115 frames in `pop_worldrun`, the same level exits, display switches and sounds in `pop_app`, and other pictures; 15 faulty directories refused. The SDL shell with `--images` shows `pop_headless`'s picture of the placeholders and refuses them without their provenance file. Eleven deliberate errors put into the loading code by hand: ten noticed by `check_images.py`; one without effect (ignoring which opponent set a table's *count* is checked against: all five sets have 32 images). **No real replacement artwork exists**; this tests the route, not art |
+| 2026-11-21 | CTest, pytest, after the above | GCC 13.3 `-Werror` ASan/UBSan with SDL3; Clang 18.1 `-Werror` with SDL3; no source | 32/32, 32/32, 14/14; pytest 211 passed with the source, 156 passed and 55 skipped without |
 
 ## Kinds of evidence
 

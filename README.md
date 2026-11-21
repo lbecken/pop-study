@@ -34,6 +34,7 @@ licensing position this policy is based on.
 | `docs/milestones.md` | Milestone plan, directory layout, decisions awaiting input |
 | `assets/manifest.json` | Hashed inventory of all 582 original files (metadata only) |
 | `tools/extract_assets/` | Image-table decoder, Merlin data assembler, frame/sequence extractor, blitter model, run-cycle renderer, level parser, room renderer, manifest generator (Python 3, stdlib only) |
+| `tools/assets/` | The other direction, for replacement pictures: image-table encoder, PNG reader, checker for a directory of replacement tables, placeholder-set generator (`docs/blender-to-sdl3.md`) |
 | `tools/extract_audio/` | Sound-effect extraction: runs the original sound module in a 6502 simulator |
 | `tools/oracle/` | Loads the original modules and calls their routines |
 | `tests/` | pytest suite |
@@ -69,10 +70,14 @@ python3 tools/extract_assets/make_manifest.py --source ../pop-original --out ass
 ```
 
 ```bash
+python3 tools/assets/make_placeholder_set.py ../pop-original build/placeholders
+```
+
+```bash
 POP_SOURCE_DIR=../pop-original python3 -m pytest tests -q
 ```
 
-Without `POP_SOURCE_DIR` the 49 integration tests are skipped and only the
+Without `POP_SOURCE_DIR` the 55 integration tests are skipped and only the
 synthetic-data unit tests run. `build/` is git-ignored.
 
 The C port:

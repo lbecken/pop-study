@@ -10,6 +10,8 @@
  *                        frames beyond the file get no input
  *     --png <dir> <every>   write every n-th frame as <dir>/frame_NNNN.png
  *     --mono             ... as a monochrome monitor shows it
+ *     --images <dir>     read the image tables from this directory of replacement
+ *                        pictures instead of the checkout (docs/blender-to-sdl3.md)
  *     --wav <file>       the sound effects of the whole run, each frame's at the
  *                        time its frame starts when frames follow each other at
  *                        the fixed rate (725 a minute)
@@ -56,7 +58,7 @@ int main(int argc, char **argv)
     static pop_app app;
     static uint8_t rgb[POP_SCREEN_W * POP_SCREEN_H * 3];
     pop_app_config config;
-    const char *err = NULL, *png_dir = NULL, *wav = NULL;
+    const char *err = NULL, *png_dir = NULL, *wav = NULL, *images = NULL;
     FILE *input = NULL;
     pop_present_mode mode = POP_PRESENT_COLOUR;
     long frames, n;
@@ -66,7 +68,7 @@ int main(int argc, char **argv)
 
     if (argc < 5) {
         fprintf(stderr, "usage: pop_headless <data dir> <original checkout> <level> <frames> "
-                        "[--input file] [--png dir every] [--mono] [--wav file]\n");
+                        "[--input file] [--png dir every] [--mono] [--wav file] [--images dir]\n");
         return 2;
     }
     frames = strtol(argv[4], NULL, 10);
@@ -82,6 +84,8 @@ int main(int argc, char **argv)
             mode = POP_PRESENT_MONO;
         } else if (!strcmp(argv[i], "--wav") && i + 1 < argc) {
             wav = argv[++i];
+        } else if (!strcmp(argv[i], "--images") && i + 1 < argc) {
+            images = argv[++i];
         } else {
             fprintf(stderr, "unknown option %s\n", argv[i]);
             return 2;
@@ -90,12 +94,14 @@ int main(int argc, char **argv)
     memset(&config, 0, sizeof config);
     config.data_dir = argv[1];
     config.source_dir = argv[2];
+    config.images_dir = images;
     config.audio_rate = wav ? RATE : 0;
     if (pop_app_open(&app, &config, &err) != 0
             || pop_app_start(&app, (uint8_t)strtol(argv[3], NULL, 10), &err) != 0) {
         fprintf(stderr, "pop_headless: %s\n", err ? err : "cannot start");
         return 1;
     }
+    if (images) fprintf(stderr, "pop_headless: replacement pictures from %s\n", images);
     for (n = 0; n <= frames; n++) {
         pop_app_input in;
         int leave = 0;

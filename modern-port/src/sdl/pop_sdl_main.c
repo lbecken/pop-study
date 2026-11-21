@@ -15,6 +15,9 @@
  *     --rate n        frames per minute (default 725: the game's own count)
  *     --stretch       make a frame as much longer as its sounds took the original
  *     --mute          no sound
+ *     --images dir    read the image tables from this directory of replacement
+ *                     pictures, not from the checkout (docs/blender-to-sdl3.md);
+ *                     the window title then says so
  *     --frames n      stop after n frames (for tests)
  *     --no-wait       do not wait between frames (for tests)
  *     --screenshot f  write the last picture shown as a PNG file on leaving
@@ -37,7 +40,7 @@
 enum { AUDIO_RATE = 44100 };
 
 typedef struct options {
-    const char *source, *data, *screenshot;
+    const char *source, *data, *screenshot, *images;
     int level, scale, mono, stretch, mute, no_wait;
     long frames;
     double rate;                 /* frames per minute */
@@ -60,6 +63,7 @@ static int parse(int argc, char **argv, options *o)
         else if (!next) return -1;
         else if (!strcmp(a, "--source")) o->source = argv[++i];
         else if (!strcmp(a, "--data")) o->data = argv[++i];
+        else if (!strcmp(a, "--images")) o->images = argv[++i];
         else if (!strcmp(a, "--screenshot")) o->screenshot = argv[++i];
         else if (!strcmp(a, "--level")) o->level = atoi(argv[++i]);
         else if (!strcmp(a, "--scale")) o->scale = atoi(argv[++i]);
@@ -114,12 +118,13 @@ int main(int argc, char **argv)
     if (parse(argc, argv, &o) != 0) {
         fprintf(stderr, "usage: pop_sdl --source <original checkout> [--data <dir>] [--level n] "
                         "[--scale n] [--mono] [--rate n] [--stretch] [--mute] [--frames n] "
-                        "[--no-wait] [--screenshot file]\n");
+                        "[--no-wait] [--screenshot file] [--images dir]\n");
         return 2;
     }
     memset(&config, 0, sizeof config);
     config.data_dir = o.data;
     config.source_dir = o.source;
+    config.images_dir = o.images;
     config.audio_rate = o.mute ? 0 : AUDIO_RATE;
     level = o.level;
     if (pop_app_open(&app, &config, &err) != 0 || pop_app_start(&app, (uint8_t)level, &err) != 0) {
@@ -130,7 +135,10 @@ int main(int argc, char **argv)
         fprintf(stderr, "pop_sdl: SDL_Init: %s\n", SDL_GetError());
         goto done;
     }
-    if (!SDL_CreateWindowAndRenderer("Prince of Persia (Apple II) - a study reconstruction",
+    if (!SDL_CreateWindowAndRenderer(o.images
+                                     ? "Prince of Persia (Apple II) - a study reconstruction "
+                                       "[replacement pictures, not the original's]"
+                                     : "Prince of Persia (Apple II) - a study reconstruction",
                                      POP_SCREEN_W * o.scale, POP_SCREEN_H * o.scale,
                                      SDL_WINDOW_RESIZABLE, &window, &renderer)) {
         fprintf(stderr, "pop_sdl: window: %s\n", SDL_GetError());
