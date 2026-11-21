@@ -43,10 +43,32 @@ by side:
 python3 modern-port/tests/replay_demo.py build/port/pop_worldrun build/port/data ../pop-original
 ```
 
-Whether the first of those would notice a wrong port (takes minutes):
+The same demo and random play with the original's drawing code running
+too, compared in every byte of both hi-res pages:
+
+```bash
+python3 modern-port/tests/replay_frames.py build/port/pop_worldrun build/port/data ../pop-original demo
+```
+
+```bash
+python3 modern-port/tests/replay_frames.py build/port/pop_worldrun build/port/data ../pop-original traces 200 42
+```
+
+Whether the comparisons would notice a wrong port (each takes the better
+part of an hour):
 
 ```bash
 python3 modern-port/tests/mutation_check.py build/port/data ../pop-original
+```
+
+```bash
+python3 modern-port/tests/mutation_gfx.py build/port/data ../pop-original
+```
+
+Frames to look at, drawn by the port alone:
+
+```bash
+python3 modern-port/tools/render_demo.py build/port/pop_worldrun build/port/data ../pop-original build/demo_frames
 ```
 
 Extraction with its own consistency report:
@@ -170,6 +192,8 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | 2026-11-21 | `check_app.py` | ASan builds | The game through `pop_app` (what the shell runs) against the same games through `pop_worldrun` (what is compared with the original): the demo and levels 1–14 with random keys, 3,025 frames, the same bytes in both hi-res pages and the same display switches after every frame. No original code runs in this check |
 | 2026-11-21 | `check_sdl.py` with `SDL_VIDEODRIVER=dummy`, `SDL_AUDIODRIVER=dummy`; SDL3 3.2.0 built here from the source release (static, console-only) | GCC 13.3 | The shell starts, plays 150 frames of the demo, queues 8,653 samples of sound, leaves with status 0; its last picture equals `pop_headless`'s picture of the same frame; 60 frames at ten times the normal rate take 0.52 s (0.50 s by the clock). **Not done, and not possible here:** running it on a display, hearing it, pressing a key (shell.md §7) |
 | 2026-11-21 | CTest with the shell | GCC 13.3 `-Werror` ASan/UBSan, SDL3 3.2.0 | 31/31 (15 unit tests, the comparisons with the original, `app_matches_runner`, `sdl_shell_headless`, `render_demo`) |
+| 2026-11-21 | CTest with the shell, the other configurations | Clang 18.1 `-Werror`, SDL3 3.2.0; GCC 13.3 without the original source | 31/31; 14/14 (the tests that need the original are not built) |
+| 2026-11-21 | CTest in a coverage build (`--coverage`, GCC 13.3, `gcov`) | – | 30/30 (the SDL shell not built in this configuration); figures in "Where things stand" below |
 
 ## Kinds of evidence
 
@@ -217,6 +241,54 @@ builds the unit test `test_top.c` with that error instead and requires it to
 fail, which it does. The general limit stands: an error whose only effect is
 to send the port outside the modelled memory is not seen by the comparison.
 
+## Where things stand (milestone 11)
+
+The verification pass asked for in the plan: what is covered, how well,
+and what is not.
+
+**Coverage.** Every test of the suite run on a build with `--coverage`
+(GCC 13.3, `-O0`; 30 CTest entries, 2026-11-21):
+
+| File | Lines | Branch directions |
+| --- | --- | --- |
+| `pop_control.c` | 99.5 % of 777 | 96.8 % of 656 |
+| `pop_collide.c` | 97.8 % of 275 | 97.0 % of 232 |
+| `pop_mover.c` | 100 % of 746 | 98.0 % of 448 |
+| `pop_auto.c` | 98.4 % of 755 | 96.2 % of 638 |
+| `pop_top.c` | 100 % of 268 | 93.8 % of 194 |
+| `pop_loop.c` | 100 % of 295 | 92.5 % of 255 |
+| `pop_objs.c` | 100 % of 218 | 99.4 % of 178 |
+| `pop_world.c`, `pop_seq.c`, `pop_sound.c` | 99.2 %, 100 %, 100 % of 361 | 91.0 %, 81.4 %, 100 % of 224 |
+| `pop_hires.c` | 99.8 % of 467 | 94.2 % of 223 |
+| `pop_frameadv.c` | 100 % of 781 | 95.0 % of 397 |
+| `pop_lists.c`, `pop_screen.c`, `pop_present.c` | 99.1 %, 100 %, 100 % of 389 | 79.6 %, 94.7 %, 94.4 % of 190 |
+| `pop_sfx.c` | 100 % of 31 | 94.4 % of 18 |
+| `pop_assets.c`, `pop_gfxfiles.c`, `pop_app.c` (loaders and glue) | 91.4 %, 87.7 %, 85.8 % of 492 | 62.5 %, 57.4 %, 57.3 % of 352 |
+| all | 98.6 % of 5,855 | 92.0 % of 4,005 |
+
+What is not reached is mostly of three kinds: the "outside the modelled
+memory" exits, which the comparisons skip by design; error paths of the
+file loaders; and in `pop_lists.c` the list-full guards. Coverage says
+that the code ran under the tests, not that its result was checked; for
+that see the bug-injection figures.
+
+**Bug injection.** 568 deliberate errors in the game logic, 59 in the
+blitter, 319 in the redraw, message and screen code: all noticed by a
+comparison with the original or by a unit test, or shown to be without
+effect, each with its reason (rows above).
+
+**Speed.** An optimised build (`-O2`, GCC 13.3, one core of a 2.1 GHz
+Xeon, other work running) plays the 393 frames of the demo, drawing every
+one, in 66 ms: about 0.16 ms a frame, against the 83 ms a frame lasts.
+Memory in use is about 14 MB. Nothing in the port needs tuning.
+
+**The emulator comparison** that the plan lists for this milestone has not
+been done and cannot be done here: there is no disk image and no emulator.
+It remains the most valuable missing check, because everything above
+compares the port with the original *source code run by this project's own
+assembler and simulator*. A fault in those two that affects both sides the
+same way would not show.
+
 ## Not verified
 
 - **Nothing has been compared with the running game.** The repository has no
@@ -224,17 +296,23 @@ to send the port outside the modelled memory is not seen by the comparison.
   the source and with itself.
 - The project's assembler and 6502 simulator have not been compared with
   independent ones (unknowns P1, P5).
-- No audio has been compared with a real machine or an emulator.
-- Real frame timing (unknown T1).
+- No audio has been compared with a real machine or an emulator, and none
+  has been listened to: the shell's sound has only gone to SDL's dummy
+  device.
+- The shell on a display: window, keys, pace (port/shell.md §7).
+- The colours (port/presentation.md): a model, looked at, not compared.
+- Real frame timing beyond cycle counts in this project's simulator
+  (unknown T1), and the time sounds add.
 - macOS and Windows builds of the port.
-- Input devices, the clock, messages, song cues and drawing: not ported, so
-  not compared. In the frame comparisons they are stand-ins that record the
-  call, the same on both sides.
 - Levels played through. Only the demo (level 0) has been run from start to
   end; the other levels' special events are reached by random states and
-  short random play, not by a complete playthrough.
-- Which opponent image set each level uses (unknown G9), which the port will
-  need for opponents' collision sizes.
+  by 60-frame stretches of random play, not by a complete playthrough. A
+  person playing the shell is the obvious next test.
+- Which file each opponent image set is (unknown G9): the set *numbers* per
+  level are the original's, the files are matched by inference
+  (port/shell.md §6).
+- What the port does not have: title sequence, scenes, endings, music,
+  saved games, the special keys.
 
 ## Known differences from the original
 
