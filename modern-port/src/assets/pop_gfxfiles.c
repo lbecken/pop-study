@@ -43,12 +43,13 @@ static const struct { const char *name; size_t at; int is_table; } FIELDS[] = {
     TABLE(floorb), TABLE(floorby), TABLE(loosea), TABLE(loosed), TABLE(looseby),
     TABLE(spikea), TABLE(spikeb), TABLE(slicerseq), TABLE(slicertop), TABLE(slicerbot),
     TABLE(slicerbot2), TABLE(slicergap), TABLE(slicerfrnt), TABLE(gate8b), TABLE(gate8c),
-    TABLE(torchflame), TABLE(bubble),
+    TABLE(torchflame), TABLE(bubble), TABLE(bline),
     CONST(numblox), CONST(numpans), CONST(numbpans), CONST(panelb0), CONST(panelc0),
     CONST(archpanel), CONST(specialflask), CONST(looseb), CONST(Ffalling), CONST(spikeExt),
     CONST(slicerRet), CONST(stairs), CONST(door), CONST(doormask), CONST(toprepair),
     CONST(gatecmask), CONST(gatebotSTA), CONST(gatebotORA), CONST(gateB1), CONST(gmaxval),
-    CONST(swordgleam0), CONST(swordgleam1),
+    CONST(swordgleam0), CONST(swordgleam1), CONST(CUmask), CONST(CUpiece), CONST(CUpost),
+    CONST(bullet), CONST(blank),
 };
 #define NFIELDS (sizeof FIELDS / sizeof FIELDS[0])
 

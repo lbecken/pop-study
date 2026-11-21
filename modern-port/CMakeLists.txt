@@ -212,6 +212,10 @@ if(POP_SOURCE_DIR)
            COMMAND "${Python3_EXECUTABLE}"
                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/compare_rooms.py"
                    "$<TARGET_FILE:pop_gfxrun>" "${POP_DATA}" "${POP_SOURCE_DIR}" 15 1989)
+  add_test(NAME fast_c_vs_original
+           COMMAND "${Python3_EXECUTABLE}"
+                   "${CMAKE_CURRENT_SOURCE_DIR}/tests/compare_fast.py"
+                   "$<TARGET_FILE:pop_gfxrun>" "${POP_DATA}" "${POP_SOURCE_DIR}" 10 1989)
   add_test(NAME demo_c_vs_original
            COMMAND "${Python3_EXECUTABLE}"
                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/replay_demo.py"

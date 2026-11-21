@@ -22,8 +22,12 @@
  *               drawmc 880, drawc 906, drawb 997, drawd 1096, drawa 1134,
  *               add / setback 1161, drawma 1214, drawmd 1239, the loose
  *               floor, spike, torch, flask, sword, slicer, exit and gate
- *               pieces 1365-1927, getobjid 2041
- *   GAMEBG.S    setupflask 675, setupflame 735
+ *               pieces 1365-1927, getobjid 2041;
+ *               FAST 189, RedBlockFast 376, RedDFast 441, drawfloor 1252,
+ *               drawhalf 1268, wipesq 1326, wiped 1348, redrawd 1092,
+ *               metbufs 2252
+ *   GAMEBG.S    setupflask 675, setupflame 735, UPDATEMETERS 479,
+ *               DRAWKIDMETER 496, DRAWOPPMETER 579
  *
  * (Line each routine starts at.)  See docs/port/redraw.md.
  */
@@ -62,11 +66,12 @@ typedef struct pop_bgdata {
              fronty, frontx, maskb, blockb, blockc, blockd, blockfr, panelb, panelc,
              spaceb, spaceby, floorb, floorby, loosea, loosed, looseby, spikea, spikeb,
              slicerseq, slicertop, slicerbot, slicerbot2, slicergap, slicerfrnt, gate8b,
-             gate8c, torchflame, bubble;
+             gate8c, torchflame, bubble, bline;
     /* constants */
     uint8_t numblox, numpans, numbpans, panelb0, panelc0, archpanel, specialflask, looseb,
             Ffalling, spikeExt, slicerRet, stairs, door, doormask, toprepair, gatecmask,
-            gatebotSTA, gatebotORA, gateB1, gmaxval, swordgleam0, swordgleam1;
+            gatebotSTA, gatebotORA, gateB1, gmaxval, swordgleam0, swordgleam1,
+            CUmask, CUpiece, CUpost, bullet, blank;
 } pop_bgdata;
 
 typedef struct pop_gfx {
@@ -89,9 +94,14 @@ typedef struct pop_gfx {
     uint8_t msgX[POP_MAXMSG], msgOFF[POP_MAXMSG], msgY[POP_MAXMSG], msgIMG[POP_MAXMSG],
             msgOP[POP_MAXMSG];
 
-    /* --- what the adding routines read (the original's zero page) --- */
+    /* --- what the adding routines read (the original's zero page).  The
+     *     height of a wipe is passed in IMAGE and its width in the byte
+     *     after it (EQ.S 384-385: height = IMAGE, width = IMAGE+1), and
+     *     DRAWALL leaves in all of them what it drew last; one path (a
+     *     torch whose state is beyond the flame table) uses what it finds
+     *     there --- */
     uint8_t XCO, YCO, OFFSET, IMAGE, OPACITY, TABLE;
-    uint8_t width, height;               /* of a wipe */
+    uint8_t width;                       /* IMAGE + 1 */
 
     /* --- FRAMEADV's variables; they persist from block to block and some
      *     paths use a value an earlier block left --- */
@@ -99,6 +109,8 @@ typedef struct pop_gfx {
     uint8_t PREV[3], sprev[3], BELOW[10], SBELOW[10];
     uint8_t rowno, colno, yindex, Ay, Dy, blockxco, blockthr, gateposn, gatebot, xsave,
             doortop;
+    uint8_t addmid_sel;                  /* `add`: 0 the background list (setback), 1 the mid list (setmid) */
+    uint8_t redkidmeter, redoppmeter;    /* a strength meter is to be redrawn (GAMEEQ.S 537-540) */
 
     /* Copy protection, GRAFIX.S 189, 441-446, 520-524: on a palace level
      * dummy[0] is cleared, and the second page's save-under list is then
@@ -138,5 +150,14 @@ void pop_drawall(pop_gfx *v, const pop_game *g);
 /* SURE: fill the lists for all of screen g->SCRNUM (no characters).
  * Uses g's level and neighbour screens; leaves g->blue on SCRNUM. */
 void pop_sure(pop_gfx *v, pop_game *g);
+
+/* FAST: fill the lists with what the redraw buffers (g->rb) ask for, and
+ * take the marks off: wipes, whole blocks, moving parts, floor pieces in
+ * front of a climbing character, front pieces, the top line of D-sections,
+ * and the strength meters if a redrawn block is under them. */
+void pop_fast(pop_gfx *v, pop_game *g);
+
+void pop_drawkidmeter(pop_gfx *v, const pop_game *g);     /* DRAWKIDMETER, GAMEBG.S 496 */
+void pop_drawoppmeter(pop_gfx *v, const pop_game *g);     /* DRAWOPPMETER, GAMEBG.S 579 */
 
 #endif /* POP_GFX_H */

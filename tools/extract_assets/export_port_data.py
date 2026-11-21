@@ -28,6 +28,7 @@ Output:
 from __future__ import annotations
 
 import argparse
+import re
 import os
 import struct
 import sys
@@ -192,9 +193,14 @@ def build_bgdata(source):
     image = bytearray(asm.image)
     symbols = {n: v & 0xFFFF for n, v in asm.symbols.items()}
     gamebg = read("GAMEBG.S")
-    for name in ("torchflame", "bubble"):
+    for name in ("torchflame", "bubble", "bline"):
         symbols[name] = len(image)
         image += extract_table(gamebg, name)
+    for name in ("bullet", "blank"):                 # image numbers of the strength meters
+        found = re.search(r"^%s\s*=\s*\$([0-9a-fA-F]+)" % name, gamebg, re.M)
+        if not found:
+            raise SystemExit("GAMEBG.S: %s not found" % name)
+        symbols[name] = int(found.group(1), 16)
     directory = b"".join(bytes([len(n)]) + n.encode("ascii") + struct.pack("<H", v)
                          for n, v in sorted(symbols.items()) if len(n) < 256)
     return (b"POPBGDT1" + struct.pack("<HH", len(image), len(symbols)) + bytes(image)

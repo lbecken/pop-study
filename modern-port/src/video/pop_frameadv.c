@@ -70,8 +70,17 @@ static uint8_t getobjid(pop_gfx *v, pop_game *g, uint8_t y)
     return getobjid1(v, g, y);
 }
 
-/* add: SURE draws on the background plane (setback). */
-static void add(pop_gfx *v) { pop_addback(v); }
+/* add: to the background list (setback) or, as a byte-aligned piece, to
+ * the mid list (setmid, addmidezfast). */
+static void add(pop_gfx *v)
+{
+    if (v->addmid_sel) {
+        v->OFFSET = 0;                         /* ADDMIDEZ */
+        pop_addmidezo(v, POP_MID_FASTLAY);
+    } else {
+        pop_addback(v);
+    }
+}
 
 static void maddfore(pop_gfx *v)               /* mask, then OR */
 {
@@ -319,7 +328,7 @@ static void drawa(pop_gfx *v)
     adda(v);
 }
 
-static void drawd(pop_gfx *v)
+static int drawd(pop_gfx *v)                   /* returns whether it added anything */
 {
     uint8_t x = v->objid, y, img;
     v->OPACITY = POP_OP_STA;
@@ -327,16 +336,17 @@ static void drawd(pop_gfx *v)
         y = v->state;
         if (y >= K(numblox)) y = 0;
         img = T(blockd, y);
-        if (img == 0) { v->unmodelled = 1; return; }
+        if (img == 0) { v->unmodelled = 1; return 0; }
     } else {
         if (x == POP_PANELWOF) v->OPACITY = POP_OP_ORA;
         img = T(pieced, x);
-        if (img == 0) return;
+        if (img == 0) return 0;
     }
     v->IMAGE = img;
     v->XCO = v->blockxco;
     v->YCO = v->Dy;
     add(v);
+    return 1;
 }
 
 /* --- pieces with state ------------------------------------------------------------------------ */
@@ -650,7 +660,7 @@ static void redblocksure(pop_gfx *v, const pop_game *g)
     drawmc(v);
     drawb(v, g);
     drawmb(v, g);
-    drawd(v);
+    (void)drawd(v);
     drawmd(v);
     drawa(v);
     drawma(v);
@@ -662,9 +672,47 @@ static void reddsure(pop_gfx *v, const pop_game *g)    /* D-sections of the row 
     drawc(v);
     drawmc(v);
     drawb(v, g);
-    drawd(v);
+    (void)drawd(v);
     drawmd(v);
     drawfrnt(v, g);
+}
+
+/* --- what SURE and FAST have in common: the walk over the blocks -------------------------------- */
+
+static void startrow(pop_gfx *v, pop_game *g, int row)
+{
+    v->rowno = u8(row);
+    v->Dy = BLOCKBOT[row + 1];
+    v->Ay = u8(v->Dy - 3);
+    v->yindex = u8(row * 10);
+    v->PRECED = v->PREV[row];
+    v->spreced = v->sprev[row];
+    getbelow(v, g, g->scrnBelow, g->scrnBelowL);
+}
+
+/* the bottom row of the screen above: only its D-sections show, 3 lines
+ * high at the top */
+static void starttop(pop_gfx *v, pop_game *g)
+{
+    v->rowno = 2;
+    v->Dy = 2;
+    v->Ay = 0xFF;
+    v->yindex = 20;
+    v->PRECED = 0;                             /* (spreced keeps its last value) */
+    getbelow(v, g, g->SCRNUM, g->scrnLeft);    /* "below" that row is this screen */
+}
+
+static void startblock(pop_gfx *v, uint8_t col)
+{
+    v->colno = col;
+    v->XCO = v->blockxco = u8(col * 4);
+}
+
+static void nextblock(pop_gfx *v)
+{
+    v->PRECED = v->objid;
+    v->spreced = v->state;
+    v->yindex++;
 }
 
 void pop_sure(pop_gfx *v, pop_game *g)
@@ -672,43 +720,284 @@ void pop_sure(pop_gfx *v, pop_game *g)
     int row;
     uint8_t col;
     v->genCLS = 1;
+    v->addmid_sel = 0;                         /* setback */
     getprev(v, g);
     blue(g, g->SCRNUM);
     for (row = 2; row >= 0; row--) {           /* bottom row first */
-        v->rowno = u8(row);
-        v->Dy = BLOCKBOT[row + 1];
-        v->Ay = u8(v->Dy - 3);
-        v->yindex = u8(row * 10);
-        v->PRECED = v->PREV[row];
-        v->spreced = v->sprev[row];
-        getbelow(v, g, g->scrnBelow, g->scrnBelowL);
+        startrow(v, g, row);
         for (col = 0; col < 10; col++) {
-            v->colno = col;
-            v->XCO = v->blockxco = u8(col * 4);
+            startblock(v, col);
             v->objid = getobjid(v, g, v->yindex);
             redblocksure(v, g);
-            v->PRECED = v->objid;
-            v->spreced = v->state;
-            v->yindex++;
+            nextblock(v);
         }
     }
-    /* the bottom row of the screen above: only its D-sections show, 3
-     * lines high at the top */
-    v->rowno = 2;
-    v->Dy = 2;
-    v->Ay = 0xFF;
-    v->yindex = 20;
-    v->PRECED = 0;                             /* (spreced keeps its last value) */
-    getbelow(v, g, g->SCRNUM, g->scrnLeft);    /* "below" that row is this screen */
+    starttop(v, g);
     blue(g, g->scrnAbove);
     for (col = 0; col < 10; col++) {
-        v->colno = col;
-        v->XCO = v->blockxco = u8(col * 4);
+        startblock(v, col);
         if (g->scrnAbove == 0) v->objid = POP_FLOOR;         /* (`state` keeps its value) */
         else v->objid = getobjid1(v, g, v->yindex);
         reddsure(v, g);
-        v->PRECED = v->objid;
-        v->spreced = v->state;
-        v->yindex++;
+        nextblock(v);
     }
+}
+
+/* --- only what changed ------------------------------------------------------------------------- */
+
+/* The redraw buffers (pop_game.rb): a count per block of how many more
+ * frames something there is to be redrawn; two, as a rule, one for each
+ * display page. */
+static uint8_t *rb(pop_game *g, unsigned buffer, uint8_t y)
+{
+    return &g->rb[(buffer + y) % POP_RB_SIZE];
+}
+
+/* metbufs: is any of blocks y ... y + n - 1 marked?  (The meters lie over
+ * the bottom row: the kid's over blocks 20-22, the opponent's over 28-29.) */
+static uint8_t metbufs(pop_game *g, uint8_t y, unsigned n)
+{
+    uint8_t a = 0;
+    for (; n > 0; n--, y++) {
+        a |= *rb(g, POP_RB_RED, y) | *rb(g, POP_RB_FLOOR, y) | *rb(g, POP_RB_HALF, y)
+             | *rb(g, POP_RB_FRED, y) | *rb(g, POP_RB_WIPE, y);
+    }
+    return a;
+}
+
+static void wipe(pop_gfx *v, uint8_t lines)    /* ]wipe: black out the block's width */
+{
+    v->IMAGE = lines;                          /* height = IMAGE */
+    v->width = 4;
+    v->XCO = v->blockxco;
+    v->YCO = v->Dy;
+    pop_addwipe(v, 0x80);
+}
+
+static void wiped(pop_gfx *v)                  /* the D-section's three lines */
+{
+    uint8_t o = v->objid;
+    if (o == POP_PILLARTOP || o == POP_PANELWIF || o == POP_PANELWOF || o == POP_BLOCK) return;
+    wipe(v, 3);
+}
+
+static void drawflr(pop_gfx *v)                /* ]drawflr */
+{
+    addamask(v);
+    adda(v);
+    drawma(v);
+    (void)drawd(v);
+}
+
+static void drawfloor(pop_gfx *v)              /* a floor piece over a character behind it */
+{
+    if (v->PRECED != 0) return;                /* only with empty space to the left */
+    drawflr(v);
+}
+
+static void halfmask(pop_gfx *v)               /* drawhalf :sub */
+{
+    v->IMAGE = K(CUmask);
+    v->XCO = v->blockxco;
+    v->YCO = v->Ay;
+    if (v->objid == POP_DPRESSPLATE) v->YCO++; /* ("quick trick") */
+    v->OPACITY = POP_OP_AND;
+    add(v);
+}
+
+static void drawhalf(pop_gfx *v, const pop_game *g)    /* drawfloor for a climb-up */
+{
+    uint8_t x = v->objid, img;
+    if (v->PRECED != 0) return;
+    if (x == POP_FLOOR || x == POP_TORCH || x == POP_DPRESSPLATE || x == POP_EXIT) {
+        halfmask(v);
+        img = K(CUpiece);
+    } else {
+        /* no half piece for this one: the whole floor piece */
+        if (g->BGset1 != 1 || (x != POP_POSTS && x != POP_ARCHBOT)) { drawflr(v); return; }
+        halfmask(v);
+        img = K(CUpost);
+    }
+    v->IMAGE = img;
+    v->OPACITY = POP_OP_ORA;
+    add(v);
+    (void)drawd(v);
+}
+
+static void redblockfast(pop_gfx *v, pop_game *g)
+{
+    uint8_t y = v->yindex;
+    if (*rb(g, POP_RB_WIPE, y) != 0) {
+        (*rb(g, POP_RB_WIPE, y))--;
+        wipe(v, *rb(g, POP_RB_WHITE, y));      /* wipesq: as high as whitebuf says */
+    }
+    if (*rb(g, POP_RB_RED, y) != 0) {          /* the whole block */
+        (*rb(g, POP_RB_RED, y))--;
+        v->addmid_sel = 0;
+        redblocksure(v, g);
+        /* (`bpl`: the moving parts were redrawn with it; their mark stays) */
+    } else if (*rb(g, POP_RB_MOVE, y) != 0) {  /* only its moving parts */
+        (*rb(g, POP_RB_MOVE, y))--;
+        v->addmid_sel = 0;
+        drawmc(v);
+        drawmb(v, g);
+        drawma(v);
+    }
+    if (*rb(g, POP_RB_FLOOR, y) != 0) {        /* the floor piece, in front of a character */
+        (*rb(g, POP_RB_FLOOR, y))--;
+        v->addmid_sel = 1;
+        drawfloor(v);
+    } else if (*rb(g, POP_RB_HALF, y) != 0) {
+        (*rb(g, POP_RB_HALF, y))--;
+        v->addmid_sel = 1;
+        drawhalf(v, g);
+    }
+    if (*rb(g, POP_RB_OBJ, y) != 0) {          /* the objects in this block */
+        *rb(g, POP_RB_OBJ, y) = 0;
+        /* drawobjs: characters and falling floors come with milestone 10c part 2 */
+        v->XCO = v->blockxco;
+    }
+    if (*rb(g, POP_RB_FRED, y) != 0) {         /* the front piece */
+        (*rb(g, POP_RB_FRED, y))--;
+        drawfrnt(v, g);
+    }
+}
+
+static void reddfast(pop_gfx *v, pop_game *g)
+{
+    uint8_t *mark = rb(g, POP_RB_TOP, v->colno);
+    if (*mark == 0) return;
+    (*mark)--;
+    wiped(v);
+    drawc(v);
+    drawmc(v);
+    drawb(v, g);
+    if (drawd(v)) pop_addfore(v);              /* redrawd: on both planes */
+    drawmd(v);
+    drawfrnt(v, g);
+}
+
+/* --- strength meters (GAMEBG.S) ----------------------------------------------------------------- */
+
+/* Where the units of the two meters go: byte column and dot offset,
+ * GAMEBG.S 93-97.  The kid's run left to right, the opponent's right to
+ * left and mirrored. */
+static const uint8_t KIDSTRX[12] = { 0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12 };
+static const uint8_t KIDSTROFF[12] = { 0, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4 };
+static const uint8_t OPPSTRX[12] = { 39, 38, 37, 36, 35, 34, 32, 31, 30, 29, 28, 27 };
+static const uint8_t OPPSTROFF[12] = { 5, 4, 3, 2, 1, 0, 6, 5, 4, 3, 2, 1 };
+
+static void meterimg(pop_gfx *v, const uint8_t *xs, const uint8_t *offs, uint8_t unit)
+{
+    if (unit >= 12) { v->unmodelled = 1; return; }
+    v->XCO = xs[unit];
+    v->OFFSET = offs[unit];
+    pop_addmsg(v);
+}
+
+/* How many units the next image shows: lines of 3, 2 or 1 while more than
+ * one is left; 0 means "the last one", which is drawn on its own. */
+static uint8_t meterline(uint8_t left)
+{
+    return left >= 4 ? 3 : left >= 3 ? 2 : left >= 2 ? 1 : 0;
+}
+
+void pop_drawkidmeter(pop_gfx *v, const pop_game *g)
+{
+    uint8_t left, n, unit;
+    v->YCO = 191;
+    v->OPACITY = POP_OP_STA;
+    v->xsave = 0;                              /* units drawn so far */
+    for (;;) {
+        left = (uint8_t)(g->KidStrength - v->xsave);
+        if (left == 0) break;
+        n = meterline(left);
+        if (n == 0) {                          /* :drawlast: it blinks when it is the only one */
+            if (g->KidStrength >= 2 || v->hr.PAGE != 0) {
+                v->IMAGE = K(bullet);
+                unit = v->xsave;
+                v->xsave++;
+                meterimg(v, KIDSTRX, KIDSTROFF, unit);
+            }
+            break;
+        }
+        v->IMAGE = T(bline, n - 1u);
+        unit = v->xsave;
+        v->xsave = (uint8_t)(v->xsave + n);
+        meterimg(v, KIDSTRX, KIDSTROFF, unit);
+    }
+    v->OPACITY = POP_OP_AND;                   /* :darkpart: empty units up to the maximum */
+    v->IMAGE = K(blank);
+    while (v->xsave < g->MaxKidStr) {
+        meterimg(v, KIDSTRX, KIDSTROFF, v->xsave);
+        v->xsave++;
+        if (v->xsave == 0) break;
+    }
+}
+
+void pop_drawoppmeter(pop_gfx *v, const pop_game *g)
+{
+    uint8_t left, n, unit;
+    if (g->OppStrength == 0) return;
+    if (g->shad.id == 24 || g->shad.id == 4) return;         /* no meter for mouse or skeleton */
+    if (g->shad.id == 1 && g->level != 12) return;           /* the shadow's only on level 12 */
+    v->YCO = 191;
+    v->OPACITY = POP_OP_STA | POP_OP_MIRROR;
+    v->xsave = 0;
+    for (;;) {
+        left = (uint8_t)(g->OppStrength - v->xsave);
+        if (left == 0) break;
+        n = meterline(left);
+        if (n == 0) {
+            if (g->OppStrength >= 2 || v->hr.PAGE != 0) {
+                v->IMAGE = K(bullet);
+                unit = v->xsave;
+                v->xsave++;
+                meterimg(v, OPPSTRX, OPPSTROFF, unit);
+                return;                        /* (no empty unit after it) */
+            }
+            break;
+        }
+        v->IMAGE = T(bline, n - 1u);
+        unit = v->xsave;
+        v->xsave = (uint8_t)(v->xsave + n);
+        meterimg(v, OPPSTRX, OPPSTROFF, unit);
+    }
+    v->OPACITY = POP_OP_AND | POP_OP_MIRROR;   /* :darkpart: one empty unit */
+    v->IMAGE = K(blank);
+    meterimg(v, OPPSTRX, OPPSTROFF, v->xsave);
+}
+
+void pop_fast(pop_gfx *v, pop_game *g)
+{
+    int row;
+    uint8_t col;
+    getprev(v, g);
+    blue(g, g->SCRNUM);
+    v->redkidmeter = metbufs(g, 20, 3);        /* a meter under a redrawn block is drawn again */
+    v->redoppmeter = metbufs(g, 28, 2);
+    v->yindex = 30;                            /* drawobjs: characters off the screen (part 2) */
+    for (row = 2; row >= 0; row--) {
+        startrow(v, g, row);
+        for (col = 0; col < 10; col++) {
+            startblock(v, col);
+            v->objid = getobjid(v, g, v->yindex);
+            redblockfast(v, g);
+            nextblock(v);
+        }
+    }
+    v->addmid_sel = 0;                         /* :cont setback */
+    starttop(v, g);
+    if (g->scrnAbove != 0) {                   /* (unlike SURE: nothing without a screen above) */
+        pop_calcblue(g, g->scrnAbove);
+        for (col = 0; col < 10; col++) {
+            startblock(v, col);
+            v->objid = getobjid1(v, g, v->yindex);
+            reddfast(v, g);
+            nextblock(v);
+        }
+    }
+    v->yindex = 0xFF;                          /* drawobjs: impact stars (part 2) */
+    if (v->redkidmeter != 0) pop_drawkidmeter(v, g);         /* UPDATEMETERS */
+    if (v->redoppmeter != 0) pop_drawoppmeter(v, g);
 }

@@ -25,9 +25,9 @@ source and by running the original code (section 7) unless marked.
 | `DRAWALL` 484 with `DOGEN` 513, `SNGPEEL` 636, `DRAWWIPE` 533, `DRAWBACK` 566, `DRAWMID` 676, `DRAWFORE` 600, `DRAWMSG` 760, `setbgimg` 814, `setcharimg` 842 | `pop_drawall` | Draw everything on the lists |
 | `SURE` `FRAMEADV.S:49` and what it calls: `getprev` 561, `getbelow` 616, `getobjid` 2041, `RedBlockSure` 346, `RedDSure` 368, the section routines 754-1246, the pieces with state 1365-1927; `setupflask` `GAMEBG.S:675`, `setupflame` 735 | `pop_sure` | The lists for a whole screen |
 
-Not yet ported: the partial redraw (`FAST`), falling floors, characters,
-meters and messages (the *contents* of the mid, wipe, message and peel
-lists; the lists themselves and their drawing are here). Milestone 10c.
+The partial redraw (`FAST`), the strength meters and what else fills the
+mid, wipe, message and peel lists during play are in frame-drawing.md
+(milestone 10c).
 
 ## 2. The lists
 
@@ -120,9 +120,8 @@ Neither is in this repository.
   through a stale pointer) sets `unmodelled`.
 - **A zero in two wall tables** where the original would fall into the
   neighbouring case sets `unmodelled`; the tables have no such zero.
-- **`add`** is always "add to the background list" here: `SURE` selects
-  that (`setback`). The other target (`setmid`, used by `FAST`) comes with
-  milestone 10c.
+- **`add`** is a `jmp` that `setback` and `setmid` re-point in the
+  original; the port has a selector (frame-drawing.md §2).
 
 ## 6. What the comparison cannot see
 
@@ -136,7 +135,7 @@ and the gate's top piece of height 0.
 
 | Check | What it compares |
 | --- | --- |
-| `tests/test_gfx.c` (`gfx_unit`) | 122 hand-worked checks on made-up piece tables, images and a made-up level |
+| `tests/test_gfx.c` (`gfx_unit`) | 254 hand-worked checks (with those of frame-drawing.md) on made-up piece tables, images and a made-up level |
 | `tests/compare_rooms.py` | Every screen the 15 level files declare, and the null screen of each level, as the level starts: the finished page (8,192 bytes) and the three lists, C against the original's `DoSure`. Then each level again a number of times with random gadget states, random extra pieces on the screen and where its neighbours show, and the kid at a random block |
 | `tests/mutation_gfx.py` | 105 deliberate one-token errors in `pop_frameadv.c` and `pop_lists.c` must be noticed by that comparison (92 are; 13 make no difference, each with its reason) |
 

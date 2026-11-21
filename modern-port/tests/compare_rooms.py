@@ -47,7 +47,8 @@ from pop_room import bgset_file_suffix  # noqa: E402
 
 IMAGES = os.path.join("01 POP Source", "Images")
 LISTS = (("back", ("bgX", "bgY", "bgIMG", "bgOP")), ("fore", ("fgX", "fgY", "fgIMG", "fgOP")),
-         ("mid", ("midX", "midY", "midIMG", "midOP", "midOFF")))
+         ("mid", ("midX", "midY", "midIMG", "midOP", "midOFF", "midTYP", "midTAB", "midCU", "midCD",
+                  "midCL", "midCR")))
 # piece -> states worth drawing (BlueSpec values)
 GATE_STATES = tuple(range(0, 196, 4)) + (1, 2, 3, 189, 200, 255)
 STATES = {

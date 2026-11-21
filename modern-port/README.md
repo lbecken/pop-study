@@ -21,7 +21,8 @@ checkout of the original source and is never stored in this repository.
 | The loop around the frame: input-device state and press flags, the clock and its messages, song cues, flashes, `MainLoop`, the next level (`TOPCTRL.S`, `SPECIALK.S`, `SUBS.S`) | ported; same. `pop_mainloop` is one complete frame |
 | The blitter: images onto a hi-res page in every mode, shifted, mirrored, cropped; save-under (`HIRES.S`) | ported; each routine compared with the original blitter over whole pages |
 | The display lists and their drawing, and the full redraw of a screen from the level (`GRAFIX.S`, `FRAMEADV.S` `SURE`) | ported; every screen of the 15 levels compared with the original's page, plus random gadget states. Piece tables are generated data, images are read from your checkout |
-| Partial redraw, characters on screen, meters, messages, colour, reading keys and joystick, sound output, music, SDL3 shell | not started (hooks) |
+| What changes from frame to frame: the redraw marks, wipes, strength meters (`FRAMEADV.S` `FAST`, `GAMEBG.S`) | ported; page, lists and marks compared with the original on random marks |
+| Characters on screen, falling floors, messages, colour, reading keys and joystick, sound output, music, SDL3 shell | not started (hooks) |
 
 There is no runnable game yet and no SDL3 dependency yet. The nearest thing
 is `tests/replay_demo.py`, which plays the original's demo level in the port,

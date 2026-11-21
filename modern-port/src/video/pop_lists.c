@@ -99,7 +99,7 @@ void pop_addwipe(pop_gfx *v, uint8_t colour)
     v->wipeCOL[x] = colour;
     v->wipeX[x] = v->XCO;
     v->wipeY[x] = v->YCO;
-    v->wipeH[x] = v->height;
+    v->wipeH[x] = v->IMAGE;                    /* height */
     v->wipeW[x] = v->width;
     v->wipeX[0] = x;
 }
@@ -165,10 +165,15 @@ void pop_addpeel(pop_gfx *v)
 
 /* --- drawing ----------------------------------------------------------------------------- */
 
+/* The drawing routines pass their parameters to the blitter through the
+ * same variables the adding routines use, and leave them there. */
+
 /* setbgimg: bit 7 of the coded number chooses the table. */
 static pop_image bgimage(pop_gfx *v, uint8_t coded)
 {
     pop_image im = pop_imgtab_image(&v->bgtable[NEG(coded) ? 1 : 0], coded & 0x7F);
+    v->IMAGE = coded & 0x7F;
+    v->TABLE = 0;
     if (!im.bytes) v->unmodelled = 1;
     return im;
 }
@@ -178,8 +183,21 @@ static pop_image chimage(pop_gfx *v, uint8_t table, uint8_t number)
 {
     pop_image im = { NULL, 0 };
     if (table < 7) im = pop_imgtab_image(&v->chtable[table], number);
+    v->IMAGE = number;
+    v->TABLE = 0;
     if (!im.bytes) v->unmodelled = 1;
     return im;
+}
+
+static void place(pop_gfx *v, uint8_t x, uint8_t y)
+{
+    v->hr.XCO = v->XCO = x;
+    v->hr.YCO = v->YCO = y;
+}
+
+static void mode(pop_gfx *v, uint8_t opacity)
+{
+    v->hr.OPACITY = v->OPACITY = opacity;
 }
 
 static void dogen(pop_gfx *v, const pop_game *g)       /* DOGEN */
@@ -194,9 +212,10 @@ static void sngpeel(pop_gfx *v)                /* SNGPEEL: last in, first out */
     while (a != 0) {
         x = u8(a + base);
         if (x >= 2 * POP_MAXPEEL) { v->unmodelled = 1; return; }
-        v->hr.XCO = v->peelX[x];
-        v->hr.YCO = v->peelY[x];
-        v->hr.OPACITY = POP_OP_STA;
+        v->IMAGE = v->peelIMGL[x];
+        v->width = v->peelIMGH[x];             /* (IMAGE + 1) */
+        place(v, v->peelX[x], v->peelY[x]);
+        mode(v, POP_OP_STA);
         pop_hr_peel(&v->hr, (uint16_t)(v->peelIMGL[x] | (v->peelIMGH[x] << 8)));
         a--;
     }
@@ -206,9 +225,10 @@ static void drawwipe(pop_gfx *v)               /* DRAWWIPE */
 {
     unsigned x;
     for (x = 1; x <= v->wipeX[0] && x < POP_MAXWIPE; x++) {
-        v->hr.XCO = v->wipeX[x];
-        v->hr.YCO = v->wipeY[x];
-        v->hr.OPACITY = v->wipeCOL[x];
+        v->IMAGE = v->wipeH[x];
+        v->width = v->wipeW[x];
+        place(v, v->wipeX[x], v->wipeY[x]);
+        mode(v, v->wipeCOL[x]);
         pop_hr_fastblack(&v->hr, v->wipeW[x], v->wipeH[x], v->wipeCOL[x]);
     }
 }
@@ -219,9 +239,8 @@ static void drawback(pop_gfx *v)               /* DRAWBACK */
     for (x = 1; x <= v->bgX[0] && x < POP_MAXBACK; x++) {
         pop_image im = bgimage(v, v->bgIMG[x]);
         if (!im.bytes) return;
-        v->hr.XCO = v->bgX[x];
-        v->hr.YCO = v->bgY[x];
-        v->hr.OPACITY = v->bgOP[x];
+        place(v, v->bgX[x], v->bgY[x]);
+        mode(v, v->bgOP[x]);
         pop_hr_fastlay(&v->hr, im);
     }
 }
@@ -232,12 +251,11 @@ static void drawfore(pop_gfx *v)               /* DRAWFORE */
     for (x = 1; x <= v->fgX[0] && x < POP_MAXFORE; x++) {
         pop_image im = bgimage(v, v->fgIMG[x]);
         if (!im.bytes) return;
-        v->hr.XCO = v->fgX[x];
-        v->hr.YCO = v->fgY[x];
+        place(v, v->fgX[x], v->fgY[x]);
         if (v->fgOP[x] == POP_OP_MASK) {
             pop_hr_fastmask(&v->hr, im);
         } else {
-            v->hr.OPACITY = v->fgOP[x];
+            mode(v, v->fgOP[x]);
             pop_hr_fastlay(&v->hr, im);
         }
     }
@@ -245,7 +263,7 @@ static void drawfore(pop_gfx *v)               /* DRAWFORE */
 
 static void setaddl(pop_gfx *v, unsigned x)    /* :setaddl */
 {
-    v->hr.OFFSET = v->midOFF[x];
+    v->hr.OFFSET = v->OFFSET = v->midOFF[x];
     v->hr.LEFTCUT = v->midCL[x];
     v->hr.RIGHTCUT = v->midCR[x];
     v->hr.TOPCUT = v->midCU[x];
@@ -260,9 +278,8 @@ static void drawmid(pop_gfx *v)                /* DRAWMID */
         pop_image im = NEG(typ) ? chimage(v, v->midTAB[x], v->midIMG[x])
                                 : bgimage(v, v->midIMG[x]);
         if (!im.bytes) return;
-        v->hr.XCO = v->midX[x];
-        v->hr.YCO = v->midY[x];
-        v->hr.OPACITY = v->midOP[x];
+        place(v, v->midX[x], v->midY[x]);
+        mode(v, v->midOP[x]);
         switch (typ & 0x7F) {
         case POP_MID_FASTLAY:
             pop_hr_fastlay(&v->hr, im);
@@ -289,15 +306,14 @@ static void drawmsg(pop_gfx *v)                /* DRAWMSG */
     for (x = 1; x <= v->msgX[0] && x < POP_MAXMSG; x++) {
         pop_image im = bgimage(v, v->msgIMG[x]);
         if (!im.bytes) return;
-        v->hr.XCO = v->msgX[x];
-        v->hr.OFFSET = v->msgOFF[x];
-        v->hr.YCO = v->msgY[x];
+        place(v, v->msgX[x], v->msgY[x]);
+        v->hr.OFFSET = v->OFFSET = v->msgOFF[x];
         v->hr.LEFTCUT = v->hr.TOPCUT = 0;
         v->hr.RIGHTCUT = 40;
         v->hr.BOTCUT = 192;
-        v->hr.OPACITY = v->msgOP[x];
+        mode(v, v->msgOP[x]);
         if (v->msgOP[x] & 0x40) {              /* bit 6: save under it first */
-            v->hr.OPACITY = v->msgOP[x] & 0xBF;
+            mode(v, v->msgOP[x] & 0xBF);
             pop_hr_layrsave(&v->hr, im);
             pop_addpeel(v);
         }

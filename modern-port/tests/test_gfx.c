@@ -36,7 +36,7 @@ static void make_tables(void)
         &bg.blockd, &bg.blockfr, &bg.panelb, &bg.panelc, &bg.spaceb, &bg.spaceby, &bg.floorb,
         &bg.floorby, &bg.loosea, &bg.loosed, &bg.looseby, &bg.spikea, &bg.spikeb,
         &bg.slicerseq, &bg.slicertop, &bg.slicerbot, &bg.slicerbot2, &bg.slicergap,
-        &bg.slicerfrnt, &bg.gate8b, &bg.gate8c, &bg.torchflame, &bg.bubble,
+        &bg.slicerfrnt, &bg.gate8b, &bg.gate8c, &bg.torchflame, &bg.bubble, &bg.bline,
     };
     unsigned i;
     memset(&bg, 0, sizeof bg);
@@ -51,6 +51,7 @@ static void make_tables(void)
     bg.stairs = 0x25; bg.door = 0x26; bg.doormask = 0x27; bg.toprepair = 0x28;
     bg.looseb = 0x29; bg.specialflask = 0x2A; bg.archpanel = 0x2B;
     bg.swordgleam0 = 0x2C; bg.swordgleam1 = 0x2D;
+    bg.CUmask = 0x2E; bg.CUpiece = 0x2F; bg.CUpost = 0x38; bg.bullet = 0x88; bg.blank = 0x8C;
 }
 
 static void put(int scrn, int row, int col, uint8_t type, uint8_t spec)
@@ -126,7 +127,7 @@ static void test_adding(void)
     pop_addmid(&v, &g, POP_MID_LAYSAVE | POP_MID_CHARTABLE);
     CHECK_EQ(v.midOP[3], POP_OP_MASK);
 
-    v.width = 4; v.height = 20;
+    v.width = 4; v.IMAGE = 20;
     pop_addwipe(&v, 0x80);
     CHECK_EQ(v.wipeX[0], 1);
     CHECK_EQ(v.wipeW[1], 4);
@@ -204,6 +205,42 @@ static void test_drawall(void)
     pop_addback(&v);
     pop_drawall(&v, &g);
     CHECK_EQ(v.unmodelled, 1);
+}
+
+/* DRAWALL passes its parameters to the blitter through the variables the
+ * adding routines use, and leaves them there (the height and width of a
+ * wipe are IMAGE and the byte after it). */
+static void test_drawall_leaves(void)
+{
+    setup();
+    v.XCO = 8; v.YCO = 100; v.IMAGE = 20; v.width = 4;
+    pop_addwipe(&v, 0x80);
+    v.IMAGE = 33;                              /* (as if a second wipe had not fitted in the list) */
+    pop_drawall(&v, &g);
+    CHECK_EQ(v.IMAGE, 20);
+    CHECK_EQ(v.width, 4);
+    CHECK_EQ(v.OPACITY, 0x80);
+    CHECK_EQ(v.XCO, 8); CHECK_EQ(v.YCO, 100);
+    pop_zerolsts(&v);
+    v.XCO = 3; v.YCO = 10; v.IMAGE = 0x81; v.OPACITY = POP_OP_ORA;   /* image 1 of the second table */
+    v.bgtable[1] = v.bgtable[0];
+    pop_addback(&v);
+    v.IMAGE = 2; v.OFFSET = 5; v.YCO = 30; v.OPACITY = POP_OP_STA;
+    pop_addmsg(&v);
+    v.OFFSET = 0;
+    pop_drawall(&v, &g);
+    CHECK_EQ(v.IMAGE, 2);
+    CHECK_EQ(v.OFFSET, 5);
+    CHECK_EQ(v.YCO, 30);
+    CHECK_EQ(v.OPACITY, POP_OP_STA);
+    pop_zerolsts(&v);
+    v.IMAGE = 0x81; v.YCO = 10; v.OPACITY = POP_OP_ORA;
+    pop_addback(&v);
+    v.IMAGE = 0;
+    pop_drawall(&v, &g);
+    CHECK_EQ(v.IMAGE, 1);                      /* without the table bit */
+    CHECK_EQ(v.TABLE, 0);
+    CHECK_EQ(v.unmodelled, 0);
 }
 
 static void test_empty_screen(void)
@@ -336,13 +373,194 @@ static void test_pieces_with_state(void)
     CHECK_EQ(v.unmodelled | g.unmodelled, 0);
 }
 
+static void test_meters(void)
+{
+    setup();
+    tables[bg.bline + 0] = 0x89; tables[bg.bline + 1] = 0x8A; tables[bg.bline + 2] = 0x8B;
+    /* 3 of 5: two units as one image, the third on its own, two empty places */
+    g.KidStrength = 3; g.MaxKidStr = 5;
+    pop_zerolsts(&v);
+    pop_drawkidmeter(&v, &g);
+    CHECK_EQ(v.msgX[0], 4);
+    CHECK_EQ(v.msgIMG[1], 0x8A); CHECK_EQ(v.msgX[1], 0); CHECK_EQ(v.msgOFF[1], 0);
+    CHECK_EQ(v.msgY[1], 191); CHECK_EQ(v.msgOP[1], POP_OP_STA);
+    CHECK_EQ(v.msgIMG[2], 0x88); CHECK_EQ(v.msgX[2], 2); CHECK_EQ(v.msgOFF[2], 2);
+    CHECK_EQ(v.msgIMG[3], 0x8C); CHECK_EQ(v.msgX[3], 3); CHECK_EQ(v.msgOFF[3], 3);
+    CHECK_EQ(v.msgOP[3], POP_OP_AND);
+    CHECK_EQ(v.msgIMG[4], 0x8C); CHECK_EQ(v.msgX[4], 4);
+    /* 7 of 8: 3 + 3 + 1; the eighth place is in the next group of seven dots */
+    g.KidStrength = 7; g.MaxKidStr = 8;
+    pop_zerolsts(&v);
+    pop_drawkidmeter(&v, &g);
+    CHECK_EQ(v.msgX[0], 4);
+    CHECK_EQ(v.msgIMG[1], 0x8B); CHECK_EQ(v.msgX[1], 0);
+    CHECK_EQ(v.msgIMG[2], 0x8B); CHECK_EQ(v.msgX[2], 3); CHECK_EQ(v.msgOFF[2], 3);
+    CHECK_EQ(v.msgIMG[3], 0x88); CHECK_EQ(v.msgX[3], 6); CHECK_EQ(v.msgOFF[3], 6);
+    CHECK_EQ(v.msgIMG[4], 0x8C); CHECK_EQ(v.msgX[4], 8); CHECK_EQ(v.msgOFF[4], 0);
+    /* the last unit is drawn on one of the two pages only: it blinks */
+    g.KidStrength = 1; g.MaxKidStr = 3;
+    pop_zerolsts(&v);
+    pop_drawkidmeter(&v, &g);
+    CHECK_EQ(v.msgX[0], 3);
+    CHECK_EQ(v.msgIMG[1], 0x8C); CHECK_EQ(v.msgX[1], 0);
+    v.hr.PAGE = 0x20;
+    pop_zerolsts(&v);
+    pop_drawkidmeter(&v, &g);
+    CHECK_EQ(v.msgX[0], 3);
+    CHECK_EQ(v.msgIMG[1], 0x88); CHECK_EQ(v.msgIMG[2], 0x8C); CHECK_EQ(v.msgX[2], 1);
+    v.hr.PAGE = 0;
+
+    /* the opponent's: from the right edge, mirrored, and without empty places */
+    g.OppStrength = 4; g.shad.id = 2;
+    pop_zerolsts(&v);
+    pop_drawoppmeter(&v, &g);
+    CHECK_EQ(v.msgX[0], 2);
+    CHECK_EQ(v.msgIMG[1], 0x8B); CHECK_EQ(v.msgX[1], 39); CHECK_EQ(v.msgOFF[1], 5);
+    CHECK_EQ(v.msgOP[1], POP_OP_STA | 0x80);
+    CHECK_EQ(v.msgIMG[2], 0x88); CHECK_EQ(v.msgX[2], 36); CHECK_EQ(v.msgOFF[2], 2);
+    g.OppStrength = 1;                         /* blinking: an empty place on the other page */
+    pop_zerolsts(&v);
+    pop_drawoppmeter(&v, &g);
+    CHECK_EQ(v.msgX[0], 1);
+    CHECK_EQ(v.msgIMG[1], 0x8C); CHECK_EQ(v.msgX[1], 39); CHECK_EQ(v.msgOP[1], POP_OP_AND | 0x80);
+    /* no meter for the skeleton and the mouse; the shadow's on level 12 only */
+    g.OppStrength = 3;
+    pop_zerolsts(&v);
+    g.shad.id = 4;  pop_drawoppmeter(&v, &g);
+    g.shad.id = 24; pop_drawoppmeter(&v, &g);
+    g.shad.id = 1;  pop_drawoppmeter(&v, &g);
+    CHECK_EQ(v.msgX[0], 0);
+    g.level = 12;
+    pop_drawoppmeter(&v, &g);
+    CHECK_EQ(v.msgX[0], 2);
+    g.OppStrength = 0;
+    pop_drawoppmeter(&v, &g);
+    CHECK_EQ(v.msgX[0], 2);
+    CHECK_EQ(v.unmodelled, 0);
+}
+
+static unsigned listed(void)
+{
+    return (unsigned)(v.bgX[0] + v.fgX[0] + v.midX[0] + v.wipeX[0] + v.msgX[0]);
+}
+
+static void test_fast(void)
+{
+    setup();
+    tables[bg.piecea + POP_FLOOR] = 5;
+    tables[bg.pieced + POP_FLOOR] = 6;
+    tables[bg.bline + 1] = 0x8A;
+    put(1, 1, 2, POP_FLOOR, 0);                /* block 12 */
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);                          /* nothing marked, nothing to draw */
+    CHECK_EQ(listed(), 0);
+    CHECK_EQ(v.genCLS, 0);
+
+    g.rb[POP_RB_RED + 12] = 2;                 /* the block, on both pages */
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(g.rb[POP_RB_RED + 12], 1);
+    CHECK_EQ(v.bgX[0], 2);                     /* as in the full redraw: D, then A */
+    CHECK_EQ(v.bgIMG[1], 6); CHECK_EQ(v.bgX[1], 8); CHECK_EQ(v.bgY[1], 128);
+    CHECK_EQ(v.bgIMG[2], 5); CHECK_EQ(v.bgY[2], 125);
+    CHECK_EQ(listed(), 2);
+    g.rb[POP_RB_MOVE + 12] = 1;                /* a block redrawn whole keeps its "moving parts" mark */
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(g.rb[POP_RB_RED + 12], 0);
+    CHECK_EQ(g.rb[POP_RB_MOVE + 12], 1);
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(g.rb[POP_RB_MOVE + 12], 0);
+    CHECK_EQ(listed(), 0);                     /* a floor piece has no moving parts */
+
+    g.rb[POP_RB_WIPE + 12] = 1;                /* a rectangle cleared: up from the block's bottom line */
+    g.rb[POP_RB_WHITE + 12] = 20;
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(v.wipeX[0], 1);
+    CHECK_EQ(v.wipeX[1], 8); CHECK_EQ(v.wipeY[1], 128); CHECK_EQ(v.wipeH[1], 20);
+    CHECK_EQ(v.wipeW[1], 4); CHECK_EQ(v.wipeCOL[1], 0x80);
+    CHECK_EQ(g.rb[POP_RB_WIPE + 12], 0);
+    CHECK_EQ(g.rb[POP_RB_WHITE + 12], 20);
+    CHECK_EQ(listed(), 1);
+
+    /* the floor piece again over a character behind it: on the mid list */
+    g.rb[POP_RB_FLOOR + 12] = 1;
+    g.rb[POP_RB_HALF + 12] = 1;                /* (waits: one or the other) */
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(v.midX[0], 2);
+    CHECK_EQ(v.midIMG[1], 5); CHECK_EQ(v.midX[1], 8); CHECK_EQ(v.midY[1], 125);
+    CHECK_EQ(v.midTYP[1], POP_MID_FASTLAY); CHECK_EQ(v.midOP[1], POP_OP_ORA);
+    CHECK_EQ(v.midCR[1], 40); CHECK_EQ(v.midCD[1], 192);
+    CHECK_EQ(v.midIMG[2], 6); CHECK_EQ(v.midY[2], 128);
+    CHECK_EQ(listed(), 2);
+    CHECK_EQ(g.rb[POP_RB_HALF + 12], 1);
+    pop_zerolsts(&v);                          /* the climbing-up version: a mask and a shorter piece */
+    pop_fast(&v, &g);
+    CHECK_EQ(v.midX[0], 3);
+    CHECK_EQ(v.midIMG[1], 0x2E); CHECK_EQ(v.midOP[1], POP_OP_AND); CHECK_EQ(v.midY[1], 125);
+    CHECK_EQ(v.midIMG[2], 0x2F); CHECK_EQ(v.midOP[2], POP_OP_ORA);
+    CHECK_EQ(v.midIMG[3], 6);
+    CHECK_EQ(g.rb[POP_RB_HALF + 12], 0);
+    put(1, 1, 1, POP_FLOOR, 0);                /* not with a piece to the left */
+    g.rb[POP_RB_HALF + 12] = 1;
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(listed(), 0);
+    CHECK_EQ(g.rb[POP_RB_HALF + 12], 0);
+
+    /* the top three lines show the screen above; without one, the mark stays */
+    g.rb[POP_RB_TOP + 3] = 1;
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(listed(), 0);
+    CHECK_EQ(g.rb[POP_RB_TOP + 3], 1);
+    g.scrnAbove = 2;
+    put(2, 2, 3, POP_FLOOR, 0);
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(g.rb[POP_RB_TOP + 3], 0);
+    CHECK_EQ(v.wipeX[0], 1);
+    CHECK_EQ(v.wipeX[1], 12); CHECK_EQ(v.wipeY[1], 2); CHECK_EQ(v.wipeH[1], 3);
+    CHECK_EQ(v.bgX[0], 1);                     /* its front edge, on both planes */
+    CHECK_EQ(v.bgIMG[1], 6); CHECK_EQ(v.bgX[1], 12); CHECK_EQ(v.bgY[1], 2);
+    CHECK_EQ(v.fgX[0], 1);
+    CHECK_EQ(v.fgIMG[1], 6); CHECK_EQ(v.fgX[1], 12); CHECK_EQ(v.fgY[1], 2);
+    g.scrnAbove = 0;
+
+    /* a meter is drawn again when a block under it is: blocks 20-22 and 28-29 */
+    g.KidStrength = 3; g.MaxKidStr = 3; g.OppStrength = 3; g.shad.id = 2;
+    g.rb[POP_RB_FRED + 21] = 1;
+    g.rb[POP_RB_MOVE + 28] = 1;                /* (moving parts do not count) */
+    g.rb[POP_RB_RED + 27] = 1;
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK(v.redkidmeter != 0);
+    CHECK_EQ(v.redoppmeter, 0);
+    CHECK_EQ(v.msgX[0], 2);
+    CHECK_EQ(v.msgIMG[1], 0x8A); CHECK_EQ(v.msgX[1], 0);
+    g.rb[POP_RB_WIPE + 29] = 1;
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(v.redkidmeter, 0);
+    CHECK(v.redoppmeter != 0);
+    CHECK_EQ(v.msgX[0], 2);
+    CHECK_EQ(v.msgX[1], 39);
+    CHECK_EQ(v.unmodelled | g.unmodelled, 0);
+}
+
 int main(void)
 {
     RUN(test_images);
     RUN(test_adding);
     RUN(test_peel_lists);
     RUN(test_drawall);
+    RUN(test_drawall_leaves);
     RUN(test_empty_screen);
     RUN(test_pieces_with_state);
+    RUN(test_meters);
+    RUN(test_fast);
     return pop_test_summary();
 }
