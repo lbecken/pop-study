@@ -44,6 +44,7 @@ static const struct { const char *name; size_t at; int is_table; } FIELDS[] = {
     TABLE(spikea), TABLE(spikeb), TABLE(slicerseq), TABLE(slicertop), TABLE(slicerbot),
     TABLE(slicerbot2), TABLE(slicergap), TABLE(slicerfrnt), TABLE(gate8b), TABLE(gate8c),
     TABLE(torchflame), TABLE(bubble), TABLE(bline),
+    TABLE(level_bgset1), TABLE(level_bgset2), TABLE(level_chset),
     CONST(numblox), CONST(numpans), CONST(numbpans), CONST(panelb0), CONST(panelc0),
     CONST(archpanel), CONST(specialflask), CONST(looseb), CONST(Ffalling), CONST(spikeExt),
     CONST(slicerRet), CONST(stairs), CONST(door), CONST(doormask), CONST(toprepair),

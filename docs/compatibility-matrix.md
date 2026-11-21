@@ -59,9 +59,9 @@ Status of each behaviour in the reconstruction.
 | Opponents | The demo level's scripted kid and guard (`DemoCtrl`) | faithful, checked against the original code | `pop_top.c` | the script is generated data; the whole demo, 393 frames with the generator's state fixed, agrees with the original call by call |
 | Audio | Sound-effect queue (`ADDSOUND`, `ZEROSOUND`, play order) | faithful, unverified | `modern-port/src/core/pop_sound.c` | |
 | Audio | Sound-effect waveforms | faithful timing, approximate sound, unverified | `modern-port/src/audio/pop_sfx.c`, generated `sfx.bin` | flip times come from executing the original code; output is the 1-bit signal, not speaker acoustics |
-| Audio | Effects delaying the frame they play in | missing | – | decision D2 |
-| Audio | Audio output device | missing | – | SDL3 backend, milestone 7 |
+| Audio | Effects delaying the frame they play in | approximate, unverified | `pop_sdl --stretch` adds the effects' length to the frame; off by default | decision D2; `docs/port/shell.md` §3-4 |
+| Audio | Audio output device | approximate, unverified | SDL3 audio stream in `pop_sdl`; effects are queued, they do not stop the game | run with the dummy driver only: nothing has been heard (`docs/port/shell.md` §7) |
 | Audio | `GTONE`, `WHOOP`, cheat-timer click | missing | – | |
 | Audio | Music | missing | – | player source present, score data absent from the repository |
-| Timing | Frame cadence | missing | – | decision D2; original has no fixed rate. Game time is counted in frames (`pop_keeptime`), so the cadence chosen sets the length of the hour |
-| Platform | SDL3 window, input, audio | missing | – | |
+| Timing | Frame cadence | approximate | fixed 725 frames a minute in the shell (`--rate`), decision D2 | the original has no fixed rate: 50 to 220 ms a frame over the demo by cycle count, 106 ms on average (unknown T1). Game time is counted in frames (`pop_keeptime`), so the cadence sets the length of the hour |
+| Platform | SDL3 window, keyboard, audio; headless player | new code, unverified on a display | `pop_sdl`, `pop_headless` over `pop_app`; the game through them equals the tested runner frame for frame (`check_app.py`); the shell run with SDL's dummy drivers (`check_sdl.py`) | `docs/port/shell.md`; keys reach the game as a joystick; the original's special keys, title sequence, scenes and saved games are not ported |

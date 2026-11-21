@@ -65,6 +65,26 @@ target_link_libraries(pop_seqdump PRIVATE pop_assets)
 add_executable(pop_sfxdump tools/pop_sfxdump.c)
 target_link_libraries(pop_sfxdump PRIVATE pop_assets)
 
+# The game as one object: state, drawing, data files, input, sound samples.  No SDL.
+add_library(pop_app STATIC src/app/pop_app.c)
+target_include_directories(pop_app PUBLIC src/app)
+target_link_libraries(pop_app PUBLIC pop_assets)
+
+add_executable(pop_headless tools/pop_headless.c)
+target_link_libraries(pop_headless PRIVATE pop_app)
+
+# The SDL3 shell.  Optional: built when SDL3 is found (pass
+# -DCMAKE_PREFIX_PATH=<SDL3 install dir> if it is not in a standard place).
+find_package(SDL3 CONFIG QUIET)
+if(SDL3_FOUND)
+  add_executable(pop_sdl src/sdl/pop_sdl_main.c)
+  target_include_directories(pop_sdl PRIVATE tools)
+  target_link_libraries(pop_sdl PRIVATE pop_app SDL3::SDL3)
+  message(STATUS "SDL3 ${SDL3_VERSION} found: building the shell (pop_sdl)")
+else()
+  message(STATUS "SDL3 not found: the shell (pop_sdl) is not built")
+endif()
+
 add_executable(pop_worldrun tools/pop_worldrun.c)
 target_link_libraries(pop_worldrun PRIVATE pop_assets)
 
@@ -237,6 +257,19 @@ if(POP_SOURCE_DIR)
                    "${CMAKE_CURRENT_SOURCE_DIR}/tools/render_demo.py"
                    "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}" "${POP_SOURCE_DIR}"
                    "${CMAKE_BINARY_DIR}/demo_frames")
+  # the game as the shell runs it (pop_app) against the runner the other tests use
+  add_test(NAME app_matches_runner
+           COMMAND "${Python3_EXECUTABLE}"
+                   "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_app.py"
+                   "$<TARGET_FILE:pop_headless>" "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}"
+                   "${POP_SOURCE_DIR}")
+  if(SDL3_FOUND)
+    add_test(NAME sdl_shell_headless
+             COMMAND "${Python3_EXECUTABLE}"
+                     "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_sdl.py"
+                     "$<TARGET_FILE:pop_sdl>" "$<TARGET_FILE:pop_headless>" "${POP_DATA}"
+                     "${POP_SOURCE_DIR}")
+  endif()
   add_test(NAME frames_demo_c_vs_original
            COMMAND "${Python3_EXECUTABLE}"
                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/replay_frames.py"

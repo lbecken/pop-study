@@ -18,7 +18,7 @@
 static pop_game g;
 static pop_gfx v;
 static pop_bgdata bg;
-static uint8_t tables[40 * 32];
+static uint8_t tables[44 * 32];
 /* A made-up image table in the file format: count, pointers from $6000,
  * images.  Image 1: 1 x 1, dot 0.  Image 2: 2 x 1, all dots.  Image 3: 1 x 2. */
 static const uint8_t images[] = {
@@ -38,6 +38,7 @@ static void make_tables(void)
         &bg.floorby, &bg.loosea, &bg.loosed, &bg.looseby, &bg.spikea, &bg.spikeb,
         &bg.slicerseq, &bg.slicertop, &bg.slicerbot, &bg.slicerbot2, &bg.slicergap,
         &bg.slicerfrnt, &bg.gate8b, &bg.gate8c, &bg.torchflame, &bg.bubble, &bg.bline,
+        &bg.level_bgset1, &bg.level_bgset2, &bg.level_chset,
     };
     unsigned i;
     memset(&bg, 0, sizeof bg);

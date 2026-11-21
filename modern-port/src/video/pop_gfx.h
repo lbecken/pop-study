@@ -68,7 +68,8 @@ typedef struct pop_bgdata {
              fronty, frontx, maskb, blockb, blockc, blockd, blockfr, panelb, panelc,
              spaceb, spaceby, floorb, floorby, loosea, loosed, looseby, spikea, spikeb,
              slicerseq, slicertop, slicerbot, slicerbot2, slicergap, slicerfrnt, gate8b,
-             gate8c, torchflame, bubble, bline;
+             gate8c, torchflame, bubble, bline,
+             level_bgset1, level_bgset2, level_chset;      /* 15 entries each: MISC.S 772-774 */
     /* constants */
     uint8_t numblox, numpans, numbpans, panelb0, panelc0, archpanel, specialflask, looseb,
             Ffalling, spikeExt, slicerRet, stairs, door, doormask, toprepair, gatecmask,

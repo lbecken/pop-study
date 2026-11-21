@@ -128,7 +128,11 @@ def test_bgdata_bin(tmp_path):
     assert symbols["pieceay"] - symbols["piecea"] == 30
     # flame: 18 frames; bubbles: 9; both lie inside the block, flame first
     assert symbols["bubble"] - symbols["torchflame"] == 18 and symbols["bline"] - symbols["bubble"] == 9
-    assert symbols["bline"] + 3 == size and symbols["bullet"] == 0x88 and symbols["blank"] == 0x8C
+    assert symbols["bullet"] == 0x88 and symbols["blank"] == 0x8C
+    # then which image sets each of the 15 levels uses
+    assert symbols["level_bgset1"] == symbols["bline"] + 3
+    assert symbols["level_chset"] + 15 == size
+    assert image[symbols["level_bgset1"]] == 0 and image[symbols["level_bgset1"] + 4] == 1
     # image numbers: 1-127, or with bit 7 for the second table
     assert all(image[symbols["piecea"] + i] <= 0xFF for i in range(30))
     assert symbols["gmaxval"] == 188 and symbols["numblox"] >= 1

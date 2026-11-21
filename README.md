@@ -110,14 +110,23 @@ level; then the loop around the frame: input state, the 60-minute clock,
 messages, song cues, the step to the next level; all verified the same way,
 and the original's demo level replays in the C port, one pass of the
 original's main loop at a time, with the same result as the original code
-after every pass). All game rules that do not draw are now in C. Of the
-drawing, the blitter and the full redraw of a screen are (milestones 10a
-and 10b: every screen of every level comes out byte for byte as the
-original code draws it), and the original's own drawing code can now be run
-in the simulator, which also confirmed the earlier Python models. Drawing
-only what changed, characters, colour, the hardware side of input and
-sound, and a window are not ported, so there is no runnable game yet. See
-`docs/milestones.md`.
+after every pass). All game rules that do not draw are now in C, and so is
+the drawing (milestone 10): the blitter, the full redraw of a screen, the
+partial redraw of a frame, characters, messages and the two display pages.
+The original's own drawing code runs in the simulator too, and the demo
+level and random play on the other levels come out the same in the port,
+frame for frame, in every byte of both hi-res pages. Around that there is a
+simple model of the colours a monitor makes of those bytes, and a shell
+(milestone 7): an SDL3 window with keys and sound effects, and a headless
+player that writes frames as PNG files.
+
+What that amounts to: the levels of your own checkout can be played. What
+it does not: nothing has been compared with a real Apple II or an emulator;
+the shell was written on a machine without a display and has never been
+seen running; the title sequence, the scenes with the princess, the
+endings, music and saved games are not ported; the colours are a model,
+checked by eye. See `docs/milestones.md`, `docs/compatibility-matrix.md`
+and `modern-port/README.md`.
 
 ## Conventions
 

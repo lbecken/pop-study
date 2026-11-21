@@ -201,6 +201,14 @@ def build_bgdata(source):
         if not found:
             raise SystemExit("GAMEBG.S: %s not found" % name)
         symbols[name] = int(found.group(1), 16)
+    # which background and opponent image sets each level uses (MISC.S 772-774)
+    misc = read("MISC.S")
+    for name in ("bgset1", "bgset2", "chset"):
+        table = extract_table(misc, name)
+        if len(table) != 15:
+            raise SystemExit("MISC.S: %s has %d entries, not 15" % (name, len(table)))
+        symbols["level_" + name] = len(image)
+        image += table
     directory = b"".join(bytes([len(n)]) + n.encode("ascii") + struct.pack("<H", v)
                          for n, v in sorted(symbols.items()) if len(n) < 256)
     return (b"POPBGDT1" + struct.pack("<HH", len(image), len(symbols)) + bytes(image)

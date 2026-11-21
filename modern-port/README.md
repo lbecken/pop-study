@@ -25,9 +25,24 @@ checkout of the original source and is never stored in this repository.
 | Characters, swords, impact stars and falling floors: which are listed for drawing, where, cut how (`TOPCTRL.S` `addchars`, `CTRLSUBS.S`, `MOVER.S` `ADDMOBS`), and their drawing with save-under | ported; the list compared on random game states, the two pages on random lists |
 | Messages, the two display pages, screen changes; a whole frame of the game with its drawing (`TOPCTRL.S` `DoFast`, `DoCleanCut`, `SUBS.S` `PAGEFLIP`, `GAMEBG.S`) | ported; the demo and random play compared with the original frame by frame, both hi-res pages byte for byte |
 | From page bytes to pixels: the dots, and a simple model of the colours a monitor makes of them (`pop_present.c`; not from the game's source) | done; the colours checked by eye only |
-| Reading keys and joystick, sound output, music, SDL3 shell | not started (hooks) |
+| A program to start: the game as one object (`src/app`), a headless player, and an SDL3 shell (`src/sdl`: window, keys, sound effects, fixed timestep) | new code; draws exactly what the tested runner draws; the shell has only been run without a display |
+| Title sequence, scenes with the princess, endings, music, saved games, the original's special keys | not ported |
 
-There is no runnable game yet and no SDL3 dependency yet. The nearest thing
+With SDL3 installed the build produces `pop_sdl`, which plays the levels of
+your checkout in a window:
+
+```
+cmake -S . -B build -DPOP_SOURCE_DIR=<original checkout> [-DCMAKE_PREFIX_PATH=<SDL3 prefix>]
+cmake --build build
+build/pop_sdl --source <original checkout> --data build/data [--level 1]
+```
+
+Arrows (or J L I K, U O) and Shift; `../docs/port/shell.md` has the rest and,
+importantly, what of it has never been tried: it was written and tested on a
+machine without a display. Without SDL3, `build/pop_headless` plays the game
+into PNG frames and a WAV file.
+
+The strongest evidence that the port is right
 is `tests/replay_frames.py demo`, which plays the original's demo level in
 the port, one `pop_mainloop` call per frame with the drawing code behind its
 hooks, next to the original's `MainLoop` and blitter in a 6502 simulator,
@@ -48,12 +63,15 @@ See `../docs/port/` for per-subsystem notes and `../docs/milestones.md` for the 
 src/core/     game rules; no I/O, no SDL
 src/audio/    effect data to PCM; no I/O, no SDL
 src/video/    the blitter, display lists and screen redraw: hi-res page bytes; no I/O, no SDL
-src/assets/   loaders for generated data files
+src/assets/   loaders for generated data files and for the original's image files
+src/app/      the game as one object: files, levels, keys, sound samples; no SDL
+src/sdl/      the SDL3 shell (built when SDL3 is found)
 tools/        command-line helpers (pop_seqdump, pop_sfxdump, pop_worldrun,
-              pop_hiresrun, pop_gfxrun)
+              pop_hiresrun, pop_gfxrun, pop_headless), render_demo.py
 tests/        C tests, C-versus-Python comparisons, and C-versus-original
               comparisons (fuzz_world.py, fuzz_control.py, trace_kidstep.py,
-              replay_demo.py, fuzz_hires.py, compare_rooms.py)
+              replay_demo.py, fuzz_hires.py, compare_rooms.py, compare_fast.py,
+              replay_frames.py), checks of the shell (check_app.py, check_sdl.py)
 ```
 
 ## Build and test
