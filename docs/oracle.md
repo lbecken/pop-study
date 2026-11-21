@@ -50,14 +50,14 @@ the port does not have yet (`modern-port/tests/fuzz_control.py`):
 | Trapped | Why | The trap |
 | --- | --- | --- |
 | `dimchar` (`GRAFIX.S:879-883`) | reads image tables in main memory | answers width and height from the same image files |
-| `inverty`, `addreflobj`, `attractmode` | drawing and game flow | records the call |
+| `inverty`, `attractmode` | drawing and game flow | records the call |
 | `LoadDesel`, `getdesel`, `SaveDesel` | the second input device | records the call |
 | a read of `$C030` | the speaker | recorded through `on_read` |
 | `GOATTRACT`, `YouLose`, `YouWin`, `RESTART`, `attractmode` | jumps that abandon the frame and reset the stack | records the call and **ends the run there** (a Python exception out of the simulator), as the jump ends the frame in the game |
 | `MainLoop` | the loop's own way round | ends the run without a record: one pass is one test step |
 | `strobe` | keyboard and joystick hardware | records the call; the test sets `kbdX`, `kbdY`, `BTN0`, `BTN1`, `keypress` |
 | `sure`, `fast`, `PageFlip`, `zeropeels`, `continuemsg`, `printlevel`, `timeleftmsg`, `doflashon`, `doflashoff` | drawing | records the call (with the flash colour) |
-| `lrcls`, `lrclse`, `vblank`, `copyscrn`, `drawall`, `zerolsts`, `addmobs`, `setupkid`, `setupshad`, `setupcomix`, `setupsword`, `fastspeed`, `normspeed`, `burn`, `listtorches` | drawing | nothing |
+| `lrcls`, `lrclse`, `vblank`, `copyscrn`, `drawall`, `fastspeed`, `normspeed`, `burn`, `listtorches` | drawing | nothing. (Until milestone 10c-2 also `zerolsts`, `addmobs`, `setupkid`, `setupshad`, `setupcomix`, `setupsword`, `addreflobj`: these now run, and what they leave in the object list and the redraw buffers is compared) |
 | `playback`, `minit`, `mplay`, `gtone`, `musickeys` | sound | records the call (with the queued sounds, the song number); `mplay` answers "song over" |
 | `cutprincess`, `playcut`, `flipdisk`, `yellow`, `setrecheck0`, `recheckyel` | scenes, disk, copy protection | records the scene number; the disk check answers "no error" |
 | reads of `$C061`, `$C062` | the buttons, read directly by `DEMOKEYS` | memory there is set from `BTN0`, `BTN1` |
@@ -111,11 +111,18 @@ o.call("DoSure", module="TOPCTRL")       # the original's full-screen redraw
 page = o.page(1)                          # 8192 bytes of hi-res page 1
 ```
 
-Three things in it are this project's, not the original's:
+Five things in it are this project's, not the original's:
 
 - **Image tables are relocated on loading.** The pointers in the image files
   assume `$6000`; tables kept elsewhere need them moved, and no game code
   does it (`docs/port/blitter.md` §8, unknown G4).
+- **Only the table of an image file is loaded**, up to the end of its last
+  image. Some files are longer than their table and than the space the
+  game has for it (`docs/port/frame-drawing.md` §5); loading a table over
+  another one is refused.
+- **The copy-protection flag `purpleflag` is 1**, as a passed check leaves
+  it (`docs/port/redraw.md` §3). With the 0 that the bare modules start
+  with, save-under entries are misfiled on palace levels.
 - **`UNPACK.S` is not loaded** (its macros are beyond the assembler). The
   one routine of it that the game calls during play, `INVERTY`, has an
   identical twin in `HIRES.S`; a jump to the twin stands at `UNPACK`'s

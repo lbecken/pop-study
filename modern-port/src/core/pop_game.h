@@ -117,7 +117,6 @@ typedef struct pop_game_hooks {
     void (*flash_on)(void *ctx, uint8_t colour);             /* doflashon */
     void (*flash_off)(void *ctx);        /* doflashoff */
     void (*invert_y)(void *ctx);         /* inverty: turn the picture upside down / back */
-    void (*add_refl_obj)(void *ctx);     /* addreflobj: draw the kid's reflection */
 
     /* sound */
     void (*playback)(void *ctx);         /* playback: play the queued effects */
@@ -134,6 +133,13 @@ typedef struct pop_game_hooks {
 /* Why the level being played was left (pop_game.leave). */
 enum {
     POP_LEAVE_NONE = 0, POP_LEAVE_ATTRACT, POP_LEAVE_LOSE, POP_LEAVE_WIN, POP_LEAVE_RESTART
+};
+
+/* The object list, EQ.S 299, and the kinds of object, GAMEBG.S / FRAMEADV.S. */
+enum {
+    POP_MAXOBJ = 20,
+    POP_OBJ_KID = 0, POP_OBJ_SHAD = 1, POP_OBJ_GD = 2, POP_OBJ_SWORD = 3, POP_OBJ_REFLECT = 4,
+    POP_OBJ_COMIX = 5, POP_OBJ_FF = 0x80
 };
 
 /* The redraw buffers are one block of memory (EQ.S 218-229): 30 bytes each,
@@ -201,6 +207,17 @@ typedef struct pop_game {
     /* --- character as set up for drawing and collision (SETUPCHAR, GETEDGES) --- */
     uint8_t  FCharImage, FCharY, FCharFace, FCharCU, FCharCD, FCharCL, FCharCR, FCharTable;
     uint16_t FCharX;
+    uint8_t  FCharIndex;                 /* the block it is drawn with, 30 off screen, $FF on top of all */
+
+    /* --- the object list (EQ.S 339-350): what is to be drawn besides the
+     *     level, filled anew each frame.  objX[0] is the count.  A slot
+     *     keeps what its last user wrote: a falling floor does not set
+     *     every field (MOVER.S addmobobj) --- */
+    uint8_t  objINDX[POP_MAXOBJ], objX[POP_MAXOBJ], objOFF[POP_MAXOBJ], objY[POP_MAXOBJ],
+             objIMG[POP_MAXOBJ], objFACE[POP_MAXOBJ], objTYP[POP_MAXOBJ], objCU[POP_MAXOBJ],
+             objCD[POP_MAXOBJ], objCL[POP_MAXOBJ], objCR[POP_MAXOBJ], objTAB[POP_MAXOBJ];
+    uint8_t  backtolife;                 /* (GAMEEQ.S 430) set only by a development key the final build lacks */
+    uint8_t  doortop;                    /* top line of the exit door as drawn (FRAMEADV), for CROPCHAR */
     uint8_t  imwidth, imheight;
     uint8_t  leftej, rightej, topej;
     uint8_t  leftblock, rightblock, topblock, bottomblock;

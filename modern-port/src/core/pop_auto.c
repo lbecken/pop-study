@@ -5,6 +5,7 @@
  */
 
 #include "pop_auto.h"
+#include "pop_objs.h"
 
 #include "pop_collide.h"
 #include "pop_control.h"
@@ -308,7 +309,7 @@ void pop_reflection(pop_game *g)
     if (top >= g->FCharY) return;
     g->FCharCU = top;                          /* crop to the mirror */
     g->FCharCL = u8((g->ch.block_x << 2) + 1);
-    if (g->hooks.add_refl_obj) g->hooks.add_refl_obj(g->hooks.ctx);
+    pop_addcharobj(g, POP_OBJ_REFLECT);        /* addreflobj */
 }
 
 void pop_bonesrise(pop_game *g)

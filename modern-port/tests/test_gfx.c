@@ -551,6 +551,129 @@ static void test_fast(void)
     CHECK_EQ(v.unmodelled | g.unmodelled, 0);
 }
 
+static void obj(uint8_t slot, uint8_t typ, uint8_t indx, uint8_t x, uint8_t y, uint8_t img)
+{
+    g.objTYP[slot] = typ; g.objINDX[slot] = indx; g.objX[slot] = x; g.objY[slot] = y;
+    g.objIMG[slot] = img; g.objOFF[slot] = 0; g.objFACE[slot] = 0xFF; g.objTAB[slot] = 0;
+    g.objCU[slot] = 0; g.objCD[slot] = 192; g.objCL[slot] = 0; g.objCR[slot] = 40;
+    if (slot > g.objX[0]) g.objX[0] = slot;
+}
+
+static void test_objects(void)
+{
+    setup();
+    /* a character: saved under and drawn masked from a character table,
+     * when the block it is indexed to is marked */
+    obj(1, POP_OBJ_KID, 12, 9, 100, 3);
+    g.objFACE[1] = 0;                          /* facing right: drawn mirrored */
+    g.objCU[1] = 65; g.objCL[1] = 4; g.objOFF[1] = 5; g.objTAB[1] = 2;
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(listed(), 0);                     /* no mark, no character */
+    g.rb[POP_RB_OBJ + 12] = 1;
+    pop_fast(&v, &g);
+    CHECK_EQ(v.midX[0], 1);
+    CHECK_EQ(v.midX[1], 9); CHECK_EQ(v.midOFF[1], 5); CHECK_EQ(v.midY[1], 100);
+    CHECK_EQ(v.midIMG[1], 3); CHECK_EQ(v.midTAB[1], 2);
+    CHECK_EQ(v.midTYP[1], POP_MID_LAYSAVE | POP_MID_CHARTABLE);
+    CHECK_EQ(v.midOP[1], POP_OP_MASK | 0x80);
+    CHECK_EQ(v.midCU[1], 65); CHECK_EQ(v.midCD[1], 192); CHECK_EQ(v.midCL[1], 4); CHECK_EQ(v.midCR[1], 40);
+    CHECK_EQ(g.rb[POP_RB_OBJ + 12], 0);        /* cleared, not counted down */
+
+    /* merging with the shadow: every other frame the kid is drawn as the shadow is */
+    g.mergetimer = 3;
+    g.rb[POP_RB_OBJ + 12] = 1;
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(v.midOP[1], POP_OP_EOR | 0x80);
+    g.mergetimer = 0x83;                       /* (negative: not merging) */
+    g.rb[POP_RB_OBJ + 12] = 1;
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(v.midOP[1], POP_OP_MASK | 0x80);
+    g.mergetimer = 0;
+    g.backtolife = 1;                          /* blinking: on page 2 only */
+    g.rb[POP_RB_OBJ + 12] = 1;
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(v.midX[0], 0);
+    v.hr.PAGE = 0x20;
+    g.rb[POP_RB_OBJ + 12] = 1;
+    pop_fast(&v, &g);
+    CHECK_EQ(v.midX[0], 1);
+    v.hr.PAGE = 0;
+    g.backtolife = 0;
+
+    /* the kinds: shadow XORed; sword and star as the kid; a guard of the
+     * other colour one dot to the right; an unknown kind not at all */
+    g.objX[0] = 0;
+    obj(1, POP_OBJ_SHAD, 30, 5, 90, 1);        /* index 30: off the screen, drawn first, unmarked */
+    obj(2, POP_OBJ_SWORD, 30, 6, 80, 2);
+    obj(3, POP_OBJ_COMIX, 0xFF, 7, 70, 3);     /* index $FF: on top of everything, drawn last */
+    obj(4, POP_OBJ_GD, 30, 8, 60, 1);
+    g.objOFF[4] = 6;
+    obj(5, 6, 30, 9, 50, 1);
+    obj(6, POP_OBJ_REFLECT, 30, 10, 40, 1);
+    g.GuardColor = 1;
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(v.midX[0], 5);
+    /* (already in order: the lowest on the screen first) */
+    CHECK_EQ(v.midY[1], 90); CHECK_EQ(v.midOP[1], POP_OP_EOR);
+    CHECK_EQ(v.midY[2], 80); CHECK_EQ(v.midOP[2], POP_OP_MASK);
+    CHECK_EQ(v.midY[3], 60); CHECK_EQ(v.midOP[3], POP_OP_MASK);
+    CHECK_EQ(v.midX[3], 9); CHECK_EQ(v.midOFF[3], 0);        /* 8 + 6 dots, one more */
+    CHECK_EQ(v.midY[4], 40);
+    CHECK_EQ(v.midY[5], 70); CHECK_EQ(v.midIMG[5], 3);
+    g.GuardColor = 0;
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(v.midX[3], 8); CHECK_EQ(v.midOFF[3], 6);
+
+    /* The sort makes one pass.  Three characters at 100, 120, 140 come
+     * out as 140, 100, 120; in order would be 140, 120, 100. */
+    g.objX[0] = 0;
+    obj(1, POP_OBJ_KID, 30, 1, 100, 1);
+    obj(2, POP_OBJ_GD, 30, 2, 120, 1);
+    obj(3, POP_OBJ_GD, 30, 3, 140, 1);
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(v.midX[0], 3);
+    CHECK_EQ(v.midY[1], 140); CHECK_EQ(v.midY[2], 100); CHECK_EQ(v.midY[3], 120);
+    /* an opponent never moves towards the back */
+    g.objX[0] = 0;
+    obj(1, POP_OBJ_KID, 30, 1, 100, 1);
+    obj(2, POP_OBJ_SHAD, 30, 2, 150, 1);
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(v.midY[1], 100); CHECK_EQ(v.midY[2], 150);
+
+    /* a falling floor: the loose floor's sections, at the mover's place */
+    tables[bg.maska + POP_FLOOR] = 0x11;
+    tables[bg.loosea + 10] = 0x12;
+    tables[bg.loosed + 10] = 0x13;
+    g.objX[0] = 0;
+    obj(1, POP_OBJ_FF, 14, 16, 90, 10);
+    g.objFACE[1] = 0;                          /* (whatever the slot held: never mirrored) */
+    g.objCU[1] = 20;
+    g.rb[POP_RB_OBJ + 14] = 1;
+    pop_zerolsts(&v);
+    pop_fast(&v, &g);
+    CHECK_EQ(v.midX[0], 4);
+    CHECK_EQ(v.midIMG[1], 0x11); CHECK_EQ(v.midOP[1], POP_OP_AND); CHECK_EQ(v.midY[1], 87);
+    CHECK_EQ(v.midTYP[1], POP_MID_LAYSAVE); CHECK_EQ(v.midCU[1], 20);
+    CHECK_EQ(v.midIMG[2], 0x12); CHECK_EQ(v.midOP[2], POP_OP_ORA); CHECK_EQ(v.midTYP[2], POP_MID_LAY);
+    CHECK_EQ(v.midIMG[3], 0x13); CHECK_EQ(v.midOP[3], POP_OP_STA); CHECK_EQ(v.midY[3], 90);
+    CHECK_EQ(v.midIMG[4], 0x29); CHECK_EQ(v.midX[4], 20); CHECK_EQ(v.midY[4], 86);
+    CHECK_EQ(v.midTYP[4], POP_MID_LAYSAVE);
+    CHECK_EQ(v.unmodelled | g.unmodelled, 0);
+
+    g.objX[0] = 25;                            /* more entries than the list has places for */
+    g.rb[POP_RB_OBJ + 14] = 1;
+    pop_fast(&v, &g);
+    CHECK_EQ(v.unmodelled, 1);
+}
+
 int main(void)
 {
     RUN(test_images);
@@ -562,5 +685,6 @@ int main(void)
     RUN(test_pieces_with_state);
     RUN(test_meters);
     RUN(test_fast);
+    RUN(test_objects);
     return pop_test_summary();
 }

@@ -204,3 +204,35 @@ def test_the_two_inverty_routines_are_the_same_code():
         return [line for line in lines if line.strip()]
     unpack, hires = body("UNPACK.S", 540, 565), body("HIRES.S", 2098, 2123)
     assert unpack[0].split()[0] == "INVERTY" and unpack == hires
+
+
+def test_only_the_table_of_an_image_file_is_loaded():
+    """IMG.CHTAB4.GD is longer than the space the game has for it; its
+    images end well inside (docs/port/frame-drawing.md §5)."""
+    from pop_banked import AUX
+    from pop_gfx_oracle import GfxOracle
+    from pop_oracle import BLUEPRINT
+    o = GfxOracle(SOURCE)
+    level = bytes(range(256)) * 9
+    o.load_level(level)
+    o.load_table("chtable4", "IMG.CHTAB4.GD")
+    assert o.cpu.peek(BLUEPRINT, AUX, len(level)) == level    # the level begins at $B700
+    assert o.cpu.peek(0x9600, AUX) == 32
+    assert o.cpu.peek(0x9600 + 5281, AUX, 16) == bytes(16)    # nothing after the last image
+    with pytest.raises(ValueError):
+        o.load_table("chtable7", "IMG.CHTAB7")                # in play its place is taken
+    o.reset()
+    o.load_table("chtable7", "IMG.CHTAB7")                    # (a reset forgets what was loaded)
+
+
+def test_the_tail_of_the_guard_table_is_the_kid_table():
+    images = os.path.join(SOURCE, "01 POP Source", "Images")
+    with open(os.path.join(images, "IMG.CHTAB4.GD"), "rb") as f:
+        gd = f.read()
+    with open(os.path.join(images, "IMG.CHTAB1"), "rb") as f:
+        kid = f.read()
+    end = (gd[1 + 2 * gd[0]] | (gd[2 + 2 * gd[0]] << 8)) - 0x6000
+    kid_end = (kid[1 + 2 * kid[0]] | (kid[2 + 2 * kid[0]] << 8)) - 0x6000
+    assert (len(gd), end, kid_end) == (8999, 5281, 8999)
+    same = sum(1 for i in range(end, len(gd)) if gd[i] == kid[i])
+    assert same == 3636                                       # of 3,718

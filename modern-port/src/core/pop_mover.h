@@ -29,9 +29,10 @@
  *               ADDLOWERSOUND 1373-1406, MIRAPPEAR 1743-1758
  *   GRAFIX.S    RND 1386-1395
  *
- * (GETSPIKES is in pop_control.c.)  Not ported: ADDMOBS, ATM, addmobobj
- * (MOVER.S 1984-2112), which put falling floors on the list of things to
- * draw.
+ *   MOVER.S     ADDMOBS 1984, ATM 2004, addmobobj 2085: falling floors
+ *               onto the list of things to draw (pop_objs.h)
+ *
+ * (GETSPIKES is in pop_control.c.)
  *
  * Routines documented as taking "RDBLOCK results" use g->ry (the block
  * index, as the Y register) and the screen selected by the last calcblue.
@@ -81,6 +82,7 @@ void pop_addtrob(pop_game *g);
  * stopped.  ANIMMOBS: the same for falling floors, with crushing. */
 void pop_animtrans(pop_game *g);
 void pop_animmobs(pop_game *g);
+void pop_addmobs(pop_game *g);          /* ADDMOBS: the falling floors in sight onto the object list */
 
 /* --- triggers: In: the block last read (g->ry, calcblue) ------------------------------- */
 

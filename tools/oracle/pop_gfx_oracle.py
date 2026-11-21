@@ -76,10 +76,16 @@ class GfxOracle:
         # a test compares the two texts), so a jump to the latter stands in.
         target = self.modules["HIRES"].symbols["INVERTY"]
         self.cpu.load_bank(UNPACK_INVERTY, bytes([0x4C, target & 0xFF, target >> 8]), MAIN)
+        # The copy-protection flag as a passed check leaves it (set to 1 by
+        # `flipdisk`, TOPCTRL.S 1546-1549).  With 0, the save-under entries
+        # of the second page are misfiled on palace levels (GRAFIX.S 441-446).
+        self.cpu.poke(self.modules["GRAFIX"].symbols["purpleflag"] & 0xFFFF, AUX, 1)
         self.cpu.set_altzp(AUX)                      # the state the game runs in
         self.cpu.set_ramrd(AUX)
         self.cpu.ramwrt = AUX
         self._image = self.cpu.snapshot()
+        self._tables = {}            # table -> (start, end, bank) of what is loaded
+        self._kept = {}
 
     # -- addresses --------------------------------------------------------------------
 
@@ -94,10 +100,12 @@ class GfxOracle:
     def reset(self) -> None:
         self.cpu.restore(self._image)
         self.cpu.cycles = 0
+        self._tables = dict(self._kept)
 
     def keep(self) -> None:
         """Make the present memory (image tables loaded, say) what reset() returns to."""
         self._image = self.cpu.snapshot()
+        self._kept = dict(self._tables)
 
     def load_table(self, table: str, filename: str) -> None:
         """Load an image file where the game keeps that table.
@@ -111,6 +119,20 @@ class GfxOracle:
         address, bank = TABLES[table]
         with open(os.path.join(self.source, IMAGES, filename), "rb") as f:
             data = bytearray(f.read())
+        # A file can be longer than its table: IMG.CHTAB4.GD is 8,999 bytes,
+        # of which the 32 images end at 5,281; the game's loader reads 24
+        # sectors of it (MASTER.S 549-586) and the space ends at $B600,
+        # where the level data begins (EQ.S 27).  Only the table is loaded:
+        # the last of its count + 1 pointers is where the images end.
+        last = 1 + 2 * data[0]
+        end = (data[last] | (data[last + 1] << 8)) - FILE_BASE
+        if not 0 < end <= len(data):
+            raise ValueError("%s: the table's end pointer is outside the file" % filename)
+        del data[end:]
+        for other, (start, stop, where) in self._tables.items():
+            if other != table and where == bank and address < stop and start < address + end:
+                raise ValueError("%s would overlap %s" % (table, other))
+        self._tables[table] = (address, address + end, bank)
         shift = address - FILE_BASE
         for i in range(data[0] + 1):                 # count + 1 pointers
             at = 1 + 2 * i

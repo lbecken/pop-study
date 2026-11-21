@@ -660,7 +660,11 @@ void pop_hr_fastmask(pop_hires *h, pop_image im)
 
 void pop_hr_peel(pop_hires *h, uint16_t peelimg)
 {
-    if (peelimg < POP_PEEL_BASE) { h->unmodelled = 1; return; }
+    /* (a list entry can point past the buffers: LAYRSAVE does not stop at their end) */
+    if (peelimg < POP_PEEL_BASE || peelimg - POP_PEEL_BASE >= POP_PEEL_SIZE) {
+        h->unmodelled = 1;
+        return;
+    }
     fast(h, h->peelmem + (peelimg - POP_PEEL_BASE),
          (size_t)(POP_PEEL_BASE + POP_PEEL_SIZE - peelimg), 1, FAST_STA);
 }

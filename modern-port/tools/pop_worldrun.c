@@ -43,6 +43,7 @@
 #include "pop_control.h"
 #include "pop_loop.h"
 #include "pop_mover.h"
+#include "pop_objs.h"
 #include "pop_top.h"
 #include "pop_world.h"
 
@@ -60,7 +61,6 @@ static void log_hex(char c, uint8_t v)
     log_hook("0123456789abcdef"[v & 15]);
 }
 static void h_invert(void *ctx) { (void)ctx; log_hook('v'); }
-static void h_refl(void *ctx) { (void)ctx; log_hook('r'); }
 static void h_attract(void *ctx) { (void)ctx; log_hook('a'); }
 static void h_click(void *ctx) { (void)ctx; log_hook('k'); }
 static void h_goattract(void *ctx) { (void)ctx; log_hook('A'); }
@@ -161,6 +161,7 @@ static var vars[] = {
     { "kbdY", &g.kbdY }, { "joyX", &g.joyX }, { "joyY", &g.joyY }, { "joyon", &g.joyon },
     { "NextTimeMsg", &g.NextTimeMsg }, { "soundon", &g.soundon },
     { "FrameCount", &g.FrameCount[0] }, { "FrameCountH", &g.FrameCount[1] },
+    { "FCharIndex", &g.FCharIndex }, { "doortop", &g.doortop },
     { "X", &g.rx }, { "Y", &g.ry }, { "blue", &g.blue },
     { "unmodelled", &g.unmodelled },
 };
@@ -191,6 +192,12 @@ static buf bufs[] = {
     { "mobscrn", g.mobscrn, POP_MOBSPACE }, { "mobvel", g.mobvel, POP_MOBSPACE },
     { "mobtype", g.mobtype, POP_MOBSPACE }, { "moblevel", g.moblevel, POP_MOBSPACE },
     { "clrSEL", g.clrSEL, 5 }, { "clrDESEL", g.clrDESEL, 5 },
+    { "objINDX", g.objINDX, POP_MAXOBJ }, { "objX", g.objX, POP_MAXOBJ },
+    { "objOFF", g.objOFF, POP_MAXOBJ }, { "objY", g.objY, POP_MAXOBJ },
+    { "objIMG", g.objIMG, POP_MAXOBJ }, { "objFACE", g.objFACE, POP_MAXOBJ },
+    { "objTYP", g.objTYP, POP_MAXOBJ }, { "objCU", g.objCU, POP_MAXOBJ },
+    { "objCD", g.objCD, POP_MAXOBJ }, { "objCL", g.objCL, POP_MAXOBJ },
+    { "objCR", g.objCR, POP_MAXOBJ }, { "objTAB", g.objTAB, POP_MAXOBJ },
 };
 #define NBUFS (sizeof bufs / sizeof bufs[0])
 #define NVARS16 (sizeof vars16 / sizeof vars16[0])
@@ -433,6 +440,21 @@ static int run(const char *r, uint8_t a, uint8_t x, uint8_t y, int *out)
     if (!strcmp(r, "loadnextlevel")) DO(pop_loadnextlevel(&g));
     if (!strcmp(r, "loadnext1"))    DO(pop_loadnext1(&g));
     if (!strcmp(r, "mainloop"))     DO((void)pop_mainloop(&g));
+    if (!strcmp(r, "markfloor"))    { int c = x & 1; g.ry = y; pop_markfloor(&g, a, &c); RET(c); }
+    if (!strcmp(r, "markhalf"))     { int c = x & 1; g.ry = y; pop_markhalf(&g, a, &c); RET(c); }
+    if (!strcmp(r, "addfcharx"))    DO(pop_addfcharx(&g, a));
+    if (!strcmp(r, "addcharobj"))   DO(pop_addcharobj(&g, a));
+    if (!strcmp(r, "indexchar"))    DO(pop_indexchar(&g));
+    if (!strcmp(r, "quickfloor"))   DO(pop_quickfloor(&g));
+    if (!strcmp(r, "quickfg"))      DO(pop_quickfg(&g));
+    if (!strcmp(r, "cropchar"))     DO(pop_cropchar(&g));
+    if (!strcmp(r, "unevenfloor"))  DO(pop_unevenfloor(&g));
+    if (!strcmp(r, "setupsword"))   DO(pop_setupsword(&g));
+    if (!strcmp(r, "setupcomix"))   DO(pop_setupcomix(&g));
+    if (!strcmp(r, "setupkid"))     DO(pop_setupkid(&g));
+    if (!strcmp(r, "setupshad"))    DO(pop_setupshad(&g));
+    if (!strcmp(r, "addchars"))     DO(pop_addchars(&g));
+    if (!strcmp(r, "addmobs"))      DO(pop_addmobs(&g));
     return 0;
 #undef RET
 #undef DO
@@ -492,7 +514,6 @@ int main(int argc, char **argv)
         g.dims = &dims.dims;
     }
     g.hooks.invert_y = h_invert;
-    g.hooks.add_refl_obj = h_refl;
     g.hooks.attract_mode = h_attract;
     g.hooks.speaker_click = h_click;
     g.hooks.go_attract = h_goattract;

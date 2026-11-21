@@ -8,16 +8,19 @@
  *   L <hex>              a level (2304 bytes); game and drawing state are reset
  *   T <n> <path>         image table: 1, 2 = bgtable1, bgtable2; 11-17 = chtable1-7
  *   S name=value ...     level BGset1 KidScrn KidBlockX KidBlockY PAGE
- *                        KidStrength MaxKidStr OppStrength ShadID
+ *                        KidStrength MaxKidStr OppStrength ShadID mergetimer
+ *                        GuardColor backtolife
  *   P index=value ...    poke level bytes
  *   H <hex>              the redraw buffers (310 bytes)
+ *   O <n> <12 numbers per object>   the object list: INDX X OFF Y IMG FACE TYP CU CD CL CR TAB
  *   R setinitials        SETINITIALS
  *   R room <screen>      GETSCRNS, then DoSure: SURE, the lists drawn
  *   R fast               ZEROLSTS, FAST, DRAWALL on the screen of the last room
  *   R lists              print the lists of the last room
  * Output of `R room`: unmodelled, CRC-32 of the page drawn and of the
  * three lists, and the lists' lengths.  `R fast` adds the message and wipe
- * lists, the redraw buffers afterwards and the two meter flags.
+ * lists, the redraw buffers afterwards, the two meter flags, the other
+ * hi-res page and the save-under list of the page drawn.
  */
 
 #include <stdio.h>
@@ -159,9 +162,26 @@ int main(int argc, char **argv)
                 else if (!strcmp(tok, "MaxKidStr")) g.MaxKidStr = (uint8_t)val;
                 else if (!strcmp(tok, "OppStrength")) g.OppStrength = (uint8_t)val;
                 else if (!strcmp(tok, "ShadID")) g.shad.id = (uint8_t)val;
+                else if (!strcmp(tok, "mergetimer")) g.mergetimer = (uint8_t)val;
+                else if (!strcmp(tok, "GuardColor")) g.GuardColor = (uint8_t)val;
+                else if (!strcmp(tok, "backtolife")) g.backtolife = (uint8_t)val;
                 else { fprintf(stderr, "unknown variable %s\n", tok); return 2; }
                 tok = strtok(NULL, " \n");
             }
+        } else if (line[0] == 'O') {
+            uint8_t *field[12] = { g.objINDX, g.objX, g.objOFF, g.objY, g.objIMG, g.objFACE,
+                                   g.objTYP, g.objCU, g.objCD, g.objCL, g.objCR, g.objTAB };
+            char *tok = strtok(line + 1, " \n");
+            long n = tok ? strtol(tok, NULL, 10) : -1, k, f;
+            if (n < 0 || n >= POP_MAXOBJ) { fprintf(stderr, "bad O line\n"); return 2; }
+            for (k = 1; k <= n; k++) {
+                for (f = 0; f < 12; f++) {
+                    tok = strtok(NULL, " \n");
+                    if (!tok) { fprintf(stderr, "bad O line\n"); return 2; }
+                    field[f][k] = (uint8_t)strtol(tok, NULL, 10);
+                }
+            }
+            g.objX[0] = (uint8_t)n;
         } else if (line[0] == 'H') {
             const char *h = line + 2;
             for (i = 0; i < POP_RB_SIZE; i++) {
@@ -193,11 +213,21 @@ int main(int argc, char **argv)
                 pop_fast(&v, &g);
                 pop_drawall(&v, &g);
                 print_lists();
-                printf(" msg=%08lx wipe=%08lx nmsg=%u nwipe=%u rb=%08lx redkid=%u redopp=%u\n",
-                       (unsigned long)list_crc(v.msgX, v.msgY, v.msgIMG, v.msgOP, v.msgOFF),
-                       (unsigned long)wipe_crc(), (unsigned)v.msgX[0], (unsigned)v.wipeX[0],
-                       (unsigned long)crc32(0, g.rb, POP_RB_SIZE), (unsigned)v.redkidmeter,
-                       (unsigned)v.redoppmeter);
+                {
+                    size_t base = v.hr.PAGE ? POP_MAXPEEL : 0, n = v.peelX[base];
+                    uint32_t peel = crc32(0, v.peelX + base + 1, n);
+                    peel = crc32(peel, v.peelY + base + 1, n);
+                    peel = crc32(peel, v.peelIMGL + base + 1, n);
+                    peel = crc32(peel, v.peelIMGH + base + 1, n);
+                    printf(" msg=%08lx wipe=%08lx nmsg=%u nwipe=%u rb=%08lx redkid=%u redopp=%u"
+                           " other=%08lx peel=%08lx npeel=%u\n",
+                           (unsigned long)list_crc(v.msgX, v.msgY, v.msgIMG, v.msgOP, v.msgOFF),
+                           (unsigned long)wipe_crc(), (unsigned)v.msgX[0], (unsigned)v.wipeX[0],
+                           (unsigned long)crc32(0, g.rb, POP_RB_SIZE), (unsigned)v.redkidmeter,
+                           (unsigned)v.redoppmeter,
+                           (unsigned long)crc32(0, v.hr.vram + (v.hr.PAGE ? 0 : POP_HR_PAGE), POP_HR_PAGE),
+                           (unsigned long)peel, (unsigned)n);
+                }
             } else if (!strcmp(name, "lists")) {         /* for a failing case: the lists in full */
                 unsigned k;
                 for (k = 1; k <= v.bgX[0]; k++)

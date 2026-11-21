@@ -20,7 +20,14 @@ bytes of the page drawn on, the five display lists (background, foreground,
 mid, message, wipe), the 310 bytes of the redraw buffers and the two meter
 flags must be equal.
 
-There are no characters in this test: the object list is empty.
+Each step also gets a random object list (GAMEEQ.S 665-671: kid, shadow,
+guard, sword, reflection, impact star, falling floor) with images from the
+character tables, positions on and off the screen, crops, and the block
+each is to be drawn with; and the page drawn on may change from step to
+step, as it does in play, so that what was saved under a character is put
+back two steps later.  The other hi-res page and the save-under list of
+the page drawn are compared as well.  How the game fills the object list
+is a different test (fuzz_control.py).
 
 Usage:
     compare_fast.py <pop_gfxrun> <data dir> <original checkout> [screens per level] [seed]
@@ -53,21 +60,39 @@ RB = {"half": 60, "red": 90, "fred": 120, "floor": 150, "wipe": 180, "move": 210
 LISTS = cr.LISTS + (("msg", ("msgX", "msgY", "msgIMG", "msgOP", "msgOFF")),
                     ("wipe", ("wipeX", "wipeY", "wipeH", "wipeW", "wipeCOL")))
 STEPS = 3                    # partial redraws after each full one
-CRCS = ("page", "back", "fore", "mid", "msg", "wipe", "rb")
-COUNTS = ("nback", "nfore", "nmid", "nmsg", "nwipe", "redkid", "redopp")
+CRCS = ("page", "other", "back", "fore", "mid", "msg", "wipe", "peel", "rb")
+COUNTS = ("nback", "nfore", "nmid", "nmsg", "nwipe", "npeel", "redkid", "redopp")
+# character tables: number as the runner's T command wants it, table, file.
+# chtable6 and chtable7 are for the princess scenes and take the place of
+# other tables (GAMEEQ.S 12-15); during play they are not in memory.
+CHTABLES = ((11, "chtable1", "IMG.CHTAB1"), (12, "chtable2", "IMG.CHTAB2"),
+            (13, "chtable3", "IMG.CHTAB3"), (14, "chtable4", "IMG.CHTAB4.GD"),
+            (15, "chtable5", "IMG.CHTAB5"))
+OBJ_FIELDS = ("objINDX", "objX", "objOFF", "objY", "objIMG", "objFACE", "objTYP", "objCU", "objCD",
+              "objCL", "objCR", "objTAB")
+MAXPEEL = 46
 
 
-def original_fast(o, page):
+def original_fast(o, page, objects):
     try:
         o.call("zerolsts")
+        o.set_vars({"objX": objects})        # (ZEROLSTS empties the object list too)
         o.set_vars({"SCRNUM": o.var("VisScrn")})
         o.call("fast", max_cycles=80_000_000)
         o.call("drawall", max_cycles=80_000_000)
     except CpuError:
         return None
     out = {"page": zlib.crc32(o.page(2 if page else 1)),
+           "other": zlib.crc32(o.page(1 if page else 2)),
            "rb": zlib.crc32(o.cpu.peek(REDBUFS, AUX, RB_SIZE)),
            "redkid": o.var("redkidmeter"), "redopp": o.var("redoppmeter")}
+    base = MAXPEEL if page else 0
+    count = o.cpu.peek(o.addr("peelX") + base, AUX)
+    out["npeel"] = count
+    out["peel"] = 0
+    for a in ("peelX", "peelY", "peelIMGL", "peelIMGH"):
+        out["peel"] = zlib.crc32(o.cpu.peek(o.addr(a) + base + 1, AUX, count) if count else b"",
+                                 out["peel"])
     text = []
     for name, arrays in LISTS:
         count = o.var(arrays[0])
@@ -108,11 +133,62 @@ def random_marks(rng):
     return rb
 
 
+def random_objects(rng, counts):
+    """An object list as ADDCHARS and ADDMOBS might leave it, and wilder."""
+    n = rng.choice((0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 6, 9))
+    together = rng.randrange(30) if rng.random() < 0.4 else None    # all in one block: sorted
+    objects = []
+    for _ in range(n):
+        typ = rng.choice((0, 0, 1, 2, 2, 3, 4, 5, 0x80, 0x80, 6))
+        tab = rng.choice((0, 0, 1, 2, 3, 4))
+        if typ == 0x80:
+            # the frame of the loose floor: the mover always gives 10
+            # ("falling"); earlier frames have images too
+            img, off, face = rng.choice((10, 10, 10, rng.randrange(11))), 0, rng.choice((0, 0xFF))
+            if rng.random() < 0.02:
+                img = rng.randrange(11, 14)
+        else:
+            img = rng.randint(1, counts[tab])
+            if rng.random() < 0.01:
+                img = rng.choice((0, counts[tab] + 1))
+            off, face = rng.randrange(7), rng.choice((0, 0xFF))
+        x = rng.choice((rng.randrange(40),) * 6 + (rng.randrange(251, 256), rng.randrange(40, 45)))
+        y = rng.choice((rng.randrange(20, 192),) * 6 + (rng.randrange(20), rng.randrange(192, 215)))
+        # CROPCHAR cuts at the top, the left and the right; the bottom cut
+        # is 192 unless a falling floor finds an older value in its slot
+        cu, cd, cl, cr = 0, 192, 0, 40
+        kind = rng.random()
+        if kind < 0.25:
+            # (always above the character's feet: CTRLSUBS.S 1369-1371)
+            cu = rng.choice([c for c in (2, 65, 128, rng.randrange(192)) if c < y] or [0])
+            if rng.random() < 0.5:
+                cl = rng.randrange(0, 37, 4) + rng.choice((0, 1))
+            if rng.random() < 0.5:
+                cr = rng.randrange(4, 41, 4)
+        elif kind < 0.30:
+            cu, cd = rng.randrange(192), rng.randrange(1, 193)
+            cl, cr = rng.randrange(40), rng.randrange(1, 41)
+        if together is not None and rng.random() < 0.8:
+            indx = together
+        else:
+            indx = rng.choice((rng.randrange(30),) * 6 + (30, 0xFF, 100))
+        objects.append((indx, x, off, y, img, face, typ, cu, cd, cl, cr, tab))
+    return objects
+
+
 def original_results(source, per_level, seed):
     bg = rr.load_bgdata(source)
     orig = cr.Original(source)
     o = orig.o
     commands, expected = [], []
+    counts = {}
+    for number, table, filename in CHTABLES:        # the same character tables throughout
+        o.load_table(table, filename)
+        path = os.path.join(source, cr.IMAGES, filename)
+        commands.append("T %d %s" % (number, path))
+        with open(path, "rb") as f:
+            counts[number - 11] = f.read(1)[0]
+    o.keep()
     for level_no in range(15):
         with open(os.path.join(source, "01 POP Source", "Levels", "LEVEL%d" % level_no), "rb") as f:
             level = f.read()
@@ -177,7 +253,24 @@ def original_results(source, per_level, seed):
                     o.cpu.poke(BLUEPRINT + where, AUX, value)
                 commands.append("P " + " ".join("%d=%d" % kv for kv in pokes.items()))
 
-            def fast(rb):
+            def fast(rb, forced=()):
+                nonlocal page
+                if rng.random() < 0.5:       # the game draws on the two pages in turn
+                    page ^= 0x20
+                    o.set_vars({"PAGE": page})
+                    commands.append("S PAGE=%d" % page)
+                objects = (random_objects(rng, counts) + list(forced))[:19]
+                for k, obj in enumerate(objects, 1):
+                    for name, value in zip(OBJ_FIELDS, obj):
+                        o.cpu.poke(o.addr(name) + k, AUX, value)
+                    # SETOBJINDX marks the block; sometimes the mark is missing
+                    if obj[0] < 30 and rng.random() < 0.9:
+                        rb[RB["obj"] + obj[0]] = 1
+                look = {"mergetimer": rng.choice((0, 0, 0, 1, 2, 3, 0x80, 0xFF)),
+                        "GuardColor": rng.choice((0, 1)),
+                        "backtolife": rng.choice((0, 0, 0, 0, 1))}
+                o.set_vars(look)
+                commands.append("S " + " ".join("%s=%d" % kv for kv in look.items()))
                 o.cpu.load_bank(REDBUFS, bytes(rb), AUX)
                 strength = {"KidStrength": rng.choice((0, 1, 1, 2, 3, 4, 5, 6, 7, 9, 10, 12)),
                             "MaxKidStr": rng.choice((0, 3, 3, 4, 5, 7, 10, 12)),
@@ -189,15 +282,17 @@ def original_results(source, per_level, seed):
                 o.set_vars(strength)
                 commands.append("H " + rb.hex())
                 commands.append("S " + " ".join("%s=%d" % kv for kv in strength.items()))
+                commands.append("O %d %s" % (len(objects), " ".join(str(f) for obj in objects for f in obj)))
                 commands.append("R fast")
-                expected.append((level_no, screen, "fast", original_fast(o, page) if drawn else None))
+                expected.append((level_no, screen, "fast",
+                                 original_fast(o, page, len(objects)) if drawn else None))
 
             for step in range(STEPS):
                 if rng.random() < 0.5:
                     change_states(0.05, screen)
                 rb = random_marks(rng)
                 kind = rng.random()
-                if kind < 0.1:
+                if kind < 0.04:
                     # A torch whose state is beyond the flame table is drawn
                     # with the image number and mode last used (SETUPFLAME
                     # sets neither).  Make its flame the first thing added,
@@ -218,7 +313,32 @@ def original_results(source, per_level, seed):
                     poke({at: 19, 720 + at: rng.choice((18, 19, 21, 255))})
                     rb = bytearray(RB_SIZE)
                     rb[RB["move"] + at % 30 + 1] = 1
-                elif kind < 0.25:
+                elif kind < 0.055:
+                    # The kid in a gate's block: the bars are drawn again
+                    # over him, at the column that drawing him has moved.
+                    at = (screen - 1) * 30 + rng.randrange(3) * 10 + rng.randrange(9)
+                    poke({at: 4, 720 + at: rng.choice(cr.STATES[4])})
+                    where = {"KidScrn": screen, "KidBlockX": at % 10, "KidBlockY": at % 30 // 10}
+                    o.set_vars(where)
+                    commands.append("S " + " ".join("%s=%d" % kv for kv in where.items()))
+                    rb = bytearray(RB_SIZE)
+                    rb[RB["fred"] + at % 30 + 1] = 1
+                    fast(rb, [(at % 30 + 1, rng.randrange(40), rng.randrange(7), 60 + 63 * (at % 30 // 10),
+                               rng.randint(1, counts[0]), rng.choice((0, 0xFF)), 0, 0, 192, 0, 40, 0)])
+                    continue
+                elif kind < 0.07:
+                    # the same after the block itself was redrawn, for the
+                    # pieces whose front part is drawn at another column
+                    at = (screen - 1) * 30 + rng.randrange(3) * 10 + rng.randrange(1, 10)
+                    piece = rng.choice((16, 3, 25) if set1 == 1 else (16,))
+                    pokes = {at: piece, at - 1: 0}
+                    if piece in cr.STATES:
+                        pokes[720 + at] = rng.choice(cr.STATES[piece])
+                    poke(pokes)
+                    rb = bytearray(RB_SIZE)
+                    rb[RB["half"] + at % 30] = 1
+                    rb[RB[rng.choice(("red", "red", "move"))] + at % 30] = 1
+                elif kind < 0.19:
                     # the floor piece under a character who climbs up or
                     # drops: each kind of piece that has, or lacks, a short
                     # version, with empty space to its left or not
@@ -249,7 +369,7 @@ def compare(runner, data, commands, expected):
         return 1
     which = [i for i, c in enumerate(commands) if c.startswith("R ")]   # one result line each
     failures = skipped = compared = 0
-    most = dict.fromkeys(COUNTS[:5], 0)
+    most = dict.fromkeys(COUNTS[:6], 0)
     meters = 0
     tainted = False
     for number, (line, (level_no, screen, what, want)) in enumerate(zip(lines, expected)):
@@ -296,12 +416,14 @@ def compare(runner, data, commands, expected):
     if skipped * 4 > compared + skipped:
         print("too many skipped: %d of %d" % (skipped, compared + skipped))
         return 1
-    print("%d partial redraws compared: C and original agree on every byte of the page, on the "
-          "five display lists, on the redraw buffers afterwards and on the meter flags; "
+    print("%d partial redraws compared: C and original agree on every byte of both pages, on the "
+          "five display lists and the save-under list, on the redraw buffers afterwards and on "
+          "the meter flags; "
           "%d skipped (outside the modelled memory)" % (compared, skipped))
     print("   longest lists in the original's runs: %d background, %d foreground, %d mid, "
-          "%d message, %d wipe entries; %d redraws drew a strength meter"
-          % (most["nback"], most["nfore"], most["nmid"], most["nmsg"], most["nwipe"], meters))
+          "%d message, %d wipe, %d save-under entries; %d redraws drew a strength meter"
+          % (most["nback"], most["nfore"], most["nmid"], most["nmsg"], most["nwipe"], most["npeel"],
+             meters))
     return 0
 
 

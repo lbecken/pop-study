@@ -25,9 +25,11 @@
  *               pieces 1365-1927, getobjid 2041;
  *               FAST 189, RedBlockFast 376, RedDFast 441, drawfloor 1252,
  *               drawhalf 1268, wipesq 1326, wiped 1348, redrawd 1092,
- *               metbufs 2252
+ *               metbufs 2252; drawobjs 503, loadobj 716, drawobjx 1937,
+ *               DrawFF 1969, sortlist 2134, compare 2182
  *   GAMEBG.S    setupflask 675, setupflame 735, UPDATEMETERS 479,
- *               DRAWKIDMETER 496, DRAWOPPMETER 579
+ *               DRAWKIDMETER 496, DRAWOPPMETER 579, DRAWKID 391,
+ *               DRAWSWORD 408, DRAWSHAD 414, DRAWGUARD 420
  *
  * (Line each routine starts at.)  See docs/port/redraw.md.
  */
@@ -107,8 +109,8 @@ typedef struct pop_gfx {
      *     paths use a value an earlier block left --- */
     uint8_t PRECED, spreced, objid, state;
     uint8_t PREV[3], sprev[3], BELOW[10], SBELOW[10];
-    uint8_t rowno, colno, yindex, Ay, Dy, blockxco, blockthr, gateposn, gatebot, xsave,
-            doortop;
+    uint8_t rowno, colno, yindex, Ay, Dy, blockxco, blockthr, gateposn, gatebot, xsave;
+    uint8_t sortX[16];                   /* the objects of one block, back to front ($3C0) */
     uint8_t addmid_sel;                  /* `add`: 0 the background list (setback), 1 the mid list (setmid) */
     uint8_t redkidmeter, redoppmeter;    /* a strength meter is to be redrawn (GAMEEQ.S 537-540) */
 
@@ -153,8 +155,9 @@ void pop_sure(pop_gfx *v, pop_game *g);
 
 /* FAST: fill the lists with what the redraw buffers (g->rb) ask for, and
  * take the marks off: wipes, whole blocks, moving parts, floor pieces in
- * front of a climbing character, front pieces, the top line of D-sections,
- * and the strength meters if a redrawn block is under them. */
+ * front of a climbing character, the objects of g's object list (characters,
+ * swords, impact stars, falling floors), front pieces, the top line of
+ * D-sections, and the strength meters if a redrawn block is under them. */
 void pop_fast(pop_gfx *v, pop_game *g);
 
 void pop_drawkidmeter(pop_gfx *v, const pop_game *g);     /* DRAWKIDMETER, GAMEBG.S 496 */

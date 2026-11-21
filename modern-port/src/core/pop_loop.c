@@ -5,6 +5,7 @@
  */
 
 #include "pop_loop.h"
+#include "pop_objs.h"
 
 #include "pop_auto.h"
 #include "pop_collide.h"
@@ -338,16 +339,16 @@ void pop_zerored(pop_game *g)
 
 static void dofast(pop_game *g)                /* DoFast, TOPCTRL.S 961-982 */
 {
+    pop_zeroobjs(g);                           /* ZEROLSTS (the display lists: the hook's business) */
     g->SCRNUM = g->VisScrn;
     if (g->redrawflg != 0) {                   /* develpatch: a forced full redraw */
         g->redrawflg--;
         pop_markmeters(g);
         HOOK(draw_screen);
     }
-    pop_reflection(g);                         /* addchars: the mirror, and the shadow's birth */
-    if (g->ChgKidStr != 0) pop_markkidmeter(g);              /* checkmeters */
-    if (g->ChgOppStr != 0) pop_markoppmeter(g);
-    HOOK(draw_changes);                        /* moving pieces, characters, changed blocks */
+    pop_addmobs(g);                            /* falling floors onto the object list */
+    pop_addchars(g);                           /* characters; the mirror; meters if a strength changed */
+    HOOK(draw_changes);                        /* FAST: the lists, from the marks and the objects */
     (void)pop_dispmsg(g);
 }
 

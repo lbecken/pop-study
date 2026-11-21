@@ -398,6 +398,7 @@ static void drawtorchb(pop_gfx *v)             /* drawtorchb, with setupflame (G
         v->XCO = u8(v->XCO + 1);
         v->YCO = u8(v->YCO - 43);
         v->OPACITY = POP_OP_STA;
+        v->TABLE = 0;                          /* (the low byte of bgtable1's address) */
     }                                          /* else: added with whatever image was set last */
     pop_addback(v);
 }
@@ -424,6 +425,7 @@ static void drawflaska(pop_gfx *v)             /* drawflaska, with setupflask (G
     v->XCO = u8(v->XCO + 2);
     v->YCO = u8(v->YCO - 14);
     v->OPACITY = POP_OP_STA;
+    v->TABLE = 0;                              /* (the low byte of bgtable2's address) */
     pop_addmidezo(v, POP_MID_LAY);
 }
 
@@ -474,7 +476,7 @@ static void drawslicerf(pop_gfx *v)
     maddfore(v);
 }
 
-static void drawexitb(pop_gfx *v, const pop_game *g)
+static void drawexitb(pop_gfx *v, pop_game *g)
 {
     uint8_t a;
     v->IMAGE = K(stairs);
@@ -489,7 +491,7 @@ static void drawexitb(pop_gfx *v, const pop_game *g)
     v->blockthr = a;
     v->gateposn = v->spreced >> 2;
     a = u8(v->Ay - 14 - v->gateposn);
-    v->doortop = a;
+    g->doortop = a;                            /* for CROPCHAR */
     for (;;) {                                 /* the door, in strips of 4 lines */
         v->YCO = a;
         v->IMAGE = K(doormask);
@@ -584,7 +586,7 @@ static void drawgatebf(pop_gfx *v)             /* the bars again, over the chara
     }
 }
 
-static void drawmb(pop_gfx *v, const pop_game *g)
+static void drawmb(pop_gfx *v, pop_game *g)
 {
     switch (v->PRECED) {
     case POP_GATE:   drawgateb(v); break;
@@ -654,7 +656,7 @@ static void drawfrnt(pop_gfx *v, const pop_game *g)
 
 /* --- a block, a screen ------------------------------------------------------------------------ */
 
-static void redblocksure(pop_gfx *v, const pop_game *g)
+static void redblocksure(pop_gfx *v, pop_game *g)
 {
     drawc(v);
     drawmc(v);
@@ -667,7 +669,7 @@ static void redblocksure(pop_gfx *v, const pop_game *g)
     drawfrnt(v, g);
 }
 
-static void reddsure(pop_gfx *v, const pop_game *g)    /* D-sections of the row above */
+static void reddsure(pop_gfx *v, pop_game *g)    /* D-sections of the row above */
 {
     drawc(v);
     drawmc(v);
@@ -741,6 +743,133 @@ void pop_sure(pop_gfx *v, pop_game *g)
         reddsure(v, g);
         nextblock(v);
     }
+}
+
+/* --- objects: characters, swords, impact stars, falling floors ---------------------------------- */
+
+/* loadobj: an entry of the object list into the variables ADDMID reads. */
+static uint8_t loadobj(pop_gfx *v, pop_game *g, uint8_t x)
+{
+    g->FCharX = (uint16_t)((g->FCharX & 0xFF00u) | g->objX[x]);      /* (the low byte only) */
+    v->XCO = g->objX[x];
+    v->OFFSET = g->objOFF[x];
+    g->FCharY = v->YCO = g->objY[x];
+    v->IMAGE = g->objIMG[x];
+    v->TABLE = g->objTAB[x];
+    g->FCharFace = g->objFACE[x];
+    g->FCharCU = g->objCU[x];
+    g->FCharCD = g->objCD[x];
+    g->FCharCL = g->objCL[x];
+    g->FCharCR = g->objCR[x];
+    return g->objTYP[x];
+}
+
+/* A character image: saved under, then drawn, from a character table. */
+static void addchar(pop_gfx *v, const pop_game *g, uint8_t opacity)
+{
+    v->OPACITY = opacity;
+    pop_addmid(v, g, POP_MID_LAYSAVE | POP_MID_CHARTABLE);
+}
+
+static void drawkid(pop_gfx *v, const pop_game *g)       /* DRAWKID */
+{
+    if (g->backtolife != 0 && v->hr.PAGE == 0) return;   /* blinks while coming back to life */
+    /* merging with the shadow: every other frame he is drawn as the shadow is */
+    if (!NEG(g->mergetimer) && (g->mergetimer & 1)) addchar(v, g, POP_OP_EOR);
+    else addchar(v, g, POP_OP_MASK);
+}
+
+static void drawguard(pop_gfx *v, const pop_game *g)     /* DRAWGUARD */
+{
+    if (g->GuardColor != 0) {                  /* DrawShifted: one dot right, the other colours */
+        uint8_t a = u8(v->OFFSET + 1);         /* chgoffset */
+        if (a >= 7) {
+            v->XCO++;
+            a = u8(a - 7);
+        }
+        v->OFFSET = a;
+    }
+    addchar(v, g, POP_OP_MASK);
+}
+
+/* DrawFF: a falling floor is drawn as its three sections, like the loose
+ * floor it was, at the place the mover has it. */
+static void drawff(pop_gfx *v, pop_game *g)
+{
+    g->FCharFace = 0xFF;                       /* not mirrored */
+    g->FCharImage = v->IMAGE;                  /* the frame of the loose floor */
+    v->YCO = u8(g->FCharY - 3);                /* A-section: mask, then piece */
+    v->IMAGE = T(maska, POP_FLOOR);
+    v->OPACITY = POP_OP_AND;
+    pop_addmid(v, g, POP_MID_LAYSAVE);
+    v->IMAGE = T(loosea, g->FCharImage);
+    v->OPACITY = POP_OP_ORA;
+    pop_addmid(v, g, POP_MID_LAY);
+    v->IMAGE = T(loosed, g->FCharImage);       /* D-section */
+    v->YCO = g->FCharY;
+    v->OPACITY = POP_OP_STA;
+    pop_addmid(v, g, POP_MID_LAYSAVE);
+    v->XCO = u8(u8(g->FCharX) + 4);            /* B-section, in the next block */
+    v->YCO = u8(g->FCharY - 4);
+    v->IMAGE = K(looseb);
+    v->OPACITY = POP_OP_ORA;
+    pop_addmid(v, g, POP_MID_LAYSAVE);
+}
+
+static void drawobjx(pop_gfx *v, pop_game *g, uint8_t x)
+{
+    switch (loadobj(v, g, x)) {
+    case POP_OBJ_KID:
+    case POP_OBJ_REFLECT: drawkid(v, g); break;
+    case POP_OBJ_SHAD:    addchar(v, g, POP_OP_EOR); break;          /* DRAWSHAD */
+    case POP_OBJ_FF:      drawff(v, g); break;
+    case POP_OBJ_SWORD:
+    case POP_OBJ_COMIX:   addchar(v, g, POP_OP_MASK); break;         /* DRAWSWORD */
+    case POP_OBJ_GD:      drawguard(v, g); break;
+    default: break;
+    }
+}
+
+/* sortlist: what is lower on the screen is to be drawn first, and an
+ * opponent last.  One pass from the end of the list: the flag that would
+ * ask for another (`switches`) is never set. */
+static void sortlist(pop_gfx *v, const pop_game *g)
+{
+    uint8_t x = v->sortX[0];
+    while (x != 1) {
+        uint8_t obj1 = v->sortX[x], obj2 = v->sortX[x - 1];          /* compare */
+        if (g->objTYP[obj1] != POP_OBJ_SHAD && g->objY[obj1] > g->objY[obj2]) {
+            v->sortX[x] = obj2;
+            v->sortX[x - 1] = obj1;
+        }
+        x--;
+        if (x == 0) break;
+    }
+}
+
+/* drawobjs: the objects indexed to v->yindex, onto the mid list. */
+static void drawobjs(pop_gfx *v, pop_game *g)
+{
+    uint8_t n = g->objX[0], x = 1, y = 0;
+    if (n == 0) return;
+    do {
+        if (x >= POP_MAXOBJ) { v->unmodelled = 1; return; }
+        if (g->objINDX[x] == v->yindex) {
+            y++;
+            if (y >= sizeof v->sortX) { v->unmodelled = 1; return; }
+            v->sortX[y] = x;
+        }
+        x++;
+    } while (x <= n);
+    if (y == 0) return;
+    v->sortX[0] = y;
+    sortlist(v, g);
+    x = 1;
+    do {
+        v->xsave = x;
+        drawobjx(v, g, v->sortX[x]);
+        x = u8(v->xsave + 1);
+    } while (x <= v->sortX[0]);
 }
 
 /* --- only what changed ------------------------------------------------------------------------- */
@@ -854,7 +983,7 @@ static void redblockfast(pop_gfx *v, pop_game *g)
     }
     if (*rb(g, POP_RB_OBJ, y) != 0) {          /* the objects in this block */
         *rb(g, POP_RB_OBJ, y) = 0;
-        /* drawobjs: characters and falling floors come with milestone 10c part 2 */
+        drawobjs(v, g);
         v->XCO = v->blockxco;
     }
     if (*rb(g, POP_RB_FRED, y) != 0) {         /* the front piece */
@@ -976,7 +1105,8 @@ void pop_fast(pop_gfx *v, pop_game *g)
     blue(g, g->SCRNUM);
     v->redkidmeter = metbufs(g, 20, 3);        /* a meter under a redrawn block is drawn again */
     v->redoppmeter = metbufs(g, 28, 2);
-    v->yindex = 30;                            /* drawobjs: characters off the screen (part 2) */
+    v->yindex = 30;                            /* characters off the screen first */
+    drawobjs(v, g);
     for (row = 2; row >= 0; row--) {
         startrow(v, g, row);
         for (col = 0; col < 10; col++) {
@@ -997,7 +1127,8 @@ void pop_fast(pop_gfx *v, pop_game *g)
             nextblock(v);
         }
     }
-    v->yindex = 0xFF;                          /* drawobjs: impact stars (part 2) */
+    v->yindex = 0xFF;                          /* impact stars on top of everything */
+    drawobjs(v, g);
     if (v->redkidmeter != 0) pop_drawkidmeter(v, g);         /* UPDATEMETERS */
     if (v->redoppmeter != 0) pop_drawoppmeter(v, g);
 }

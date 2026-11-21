@@ -28,7 +28,7 @@ Usage:
     fuzz_control.py <pop_worldrun> <data dir> <original checkout> [cases] [seed] [only]
 
 `only` limits the run to some routines: a comma-separated list of names, or
-@control, @collision, @mover, @auto or @top for those groups.
+@control, @collision, @mover, @auto, @top, @loop or @objs for those groups.
 """
 
 import os
@@ -74,7 +74,9 @@ TOP_VARS = ["skipmessage", "cutplan", "cutorder", "message", "MinLeft", "SecLeft
 # high byte of the 16-bit FrameCount.
 LOOP_VARS = ["keypress", "keydown", "kbdX", "kbdY", "joyX", "joyY", "joyon", "NextTimeMsg",
              "soundon", "FrameCount", "FrameCountH"]
-BYTES = fw.BYTES + EXTRA + COLL_VARS + MOVER_VARS + AUTO_VARS + TOP_VARS + LOOP_VARS
+# the object list (its own random stream)
+OBJ_VARS = ["FCharIndex", "doortop"]
+BYTES = fw.BYTES + EXTRA + COLL_VARS + MOVER_VARS + AUTO_VARS + TOP_VARS + LOOP_VARS + OBJ_VARS
 WORDS = fw.WORDS + ["FCharX"]
 CD_BUFFERS = (("CDthisframe", 16), ("CDlastframe", 16), ("CDbelow", 16), ("CDabove", 16))
 SN_BUFFERS = (("SNthisframe", 16), ("SNlastframe", 16), ("SNbelow", 16), ("SNabove", 10))
@@ -89,11 +91,14 @@ OTHER_REDRAW = (("fredbuf", 30), ("movebuf", 30), ("halfbuf", 30), ("floorbuf", 
 # "script": a made-up movement script for AUTOPLAYBACK, kept in memory the
 # original does not use ($9000) and in the runner
 SCRIPT_AT = 0x9000
+OBJ_LISTS = tuple((n, 20) for n in ("objINDX", "objX", "objOFF", "objY", "objIMG", "objFACE",
+                                    "objTYP", "objCU", "objCD", "objCL", "objCR", "objTAB"))
 BUFFERS = BASE_BUFFERS + CD_BUFFERS + SN_BUFFERS + OTHER_REDRAW + TROB_LISTS + MOB_LISTS \
-    + (("script", 32), ("clrSEL", 5), ("clrDESEL", 5))
+    + (("script", 32), ("clrSEL", 5), ("clrDESEL", 5)) + OBJ_LISTS
 DEAD_SEQS = []       # sequence addresses one frame before a "dead" frame; set by Harness
 STAND_SEQS = []      # the same for the standing frame
 FDY = {}             # Fdy of a few of the kid's frames; set by Harness
+FHEIGHT = {}         # and the height of their images
 IN_MODULE = {"tempobjid": "COLL"}          # a COLL local, not in the shared equates
 
 # routine -> (module, label, results compared: any of "a", "x", "y", "c")
@@ -231,6 +236,20 @@ LOOP = {
     "mainloop": ("TOPCTRL", None, ""),
 }
 ROUTINES.update(LOOP)
+OBJS = {
+    # the object list: what is to be drawn besides the level
+    "markfloor": ("CTRLSUBS", "MARKFLOOR", "c"), "markhalf": ("CTRLSUBS", "MARKHALF", "c"),
+    "addfcharx": ("CTRLSUBS", "ADDFCHARX", ""), "addcharobj": ("GAMEBG", "ADDCHAROBJ", ""),
+    "indexchar": ("CTRLSUBS", "INDEXCHAR", ""), "quickfloor": ("CTRLSUBS", "QUICKFLOOR", ""),
+    "quickfg": ("CTRLSUBS", "QUICKFG", ""), "cropchar": ("CTRLSUBS", "CROPCHAR", ""),
+    "unevenfloor": ("CTRLSUBS", "UNEVENFLOOR", ""),
+    "setupsword": ("CTRLSUBS", "SETUPSWORD", ""), "setupcomix": ("GAMEBG", "SETUPCOMIX", ""),
+    "setupkid": ("TOPCTRL", "setupkid", ""), "setupshad": ("TOPCTRL", "setupshad", ""),
+    "addchars": ("TOPCTRL", "addchars", ""), "addmobs": ("MOVER", "ADDMOBS", ""),
+}
+ROUTINES.update(OBJS)
+# these work on a character as SETUPCHAR and GETEDGES leave it
+OBJ_CHAINED = ("indexchar", "quickfloor", "quickfg", "cropchar", "setupsword", "setupcomix")
 FIGHT_FRAMES = (15, 150, 151, 152, 153, 154, 157, 158, 158, 161, 162, 165, 166, 167, 168, 169,
                 170, 171, 171)
 OTHER_FRAMES = (2, 3, 7, 9, 14, 15, 33, 34, 40, 43, 44, 101, 102, 110, 117, 118, 126, 127, 132,
@@ -1309,6 +1328,127 @@ def loop_state(rng, s, pokes, bufs, routine):
     s["FrameCount"], s["FrameCountH"] = count & 0xFF, count >> 8
 
 
+def objs_state(rng, s, pokes, bufs, routine):
+    """The object list and its variables; for the routines that fill it the
+    characters, frames and falling floors they have cases for."""
+    s["FCharIndex"], s["doortop"] = rng.randrange(256), rng.randrange(256)
+    count = rng.choice((0, 0, 0, 1, 1, 2, 3, 5, 18, 19, 19))
+    for name, size in OBJ_LISTS:
+        bufs[name] = bytes(rng.randrange(256) for _ in range(size))
+    bufs["objX"] = bytes([count]) + bufs["objX"][1:]
+    if routine not in OBJS:
+        return
+    s["_noreread"] = 1
+    vis = s["VisScrn"] = rng.randint(1, 24)
+    special = (tuple(range(135, 149)) + (224, 225, 226, 227, 228, 78, 79, 80, 81, 2, 3, 4, 6,
+                                         177, 178, 185, 106, 107, 110) + tuple(range(229, 238)))
+
+    def person(rec, ident):
+        """A character on the visible screen, as a frame would have him."""
+        row = rng.choice((0, 1, 1, 2, 2))
+        posn = rng.choice(special) if rng.random() < 0.4 else rng.choice(KEY_FRAMES)
+        s.update({rec + "Scrn": vis, rec + "BlockY": row,
+                  rec + "Y": FLOOR_Y[row] if rng.random() < 0.7
+                  else (FLOOR_Y[row] + rng.randint(-40, 12)) & 0xFF,
+                  rec + "X": rng.randint(50, 205), rec + "Face": rng.choice((0x00, 0xFF)),
+                  rec + "Posn": posn, rec + "ID": ident,
+                  rec + "Action": rng.choice((0, 0, 1, 1, 1, 2, 3, 4, 5, 6, 7)),
+                  rec + "Sword": rng.choice((0, 0, 2, 2, 1)),
+                  rec + "Life": rng.choice((0xFF, 0xFF, 0xFF, 0x00))})
+        if 224 <= posn < 229:                        # on the stairs: the door's top is above him
+            s["doortop"] = (s[rec + "Y"] - rng.choice((-3, 0, 1, 2, 3, 10, 40, 70))) & 0xFF
+
+    if routine in ("addchars", "setupkid", "setupshad"):
+        person("Kid", 0)
+        person("Shad", rng.choice((1, 1, 2, 2, 2, 4)))
+        person("Char", 0)
+        if routine == "addchars":
+            s["KidScrn"] = rng.choice((vis, vis, vis, vis, 0, rng.randint(1, 24)))
+            s["ShadScrn"] = rng.choice((vis, vis, vis, rng.randint(1, 24)))
+            s["ShadFace"] = rng.choice((0x00, 0xFF, 0xFF, 86))
+            s["ChgKidStr"] = rng.choice((0, 0, 0xFF, 0xFE, 1))
+            s["ChgOppStr"] = rng.choice((0, 0, 0xFF, 1))
+            s["createshad"] = rng.choice((0, 0, 0, 0, 0xFF))
+        if rng.random() < 0.15:
+            s["KidPosn"] = 0                         # not drawn at all
+        if rng.random() < 0.3:                       # the shadow by the mirror of level 4
+            s["level"], s["ShadID"] = 4, 1
+            if rng.random() < 0.7:
+                vis = s["VisScrn"] = s["ShadScrn"] = 4
+                if s["KidScrn"]:
+                    s["KidScrn"] = 4
+        if rng.random() < 0.3:                       # the kid before a mirror
+            at = (vis - 1) * 30 + s["KidBlockY"] * 10 + rng.randrange(1, 9)
+            pokes[at] = 13
+            s["KidX"] = 58 + 14 * (at % 10) + rng.randint(0, 13)
+    elif routine in OBJ_CHAINED:
+        person("Char", rng.choice((0, 0, 1, 2, 2, 4)))
+        if rng.random() < 0.15:
+            s["_raw"] = 1                            # as it stands, without setting him up
+        if routine == "cropchar" and rng.random() < 0.25:
+            s["CharPosn"] = rng.randint(224, 228)    # on the stairs, with whatever is around
+            s["doortop"] = (s["CharY"] - rng.choice((-3, 0, 1, 2, 3, 10, 40, 70))) & 0xFF
+        if routine == "cropchar" and rng.random() < 0.15:
+            # standing so that his feet are exactly on, or next to, the line
+            # where the block above the next row begins (BlockTop)
+            row = s["CharBlockY"] = rng.choice((1, 2))
+            # (178, 186, 188: images under 16 lines high, less than a floor is thick)
+            posn = s["CharPosn"] = rng.choice((15, 178, 178, 186, 188))
+            s["CharY"] = ((3, 66, 129)[row] - FDY[posn] + rng.choice((-1, 0, 0, 1))) & 0xFF
+            if rng.random() < 0.5:
+                # or with the top of his image a floor's thickness (15 lines)
+                # above that line, give or take one
+                posn = s["CharPosn"] = 15
+                s["CharY"] = ((3, 66, 129)[row] - 15 + FHEIGHT[15] - 1 - FDY[15]
+                              + rng.choice((-1, 0, 0, 1))) & 0xFF
+            for c in range(10):
+                pokes[(vis - 1) * 30 + (row - 1) * 10 + c] = rng.choice((1, 1, 1, 20))
+        if routine == "cropchar" and rng.random() < 0.15:
+            # jumping up to touch a ceiling that is solid over one of his
+            # edges only (frames 79 and 81; other frames for contrast)
+            s["CharPosn"] = rng.choice((79, 81, 81, 80, 15))
+            s["CharAction"] = rng.choice((0, 0, 0, 1))
+            row = s["CharBlockY"] = rng.choice((1, 2))
+            s["CharY"] = FLOOR_Y[row]
+            for c in range(10):
+                pokes[(vis - 1) * 30 + (row - 1) * 10 + c] = rng.choice((1, 20, 0, 0))
+                pokes[(vis - 1) * 30 + row * 10 + c] = rng.choice((1, 1, 0))
+        if routine == "cropchar" and rng.random() < 0.6:
+            # panels, walls and solid ceilings around him
+            row, col = s["CharBlockY"], (s["CharX"] - 58) // 14
+            for _ in range(rng.randint(1, 4)):
+                r = (row + rng.choice((0, 0, -1, -1))) % 3
+                c = min(9, max(0, col + rng.choice((-1, 0, 0, 1, 1, 2))))
+                pokes[(vis - 1) * 30 + r * 10 + c] = rng.choice((20, 20, 7, 12, 1, 0, 9, 4))
+    elif routine == "addmobs":
+        s["nummob"] = rng.choice((0, 1, 1, 1, 2, 3))
+        below = s["scrnBelow"] = rng.choice((0, rng.randint(1, 24), rng.randint(1, 24)))
+        scrns, ys, types = [0], [0], [0]
+        for _ in range(15):
+            where = rng.choice((vis, vis, vis, below, below, rng.randint(1, 24)))
+            scrns.append(where)
+            if where == vis:
+                ys.append(rng.choice((rng.randrange(192), rng.randrange(192), 62, 63, 125, 126,
+                                      188, 191, 192, 208, 209, 230)))
+            else:
+                ys.append(rng.choice((0, 5, 16, 17, 18, 100, 238, 239, 240, 255)))
+            types.append(rng.choice((0, 0, 0, 0, 0, 0, 1)))
+        bufs["mobscrn"], bufs["moby"], bufs["mobtype"] = bytes(scrns), bytes(ys), bytes(types)
+        bufs["mobx"] = bytes(4 * rng.choice((0, 1, 2, 5, 8, 9, 9, 10)) for _ in range(16))
+        bufs["objX"] = bytes([rng.choice((0, 0, 0, 1, 2, 17, 18))]) + bufs["objX"][1:]
+    elif routine == "addcharobj":
+        s["FCharX"] = rng.choice((rng.randrange(280), rng.randrange(280), rng.randrange(280),
+                                  rng.randrange(252, 256), rng.randrange(256, 300),
+                                  rng.randrange(500, 520), 0x10000 - rng.randrange(1, 40),
+                                  0x10000 - rng.randrange(250, 260), rng.randrange(0x10000)))
+        s["FCharIndex"] = rng.choice((rng.randrange(30),) * 5 + (30, 0xFF, rng.randrange(256)))
+        s["_a_only"] = rng.choice((0, 1, 2, 3, 4, 5))
+    elif routine == "addfcharx":
+        s["FCharX"] = rng.choice((rng.randrange(280), rng.randrange(5), 0xFFFE, 0x00FF, 0x0100))
+        s["FCharFace"] = rng.choice((0x00, 0xFF))
+        s["_a_only"] = rng.choice((0, 1, 5, 127, 128, 129, 251, 255, rng.randrange(256)))
+
+
 def random_args(rng, routine, s):
     a, x, y = rng.randrange(256), rng.randrange(256), rng.randrange(30)
     if routine in ("checkledge", "pickitup"):
@@ -1341,7 +1481,6 @@ class Harness:
         cpu = self.oracle.cpu
         cpu.traps[self.oracle.addr("dimchar")] = self.trap_dimchar
         cpu.traps[self.oracle.addr("inverty")] = lambda c: self.hooks.append("v")
-        cpu.traps[self.oracle.addr("addreflobj")] = lambda c: self.hooks.append("r")
         self.shadprog5 = self.oracle.addr("ShadProg5", "AUTO")
         if not DEAD_SEQS:                            # where a corpse's sequence stands
             o = self.oracle
@@ -1362,11 +1501,14 @@ class Harness:
             o.call("ANIMCHAR", module="COLL")
             assert o.peek("CharPosn") == 15
             STAND_SEQS.append(at)
-            for posn in (15, 9, 44, 109):
+            for posn in (15, 9, 44, 109, 178, 186, 188):
                 o.reset()
                 o.set_vars({"CharPosn": posn, "CharID": 0})
                 o.call("GETFRAMEINFO", module="CTRLSUBS")
                 FDY[posn] = o.peek("Fdy")
+                fimage, fsword = o.peek("Fimage"), o.peek("Fsword")
+                table = (((fsword & 0xC0) >> 1) + (fimage & 0x80)) >> 5
+                FHEIGHT[posn] = self.dims[table][(fimage & 0x7F) - 1][1]
             o.reset()
         cpu.on_read[0xC030] = lambda c: self.hooks.append("k")      # the speaker
         o = self.oracle
@@ -1392,12 +1534,11 @@ class Harness:
                            ("gtone", "g"), ("doflashoff", "f"), ("playback", "p"),
                            ("strobe", "s"), ("yellow", "y")):
             cpu.traps[o.addr(name)] = mark(text)
-        for name in ("lrcls", "lrclse", "vblank", "copyscrn", "drawall", "zerolsts", "addmobs",
-                     "setupcomix", "setupsword", "fastspeed", "normspeed", "burn", "musickeys",
-                     "listtorches", "cutprincess", "setrecheck0"):
+        for name in ("lrcls", "lrclse", "vblank", "copyscrn", "drawall", "fastspeed",
+                     "normspeed", "burn", "musickeys", "listtorches", "cutprincess",
+                     "setrecheck0"):
             cpu.traps[o.addr(name)] = lambda c: None
-        for label in ("setupkid", "setupshad", "flipdisk"):
-            cpu.traps[o.addr(label, "TOPCTRL")] = lambda c: None
+        cpu.traps[o.addr("flipdisk", "TOPCTRL")] = lambda c: None
         cpu.traps[o.addr("doflashon")] = lambda c: self.hooks.append("F%02x" % c.a)
         cpu.traps[o.addr("minit")] = lambda c: self.hooks.append("M%02x" % c.a)
         cpu.traps[o.addr("playcut")] = lambda c: self.hooks.append("x%d" % c.a)
@@ -1527,9 +1668,11 @@ def main(argv):
         only = list(TOP)
     elif only == ["@loop"]:
         only = list(LOOP)
+    elif only == ["@objs"]:
+        only = list(OBJS)
     elif only == ["@control"]:
         only = [n for n in ROUTINES if n not in COLLISION and n not in MOVER and n not in AUTO
-                and n not in TOP and n not in LOOP]
+                and n not in TOP and n not in LOOP and n not in OBJS]
 
     h = Harness(source)
     levels = []
@@ -1564,6 +1707,8 @@ def main(argv):
                       s, pokes, bufs, like)
             loop_state(random.Random("%d/%d/%s/loop" % (seed, round_no, routine)),
                        s, pokes, bufs, routine)
+            objs_state(random.Random("%d/%d/%s/objs" % (seed, round_no, routine)),
+                       s, pokes, bufs, routine)
             if s.pop("_fresh", 0):                           # a level as it is on disk
                 fresh = random.Random("%d/%d/%s/level" % (seed, round_no, routine))
                 number = s["level"] if s["level"] < 15 else fresh.randrange(15)
@@ -1572,9 +1717,9 @@ def main(argv):
             pokes = {i: v for i, v in pokes.items() if 0 <= i < len(level)}
             a, x, y = random_args(rng, routine, s)
             carry = rng.randrange(2)
-            if routine in ("markwipe", "markred"):
+            if routine in ("markwipe", "markred", "markfloor", "markhalf"):
                 x = carry                            # the runner takes the carry in x
-                if carry and routine == "markred" and rng.random() < 0.5:
+                if carry and routine != "markwipe" and rng.random() < 0.5:
                     y = rng.randrange(256)           # with carry set only y < 10 is used
             if "_a_only" in s:
                 a = s.pop("_a_only")
@@ -1595,6 +1740,9 @@ def main(argv):
                 steps.insert(0, ("rereadblocks", 0, 0, 0))   # a consistent CharBlockX
             if routine == "getedges":
                 steps.insert(0, ("setupchar", 0, 0, 0))
+            if routine in OBJ_CHAINED and not s.pop("_raw", 0):
+                steps = [("rereadblocks", 0, 0, 0), ("setupchar", 0, 0, 0), ("getedges", 0, 0, 0),
+                         (routine, a, x, y)]
             if routine in ("checkbarr", "collisions", "checkgate", "checkslice2",
                            "enemycoll", "checkspikes") and not plain and rng.random() < 0.7:
                 # the character's real edges, as the frame would have them

@@ -8,6 +8,7 @@
  */
 
 #include "pop_mover.h"
+#include "pop_objs.h"
 
 #include "pop_collide.h"
 #include "pop_control.h"
@@ -27,7 +28,7 @@
 #define MOBLEVEL (g->moblevel[0])
 
 enum {
-    MAXTR = POP_TROBSPACE - 1, MAXMOB = POP_MOBSPACE - 1, MAXGATEVEL = 8,
+    MAXTR = POP_TROBSPACE - 1, MAXMOB = POP_MOBSPACE - 1, MAXGATEVEL = 8, FFHEIGHT = 17,
     WIGGLETIME = 4, FF_ACCEL = 3, FF_TERMVEL = 29, CRUMBLETIME = 2, DISAPPEARTIME = 2,
     CRUSH_DIST = 30, LOOSEWIPE = 31, SPIKEWIPE = 31, SLICERWIPE = 63, PLATEWIPE = 16,
     EXITINC = 4, SLICERSYNC = 3
@@ -925,6 +926,70 @@ static void checkcrush(pop_game *g)
     if (u8(g->ch.y - CRUSH_DIST) >= MOBY) return;            /* still well above */
     crushchar(g);
     pop_savekid(g);
+}
+
+/* --- falling floors onto the object list (ADDMOBS) ---------------------------------------------- */
+
+/* addmobobj.  A slot's bottom cut, facing and table are not set: they are
+ * whatever the slot's last user left. */
+static void addmobobj(pop_game *g, uint8_t frame)
+{
+    uint8_t x = ++g->objX[0];
+    if (x >= POP_MAXOBJ) { g->unmodelled = 1; return; }      /* (no check in the original) */
+    g->objTYP[x] = MOBTYPE | 0x80;
+    g->objX[x] = MOBX;
+    g->objOFF[x] = 0;
+    g->objY[x] = MOBY;
+    g->objIMG[x] = frame;
+    g->objCU[x] = 0;
+    g->objCL[x] = 0;
+    g->objCR[x] = 40;
+    pop_setobjindx(g, x);
+}
+
+/* ATM: this one, if it is in sight. */
+static void atm(pop_game *g)
+{
+    int carry;
+    uint8_t a;
+    if (MOBSCRN == g->VisScrn) {
+        if (MOBY >= 192 + 17) return;          /* ("17 is generous estimate of image height") */
+    } else {
+        /* on the screen below, and still reaching up into this one */
+        if (MOBSCRN != g->scrnBelow) return;
+        if (MOBY < u8(-17) && MOBY >= 17) return;
+        MOBY = u8(MOBY + 192);                 /* ("this change won't be saved") */
+    }
+    g->tempblocky = pop_getblocky(MOBY);
+    g->tempblockx = MOBX >> 2;
+    (void)pop_indexblock(g);
+    g->FCharIndex = g->ry;
+    /* it may cover the floor and front pieces of the block to the right,
+     * and of the one above that */
+    g->tempblockx++;
+    carry = pop_indexblock(g);
+    pop_markfloor(g, 2, &carry);
+    pop_markfred(g, 2, &carry);
+    a = pop_getblocky(u8(MOBY - FFHEIGHT));
+    if (a != g->tempblocky) {
+        g->tempblocky = a;
+        carry = pop_indexblock(g);
+        pop_markfloor(g, 2, &carry);
+        pop_markfred(g, 2, &carry);
+    }
+    addmobobj(g, POP_FFALLING);
+}
+
+void pop_addmobs(pop_game *g)
+{
+    uint8_t x;
+    for (x = g->nummob; x != 0; x--) {
+        g->tempnt = x;
+        loadmob(g, x);
+        if (g->unmodelled) return;
+        if (MOBTYPE == 0) atm(g);
+        x = g->tempnt;
+    }
 }
 
 void pop_animmobs(pop_game *g)

@@ -28,7 +28,6 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PORT = os.path.join(HERE, "..")
-NO_CHARS = "the redraws compared have no characters: nothing is saved under anything"
 
 FRAMEADV = [
     ("static const uint8_t BLOCKBOT[5] = { 2, 65, 128, 191, 254 };", "static const uint8_t BLOCKBOT[5] = { 2, 65, 128, 190, 254 };", None),
@@ -178,10 +177,10 @@ LISTS = [
     ("    v->hr.OPACITY = v->OPACITY = opacity;", "    v->hr.OPACITY = opacity;", None),
     ("        if (v->fgOP[x] == POP_OP_MASK) {\n            pop_hr_fastmask(&v->hr, im);", "        if (v->fgOP[x] == POP_OP_AND) {\n            pop_hr_fastmask(&v->hr, im);", None),
     ("        case POP_MID_LAY:\n            setaddl(v, x);\n            pop_hr_lay(&v->hr, im);", "        case POP_MID_LAY:\n            pop_hr_lay(&v->hr, im);", None),
-    ("    v->hr.RIGHTCUT = v->midCR[x];", "    v->hr.RIGHTCUT = 40;", "every mid entry of the compared screens has the whole screen as its area"),
+    ("    v->hr.RIGHTCUT = v->midCR[x];", "    v->hr.RIGHTCUT = 40;", None),
     ("    drawback(v);\n    drawmid(v);\n    drawfore(v);", "    drawmid(v);\n    drawback(v);\n    drawfore(v);", None),
     ("    drawmid(v);\n    drawfore(v);\n    drawmsg(v);", "    drawfore(v);\n    drawmid(v);\n    drawmsg(v);", None),
-    ("    sngpeel(v);                                /* the peel list set up two frames ago */\n", "", NO_CHARS),
+    ("    sngpeel(v);                                /* the peel list set up two frames ago */\n", "", None),
     ("    drawwipe(v);\n", "", None),
     ("    pop_im = pop_imgtab_image", "    pop_im = pop_imgtab_image", "placeholder"),
 ]
@@ -344,7 +343,84 @@ FAST = [
     ("    if (v->redoppmeter != 0) pop_drawoppmeter(v, g);", "    pop_drawoppmeter(v, g);", None),
 ]
 
-FILES = (("pop_frameadv.c", FRAMEADV), ("pop_frameadv.c", FAST), ("pop_lists.c", LISTS))
+# --- the objects (compare_fast.py) ---
+OBJS = [
+    ("    g->FCharX = (uint16_t)((g->FCharX & 0xFF00u) | g->objX[x]);      /* (the low byte only) */", "    ;", None),
+    ("    v->XCO = g->objX[x];\n    v->OFFSET = g->objOFF[x];", "    v->XCO = g->objX[x];", None),
+    ("    g->FCharY = v->YCO = g->objY[x];", "    v->YCO = g->objY[x];", None),
+    ("    g->FCharY = v->YCO = g->objY[x];", "    g->FCharY = g->objY[x];", None),
+    ("    v->IMAGE = g->objIMG[x];\n    v->TABLE = g->objTAB[x];", "    v->IMAGE = g->objIMG[x];", None),
+    ("    g->FCharFace = g->objFACE[x];\n", "", None),
+    ("    g->FCharCU = g->objCU[x];\n", "", None),
+    ("    g->FCharCD = g->objCD[x];\n", "", None),
+    ("    g->FCharCL = g->objCL[x];\n", "", None),
+    ("    g->FCharCR = g->objCR[x];\n", "", None),
+    ("    pop_addmid(v, g, POP_MID_LAYSAVE | POP_MID_CHARTABLE);", "    pop_addmid(v, g, POP_MID_LAY | POP_MID_CHARTABLE);", None),
+    ("    pop_addmid(v, g, POP_MID_LAYSAVE | POP_MID_CHARTABLE);", "    pop_addmid(v, g, POP_MID_LAYSAVE);", None),
+    ("    if (g->backtolife != 0 && v->hr.PAGE == 0) return;", "    if (g->backtolife != 0) return;", None),
+    ("    if (g->backtolife != 0 && v->hr.PAGE == 0) return;", "    ;", None),
+    ("    if (!NEG(g->mergetimer) && (g->mergetimer & 1)) addchar(v, g, POP_OP_EOR);",
+     "    if ((g->mergetimer & 1)) addchar(v, g, POP_OP_EOR);", None),
+    ("    if (!NEG(g->mergetimer) && (g->mergetimer & 1)) addchar(v, g, POP_OP_EOR);",
+     "    if (!NEG(g->mergetimer) && (g->mergetimer & 2)) addchar(v, g, POP_OP_EOR);", None),
+    ("    else addchar(v, g, POP_OP_MASK);", "    else addchar(v, g, POP_OP_ORA);", None),
+    ("    if (g->GuardColor != 0) {                  /* DrawShifted", "    if (g->GuardColor == 0) {                  /* DrawShifted", None),
+    ("        if (a >= 7) {\n            v->XCO++;", "        if (a >= 7) {", None),
+    ("        if (a >= 7) {\n            v->XCO++;", "        if (a > 7) {\n            v->XCO++;", None),
+    ("            a = u8(a - 7);", "            a = u8(a - 6);", None),
+    ("    g->FCharFace = 0xFF;                       /* not mirrored */", "    ;", None),
+    ("    v->YCO = u8(g->FCharY - 3);                /* A-section: mask, then piece */", "    v->YCO = u8(g->FCharY - 2);", None),
+    ("    v->IMAGE = T(maska, POP_FLOOR);\n    v->OPACITY = POP_OP_AND;\n    pop_addmid(v, g, POP_MID_LAYSAVE);",
+     "    v->IMAGE = T(maska, POP_FLOOR);\n    v->OPACITY = POP_OP_AND;\n    pop_addmid(v, g, POP_MID_LAY);", None),
+    ("    v->IMAGE = T(maska, POP_FLOOR);\n    v->OPACITY = POP_OP_AND;", "    v->IMAGE = T(maska, POP_LOOSE);\n    v->OPACITY = POP_OP_AND;",
+     "the loose floor's mask is the floor's in the piece tables (BGDATA.S 47: both 3)"),
+    ("    v->IMAGE = T(loosea, g->FCharImage);\n    v->OPACITY = POP_OP_ORA;\n    pop_addmid(v, g, POP_MID_LAY);",
+     "    v->IMAGE = T(loosea, g->FCharImage);\n    v->OPACITY = POP_OP_ORA;\n    pop_addmid(v, g, POP_MID_LAYSAVE);", None),
+    ("    v->IMAGE = T(loosea, g->FCharImage);\n    v->OPACITY = POP_OP_ORA;",
+     "    v->IMAGE = T(loosea, g->FCharImage);\n    v->OPACITY = POP_OP_STA;", None),
+    ("    v->IMAGE = T(loosed, g->FCharImage);       /* D-section */\n    v->YCO = g->FCharY;",
+     "    v->IMAGE = T(loosed, g->FCharImage);", None),
+    ("    v->IMAGE = T(loosed, g->FCharImage);       /* D-section */", "    v->IMAGE = T(loosea, g->FCharImage);", None),
+    ("    v->XCO = u8(u8(g->FCharX) + 4);            /* B-section, in the next block */", "    v->XCO = u8(u8(g->FCharX) + 3);", None),
+    ("    v->YCO = u8(g->FCharY - 4);\n    v->IMAGE = K(looseb);", "    v->YCO = u8(g->FCharY - 3);\n    v->IMAGE = K(looseb);", None),
+    ("    v->IMAGE = K(looseb);\n    v->OPACITY = POP_OP_ORA;\n    pop_addmid(v, g, POP_MID_LAYSAVE);",
+     "    v->IMAGE = K(looseb);\n    v->OPACITY = POP_OP_ORA;\n    pop_addmid(v, g, POP_MID_LAY);", None),
+    ("    case POP_OBJ_REFLECT: drawkid(v, g); break;", "    case POP_OBJ_REFLECT: addchar(v, g, POP_OP_MASK); break;", None),
+    ("    case POP_OBJ_SHAD:    addchar(v, g, POP_OP_EOR); break;          /* DRAWSHAD */",
+     "    case POP_OBJ_SHAD:    addchar(v, g, POP_OP_MASK); break;", None),
+    ("    case POP_OBJ_COMIX:   addchar(v, g, POP_OP_MASK); break;         /* DRAWSWORD */",
+     "    case POP_OBJ_COMIX:   drawkid(v, g); break;", None),
+    ("    case POP_OBJ_GD:      drawguard(v, g); break;", "    case POP_OBJ_GD:      addchar(v, g, POP_OP_MASK); break;", None),
+    ("        if (g->objTYP[obj1] != POP_OBJ_SHAD && g->objY[obj1] > g->objY[obj2]) {",
+     "        if (g->objY[obj1] > g->objY[obj2]) {", None),
+    ("        if (g->objTYP[obj1] != POP_OBJ_SHAD && g->objY[obj1] > g->objY[obj2]) {",
+     "        if (g->objTYP[obj1] != POP_OBJ_SHAD && g->objY[obj1] >= g->objY[obj2]) {", None),
+    ("        if (g->objTYP[obj1] != POP_OBJ_SHAD && g->objY[obj1] > g->objY[obj2]) {",
+     "        if (g->objTYP[obj1] != POP_OBJ_SHAD && g->objY[obj1] < g->objY[obj2]) {", None),
+    ("        if (g->objTYP[obj1] != POP_OBJ_SHAD && g->objY[obj1] > g->objY[obj2]) {",
+     "        if (g->objTYP[obj2] != POP_OBJ_SHAD && g->objY[obj1] > g->objY[obj2]) {", None),
+    ("    uint8_t x = v->sortX[0];\n    while (x != 1) {", "    uint8_t x = v->sortX[0];\n    while (x != 2 && x != 1) {", None),
+    ("        x--;\n        if (x == 0) break;\n    }\n}\n\n/* drawobjs", "        x--;\n        if (x == 0) break;\n    }\n    if (v->sortX[0] > 2) sortlist(v, g);\n}\n\n/* drawobjs",
+     "placeholder"),
+    ("        if (g->objINDX[x] == v->yindex) {\n            y++;", "        if (g->objINDX[x] <= v->yindex) {\n            y++;", None),
+    ("    } while (x <= n);\n    if (y == 0) return;", "    } while (x < n);\n    if (y == 0) return;", None),
+    ("    sortlist(v, g);\n    x = 1;", "    x = 1;", None),
+    ("        drawobjx(v, g, v->sortX[x]);\n        x = u8(v->xsave + 1);\n    } while (x <= v->sortX[0]);",
+     "        drawobjx(v, g, v->sortX[x]);\n        x = u8(v->xsave + 1);\n    } while (x < v->sortX[0]);", None),
+    ("        *rb(g, POP_RB_OBJ, y) = 0;\n        drawobjs(v, g);\n        v->XCO = v->blockxco;",
+     "        *rb(g, POP_RB_OBJ, y) = 0;\n        v->XCO = v->blockxco;", None),
+    ("        *rb(g, POP_RB_OBJ, y) = 0;\n        drawobjs(v, g);\n        v->XCO = v->blockxco;",
+     "        *rb(g, POP_RB_OBJ, y) = 0;\n        drawobjs(v, g);", None),
+    ("    v->yindex = 30;                            /* characters off the screen first */\n    drawobjs(v, g);",
+     "    v->yindex = 30;", None),
+    ("    v->yindex = 0xFF;                          /* impact stars on top of everything */\n    drawobjs(v, g);",
+     "    v->yindex = 0xFF;", None),
+    ("    v->yindex = 0xFF;                          /* impact stars on top of everything */", "    v->yindex = 0xFE;", None),
+]
+OBJS = [m for m in OBJS if m[2] != "placeholder"]
+
+FILES = (("pop_frameadv.c", FRAMEADV), ("pop_frameadv.c", FAST), ("pop_frameadv.c", OBJS),
+         ("pop_lists.c", LISTS))
 
 
 def main(argv):

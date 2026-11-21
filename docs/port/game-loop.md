@@ -222,15 +222,16 @@ following is game state, and is in the port (`pop_frameadv`):
 | `DoSure` | `SCRNUM = VisScrn`; the redraw buffers are cleared (`ZERORED`: all but `whitebuf`) |
 | `drawbg` | both strength meters marked for redraw |
 | `develpatch` | `redrawflg`, if set, counts down and forces a full redraw (used after the upside-down screen is turned back: 2, one for each display page) |
-| `addchars` | `REFLECTION`: the mirror image, and the shadow stepping out of the mirror |
+| `addmobs`, `addchars` | the object list and the marks that go with it (since milestone 10c: frame-drawing.md §4); in `addchars` also `REFLECTION`: the mirror image, and the shadow stepping out of the mirror |
 | `checkmeters` | a meter whose strength changed this frame is marked |
 | `dispmsg` | the message timer (section 4) |
 | `flashoff` | `lightning` counts down |
 
 Everything else the drawing code does is picture: `draw_screen`,
-`draw_changes` and `show_frame` hooks. The redraw buffers filled by the game
-rules are read and cleared by `draw_changes` (the original's `FAST`), which
-belongs to milestone 10.
+`draw_changes` and `show_frame` hooks. The redraw buffers and the object
+list are read by `draw_changes`, the original's `FAST`, which is ported in
+`src/video` (`pop_fast`, frame-drawing.md) and not yet connected to these
+hooks (milestone 10c-3).
 
 `setupkid` (`TOPCTRL.S:803-810`) inserts a delay (`pause` 25) in frames in
 which the kid has frame 0, that is after he has gone up the stairs: timing,

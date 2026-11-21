@@ -22,7 +22,8 @@ checkout of the original source and is never stored in this repository.
 | The blitter: images onto a hi-res page in every mode, shifted, mirrored, cropped; save-under (`HIRES.S`) | ported; each routine compared with the original blitter over whole pages |
 | The display lists and their drawing, and the full redraw of a screen from the level (`GRAFIX.S`, `FRAMEADV.S` `SURE`) | ported; every screen of the 15 levels compared with the original's page, plus random gadget states. Piece tables are generated data, images are read from your checkout |
 | What changes from frame to frame: the redraw marks, wipes, strength meters (`FRAMEADV.S` `FAST`, `GAMEBG.S`) | ported; page, lists and marks compared with the original on random marks |
-| Characters on screen, falling floors, messages, colour, reading keys and joystick, sound output, music, SDL3 shell | not started (hooks) |
+| Characters, swords, impact stars and falling floors: which are listed for drawing, where, cut how (`TOPCTRL.S` `addchars`, `CTRLSUBS.S`, `MOVER.S` `ADDMOBS`), and their drawing with save-under | ported; the list compared on random game states, the two pages on random lists |
+| Messages, whole frames on screen, colour, reading keys and joystick, sound output, music, SDL3 shell | not started (hooks) |
 
 There is no runnable game yet and no SDL3 dependency yet. The nearest thing
 is `tests/replay_demo.py`, which plays the original's demo level in the port,

@@ -230,9 +230,10 @@ its x is 0 or 255 and its sequence fields `$FF`. `INITIALGUARDS` computes x
 ## 8a. Intentional deviations
 
 - **Tables generated, not embedded** (section 4).
-- **Hooks**: the upside-down potion's redraw (`inverty`), drawing the
-  reflection (`addreflobj`), and the end of a demo script (`attractmode`,
-  which also ends the frame: game-loop.md §8). An opponent played by hand
+- **Hooks**: the upside-down potion's redraw (`inverty`) and the end of a
+  demo script (`attractmode`, which also ends the frame: game-loop.md §8).
+  The reflection is an entry of the object list since milestone 10c-2
+  (frame-drawing.md). An opponent played by hand
   reads the other input device (`LoadDesel`, `getdesel`, `clrjstk`,
   `SaveDesel`), ported in `pop_loop.c`.
 - **`AUTOPLAYBACK` takes a pointer and a length**; reading before the start

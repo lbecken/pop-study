@@ -40,7 +40,8 @@ endif()
 # Game rules: no I/O, no SDL.
 add_library(pop_core STATIC src/core/pop_seq.c src/core/pop_sound.c src/core/pop_world.c
             src/core/pop_control.c src/core/pop_collide.c
-            src/core/pop_mover.c src/core/pop_auto.c src/core/pop_top.c src/core/pop_loop.c)
+            src/core/pop_mover.c src/core/pop_auto.c src/core/pop_top.c src/core/pop_loop.c
+            src/core/pop_objs.c)
 target_include_directories(pop_core PUBLIC src/core)
 
 # Video: the blitter, the display lists, the redraw of a screen.  No I/O, no SDL.
@@ -117,6 +118,9 @@ add_test(NAME top_unit COMMAND test_top)
 add_executable(test_loop tests/test_loop.c)
 target_link_libraries(test_loop PRIVATE pop_core)
 add_test(NAME loop_unit COMMAND test_loop)
+add_executable(test_objs tests/test_objs.c)
+target_link_libraries(test_objs PRIVATE pop_core)
+add_test(NAME objs_unit COMMAND test_objs)
 
 add_executable(test_hires tests/test_hires.c)
 target_link_libraries(test_hires PRIVATE pop_video)

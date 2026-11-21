@@ -67,7 +67,6 @@ static void h_cut(void *c, uint8_t cut) { (void)c; hook('x'); hook((char)('0' + 
 static void h_copycheck(void *c) { (void)c; hook('y'); }
 static void h_click(void *c) { (void)c; hook('k'); }
 static void h_attract(void *c) { (void)c; hook('a'); }
-static void h_refl(void *c) { (void)c; hook('r'); }
 static void h_invert(void *c) { (void)c; hook('v'); }
 
 /* Address of made-up sequence n: its only frame is number n, repeated. */
@@ -159,7 +158,6 @@ static void setup(int col, uint8_t face)
     g.hooks.copy_check = h_copycheck;
     g.hooks.speaker_click = h_click;
     g.hooks.attract_mode = h_attract;
-    g.hooks.add_refl_obj = h_refl;
     g.hooks.invert_y = h_invert;
 
     for (c = 0; c <= 6; c++) put(1, 1, c, POP_FLOOR, 0);

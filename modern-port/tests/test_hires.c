@@ -234,6 +234,15 @@ static void test_save_under(void)
     pop_hr_layrsave(&h, IMAGE(block));
     CHECK_EQ(h.PEELIMG >> 8, 0);
     CHECK_EQ(h.unmodelled, 0);
+    /* a list entry that points outside the two buffers (LAYRSAVE does not
+     * stop at their end) is not followed */
+    CHECK_EQ(h.unmodelled, 0);
+    pop_hr_peel(&h, 0xE000);
+    CHECK_EQ(h.unmodelled, 1);
+    h.unmodelled = 0;
+    pop_hr_peel(&h, 0xCFFF);
+    CHECK_EQ(h.unmodelled, 1);
+    h.unmodelled = 0;
 }
 
 static void test_fast_routines(void)
