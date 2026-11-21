@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "pop_gfx.h"
+#include "pop_loop.h"
 #include "pop_test.h"
 #include "pop_top.h"
 #include "pop_world.h"
@@ -674,6 +675,131 @@ static void test_objects(void)
     CHECK_EQ(v.unmodelled, 1);
 }
 
+static void test_messages(void)
+{
+    uint8_t temp;
+    setup();
+    g.level = 3;
+    pop_zerolsts(&v);
+    pop_printlevel(&v, &g);
+    CHECK_EQ(v.msgX[0], 3);
+    /* an empty box, saved under (bit 6); "LEVEL"; the number */
+    CHECK_EQ(v.msgIMG[1], 0x7B); CHECK_EQ(v.msgX[1], 15); CHECK_EQ(v.msgY[1], 90);
+    CHECK_EQ(v.msgOFF[1], 0); CHECK_EQ(v.msgOP[1], POP_OP_STA | 0x40);
+    CHECK_EQ(v.msgIMG[2], 0x7A); CHECK_EQ(v.msgX[2], 16); CHECK_EQ(v.msgY[2], 85);
+    CHECK_EQ(v.msgOFF[2], 3); CHECK_EQ(v.msgOP[2], POP_OP_ORA);
+    CHECK_EQ(v.msgIMG[3], 0x73); CHECK_EQ(v.msgX[3], 22); CHECK_EQ(v.msgOFF[3], 3);
+    g.level = 12;                              /* two digits: the word 3 dots further left */
+    pop_zerolsts(&v);
+    pop_printlevel(&v, &g);
+    CHECK_EQ(v.msgX[0], 4);
+    CHECK_EQ(v.msgOFF[2], 0);
+    CHECK_EQ(v.msgIMG[3], 0x71); CHECK_EQ(v.msgX[3], 22);
+    CHECK_EQ(v.msgIMG[4], 0x72); CHECK_EQ(v.msgX[4], 23);
+    g.level = 14;                              /* the last levels are announced as 12 */
+    pop_zerolsts(&v);
+    pop_printlevel(&v, &g);
+    CHECK_EQ(v.msgIMG[4], 0x72);
+    g.level = 13;
+    pop_zerolsts(&v);
+    pop_printlevel(&v, &g);
+    CHECK_EQ(v.msgX[0], 4);
+    CHECK_EQ(v.msgIMG[3], 0x71); CHECK_EQ(v.msgIMG[4], 0x72);
+
+    /* the time: the box, then one or two digits over it */
+    g.level = 3;
+    g.FrameCount[0] = g.FrameCount[1] = 0;
+    pop_zerolsts(&v);
+    pop_timeleftmsg(&v, &g);
+    temp = g.MinLeft;                          /* (worked out by the routine: BCD) */
+    CHECK(temp >= 0x10);
+    CHECK_EQ(v.msgX[0], 3);
+    CHECK_EQ(v.msgIMG[1], 0x7D); CHECK_EQ(v.msgX[1], 11); CHECK_EQ(v.msgY[1], 90);
+    CHECK_EQ(v.msgOP[1], POP_OP_STA | 0x40);
+    CHECK_EQ(v.msgIMG[2], 0x70 + (temp >> 4)); CHECK_EQ(v.msgX[2], 12); CHECK_EQ(v.msgY[2], 85);
+    CHECK_EQ(v.msgOP[2], POP_OP_ORA);
+    CHECK_EQ(v.msgIMG[3], 0x70 + (temp & 15)); CHECK_EQ(v.msgX[3], 13);
+    /* In the last minute it counts seconds, and the box is lower when the
+     * kid is on the middle row and not falling; that is decided by the
+     * time worked out before this call. */
+    g.FrameCount[0] = 0xF0; g.FrameCount[1] = 0xFF;          /* (as late as the count goes) */
+    pop_getminleft(&g);
+    CHECK(g.MinLeft < 2);
+    if (g.MinLeft < 2) {
+        g.kid.block_y = 1; g.kid.action = 0;
+        pop_zerolsts(&v);
+        pop_timeleftmsg(&v, &g);
+        CHECK_EQ(v.msgY[1], 153);
+        CHECK_EQ(v.msgIMG[v.msgX[0]], 0x7F);   /* "SECONDS" over "MINUTES" */
+        CHECK_EQ(v.msgX[v.msgX[0]], 14); CHECK_EQ(v.msgY[v.msgX[0]], 148);
+        CHECK_EQ(v.msgOP[v.msgX[0]], POP_OP_STA);
+        g.kid.action = 4;                      /* falling: where it always is */
+        pop_zerolsts(&v);
+        pop_timeleftmsg(&v, &g);
+        CHECK_EQ(v.msgY[1], 90);
+    }
+
+    g.kid.block_x = 4;                         /* low when he lies in an even column, else high */
+    pop_zerolsts(&v);
+    pop_continuemsg(&v, &g);
+    CHECK_EQ(v.msgX[0], 1);
+    CHECK_EQ(v.msgIMG[1], 0x7C); CHECK_EQ(v.msgX[1], 13); CHECK_EQ(v.msgY[1], 168);
+    CHECK_EQ(v.msgOP[1], POP_OP_STA | 0x40);
+    g.kid.block_x = 5;
+    pop_zerolsts(&v);
+    pop_show_message(&v, &g, POP_SHOW_CONTINUE);
+    CHECK_EQ(v.msgY[1], 73);
+    pop_zerolsts(&v);
+    pop_show_message(&v, &g, POP_SHOW_LEVEL);
+    CHECK_EQ(v.msgIMG[1], 0x7B);
+    pop_zerolsts(&v);
+    pop_show_message(&v, &g, POP_SHOW_NOTHING);
+    CHECK_EQ(v.msgX[0], 0);
+    CHECK_EQ(v.unmodelled | g.unmodelled, 0);
+}
+
+static void test_screen(void)
+{
+    setup();
+    /* a new screen: drawn on page 2 behind a blank text screen ... */
+    pop_cut_begin(&v);
+    CHECK_EQ(v.hr.PAGE, 0x20);
+    CHECK_EQ(v.sw_text, 1); CHECK_EQ(v.sw_page2, 0); CHECK_EQ(v.scrncolor, 0xA0);
+    v.hr.vram[POP_HR_PAGE + 100] = 0x55;       /* (something drawn on page 2) */
+    v.hr.vram[100] = 0x11;
+    /* ... copied to page 1, where the characters are added ... */
+    pop_cut_copy(&v, &g);
+    CHECK_EQ(v.hr.PAGE, 0);
+    CHECK_EQ(v.hr.vram[100], 0x55);
+    CHECK_EQ(v.IMAGE, 0x40); CHECK_EQ(v.width, 0x20);        /* (the two page addresses stay behind) */
+    CHECK_EQ(g.height, 0x40);
+    /* ... and shown: page 1 on the screen, page 2 the one drawn on next */
+    pop_pageflip(&v, &g);
+    CHECK_EQ(v.hr.PAGE, 0x20);
+    CHECK_EQ(v.sw_page2, 0); CHECK_EQ(v.sw_hires, 1); CHECK_EQ(v.sw_text, 0);
+    pop_pageflip(&v, &g);
+    CHECK_EQ(v.hr.PAGE, 0);
+    CHECK_EQ(v.sw_page2, 1);
+    /* a flash: the lo-res screen in one colour, then back to the page shown */
+    pop_doflashon(&v, 0x11);
+    CHECK_EQ(v.scrncolor, 0x11); CHECK_EQ(v.sw_hires, 0); CHECK_EQ(v.sw_page2, 0);
+    pop_doflashoff(&v);
+    CHECK_EQ(v.sw_hires, 1); CHECK_EQ(v.sw_page2, 1);
+    pop_pageflip(&v, &g);                      /* now page 1 is shown */
+    pop_doflashon(&v, 0xFF);
+    pop_doflashoff(&v);
+    CHECK_EQ(v.sw_page2, 0);
+
+    /* the two cells the game logic shares with the drawing code */
+    g.height = 9; g.OFFSET = 4;
+    pop_zerolsts(&v);
+    pop_show_message(&v, &g, POP_SHOW_NOTHING);
+    CHECK_EQ(v.IMAGE, 9); CHECK_EQ(v.OFFSET, 4);
+    v.IMAGE = 33; v.OFFSET = 2;
+    pop_gfx_cells_out(&v, &g);
+    CHECK_EQ(g.height, 33); CHECK_EQ(g.OFFSET, 2);
+}
+
 int main(void)
 {
     RUN(test_images);
@@ -686,5 +812,7 @@ int main(void)
     RUN(test_meters);
     RUN(test_fast);
     RUN(test_objects);
+    RUN(test_messages);
+    RUN(test_screen);
     return pop_test_summary();
 }

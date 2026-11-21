@@ -5,17 +5,18 @@ a screen is up. It does not redraw the screen. The game logic marks what
 changed, and `FAST` turns the marks, the characters and the falling floors
 into display-list entries, which `DRAWALL` (redraw.md) then draws.
 
-C sources: `modern-port/src/video/pop_frameadv.c` (with `pop_gfx.h`) for
-the drawing side, `modern-port/src/core/pop_objs.c` and `pop_mover.c` for
-the object list. Citations are `file:line` in `01 POP Source/Source` of the
+C sources: `modern-port/src/video/pop_frameadv.c` and `pop_screen.c` (with
+`pop_gfx.h`) for the drawing side, `modern-port/src/core/pop_objs.c` and
+`pop_mover.c` for the object list. Citations are `file:line` in `01 POP Source/Source` of the
 original repository at commit `25243550` (where a routine starts).
 Everything here is **confirmed** by reading the source and by running the
-original code (section 8) unless marked.
+original code (section 9) unless marked.
 
-Status: parts 1 and 2 of 3. Done: the redraw marks, wipes and strength
+Status: complete (three parts). The redraw marks, wipes and strength
 meters; the object list (characters, swords, impact stars, falling floors)
-and its drawing. Not yet ported: messages, and the two-page cycle of a
-running game as a whole (`DoFast`, `DoCleanCut`, page flipping).
+and its drawing; messages, the two display pages, and the frame as a
+whole. The demo level and random play on the other levels are drawn the
+same, byte for byte, by the port and by the original code (section 9).
 
 ## 1. Routines
 
@@ -35,6 +36,8 @@ running game as a whole (`DoFast`, `DoCleanCut`, page flipping).
 | `ADDCHAROBJ` `GAMEBG.S:1050`, `SETOBJINDX` 1105, `ADDFCHARX` `CTRLSUBS.S:374`, `CVTX` `GRAFIX.S:903` | `pop_addcharobj`, `pop_setobjindx`, `pop_addfcharx` | An entry of the object list |
 | `ADDMOBS` `MOVER.S:1984`, `ATM` 2004, `addmobobj` 2085 | `pop_addmobs` | Falling floors onto the object list |
 | `drawobjs` `FRAMEADV.S:503`, `sortlist` 2134, `compare` 2182, `loadobj` 716, `drawobjx` 1937, `DrawFF` 1969; `DRAWKID` `GAMEBG.S:391`, `DRAWSWORD` 408, `DRAWSHAD` 414, `DRAWGUARD` 420 | (static, in `pop_fast`) | The objects of a block onto the mid list |
+| `PRINTLEVEL` `GAMEBG.S:276`, `TIMELEFTMSG` 187, `CONTINUEMSG` 328, `superimage`, `setupimage` 344-374 | `pop_printlevel`, `pop_timeleftmsg`, `pop_continuemsg`, `pop_show_message` | Messages over the picture |
+| `DoCleanCut` `TOPCTRL.S:891`, `drawbg` 918, `DoSure` 942, `DoFast` 963 (the order of calls; in `pop_loop.c`), `COPYSCRN` `GRAFIX.S:1369`, `PAGEFLIP` `SUBS.S:397`, `DOFLASHON` 210, `DOFLASHOFF` 220, `LRCLSE` 238 | `pop_cut_begin`, `pop_cut_copy`, `pop_pageflip`, `pop_doflashon`, `pop_doflashoff`, `pop_lrclse` | Which page is drawn on and which is shown |
 
 ## 2. The redraw buffers
 
@@ -190,7 +193,64 @@ within 17 lines of its top (it is then drawn 192 lines lower, at the bottom
 of this one). It marks the floor and front pieces of the block to its right
 and of the block above that when it reaches up there.
 
-## 5. Findings
+## 5. The frame as a whole
+
+The game draws on the hi-res page that is not on the screen and then
+switches the two (`PageFlip`): `PAGE` is `$00` while page 1 is being drawn
+and page 2 shown, `$20` the other way round. Every frame is drawn on the
+page that was on the screen two frames ago, which is why a change is
+marked for two frames and why there are two save-under lists (redraw.md).
+
+An ordinary frame (`DoFast`, `TOPCTRL.S:963-981`), with the port's hook or
+routine for each step:
+
+| Original | Port |
+| --- | --- |
+| `zerolsts` | `pop_zeroobjs`; hook `zero_lists` → `pop_zerolsts` |
+| `SCRNUM = VisScrn`; `develpatch`: a forced full redraw (`redrawflg`) lists the whole screen first | in `pop_loop.c`; hook `draw_screen` → `pop_sure` |
+| `addmobs`, `addchars` | `pop_addmobs`, `pop_addchars` (section 4) |
+| `fast` | hook `draw_changes` → `pop_fast` |
+| `dispmsg` | `pop_dispmsg`; hook `show_message` → `pop_show_message` |
+| `drawall` | hook `draw_lists` → `pop_drawall` |
+| then `PageFlip` (`FrameAdv`) | hook `show_frame` → `pop_pageflip` |
+
+A change of screen (`DoCleanCut`, `891-906`, with `drawbg` and `DoSure`):
+
+| Original | Port |
+| --- | --- |
+| `PAGE = $20`; `lrclse` with a space, `PAGE2off`, `TEXTon`: a blank text screen while the new one is built | hook `cut_begin` → `pop_cut_begin` |
+| `cutplan = 0`, `CUTTIMER = 2`; `SCRNUM = VisScrn` | in `pop_loop.c` |
+| `zerolsts`, `sure` | hooks `zero_lists`, `draw_screen` |
+| `zeropeels`, `zerored` | hook `zero_peels` → `pop_gfx_zeropeels`; `pop_zerored` |
+| `drawall`: the background, on page 2 | hook `draw_lists` |
+| `markmeters` | `pop_markmeters` |
+| `PAGE = 0`; `copyscrn`: the background copied to page 1 | hook `cut_copy` → `pop_cut_copy` |
+| `DoFast`: characters added on page 1 | as above |
+| `PageFlip`: page 1 shown; page 2, the bare background, is drawn on next | hook `show_frame` |
+
+So after a cut the first frame's characters are on page 1 only, and the
+second frame adds them to a page 2 that has never held any.
+
+**Messages** are entries of the message list, drawn last: a box saved
+under (bit 6 of the mode), then words and digits ORed into it. "LEVEL n"
+(`PRINTLEVEL`; levels 13 and 14 are announced as 12), "n MINUTES LEFT"
+(`TIMELEFTMSG`, which works the time out again with `GETMINLEFT`; under two
+minutes it shows seconds, and the box moves down when the kid is on the
+middle row and not falling), and "Press button to continue"
+(`CONTINUEMSG`: lower or higher by the parity of the dead kid's column).
+Positions and image numbers are in `GAMEBG.S:162-181`.
+
+**What the monitor is shown** is a matter of four soft switches and one
+byte (`pop_gfx.sw_*`, `scrncolor`): page 1 or 2, hi-res or lo-res, graphics
+or text, and the value the text / lo-res page was last filled with. A
+flash (`DOFLASHON`) fills that page with a colour and switches to lo-res.
+Nothing else of the text page is used in play. Within one pass of the main
+loop the monitor can be shown several things in turn, so the port also
+keeps the switches touched, in order (`pop_gfx.swlog`); a front end
+presents a picture at each of them. Turning page bytes into a picture is
+milestone 10d.
+
+## 6. Findings
 
 - **The height of a wipe and the image number are one memory cell**
   (`height = IMAGE`, `width = IMAGE+1`, `EQ.S:384-385`), and `DRAWALL`
@@ -242,6 +302,46 @@ and of the block above that when it reaches up there.
 - **`backtolife`**, which makes the kid blink, is set only by a development
   key that the final build leaves out (`TOPCTRL.S:1173-1182`, inside
   `do FinalDisk ... else`). The drawing code that reads it is ported.
+- **A flash lasts as long as the next frame takes to draw.** `MainLoop`
+  calls `flashon`, then `FrameAdv`, then `flashoff` (`TOPCTRL.S:385-393`).
+  `DOFLASHON` shows the lo-res screen in one colour; the `PageFlip` at the
+  end of `FrameAdv` switches hi-res back on. `DOFLASHOFF`, after that, sets
+  switches that are already set: in every compared frame the display state
+  is the same before and after it. So the length of a flash is the time the
+  drawing code needs for that frame, not a counted number of frames
+  (**confirmed** by the order of calls and by the logged switches; the
+  time itself is not measured: unknown T1).
+- **How long a frame takes** can now be counted, because the original's
+  whole frame runs in the simulator: 51,231 to 224,292 cycles for the
+  ordinary frames of the demo (mean 108,204: 106 ms, 9.4 frames a second,
+  before the frame's sounds), and about 0.6 s for a frame that draws a
+  whole screen. The game has no frame timer; these are simply how long the
+  code runs (unknown T1 has the caveats).
+- **The blank screen of a redraw** is the text page filled with spaces,
+  shown from `drawbg` until the `PageFlip` at the end of `DoCleanCut`: the
+  player sees black while the new screen is built on page 2, copied to
+  page 1 and given its characters.
+- **Three kinds of shared memory tie the game logic to the drawing code**,
+  all found by the whole-frame comparison, where each showed up as a game
+  variable that differed after a frame:
+  the cell `IMAGE` / `height` (above), which `DIMCHAR` also writes each time
+  the game logic asks for an image's size; the cell `OFFSET`, used by
+  `GETBLOCKX` in the game logic and by every shifted draw; and zero page
+  `$E8`–`$F7`, a scratch area in which eleven modules declare their own
+  local variables (`locals = $e8`, `GAMEEQ.S:384`; `COLL.S` uses `$F0`–`$F3`
+  directly), so that the collision code's `tempobjid` and the drawing
+  code's `xsave` are the same byte. The port shares the first two cells
+  between its game and drawing state (section 7) and keeps the scratch
+  variables apart.
+- **The game logic needs the sizes of the images that are loaded.**
+  `GETEDGES` asks the blitter for the size of the character's image
+  (`DIMCHAR`), and with it decides which blocks to mark. The opponents'
+  table (`chtable4`) is a different file on different levels, with images
+  of other sizes. The port's earlier tests gave both sides one fixed set of
+  sizes; with each level's own table in memory the original marked other
+  front pieces than the port (3 of the first 20 drawn traces). The port
+  now takes the sizes from the tables it has loaded
+  (`pop_imgtab_dims`).
 - **An image file can be longer than its table.** `IMG.CHTAB4.GD` is 8,999
   bytes; its 32 images end at byte 5,281, and the loader reads 24 sectors
   (6,144 bytes) into a space that ends where the level begins
@@ -256,16 +356,24 @@ and of the block above that when it reaches up there.
   princess scenes, take the place of other tables and are not in memory
   during play (`GAMEEQ.S:12-15`).
 
-## 6. Intentional deviations
+## 7. Intentional deviations
 
 - **The drawing parameters are `pop_gfx` fields**, separate from the game
   state. In the original they are zero-page cells that the game logic uses
-  too (`DIMCHAR` and the wipe-height code write `IMAGE`, `CVTX` uses `XCO`
-  and `OFFSET` as its work area). The port follows the cells through the
-  drawing code only; what the game logic would have left in them is not
-  mirrored, except `OFFSET`, which the game logic's own tests compare. The
-  single known read of a stale value is the torch case above, which needs a
-  state the game does not produce.
+  too. Two of them matter across that line, `IMAGE` (the game's `height`)
+  and `OFFSET`: every drawing routine that is given the game state starts
+  from the game's values and hands its own back (`pop_gfx_cells_in`,
+  `_out`), so each pair of fields behaves as the one cell. `XCO`, `YCO`,
+  `OPACITY` and `TABLE` are not shared this way: the game logic writes
+  some of them (`CVTX` uses `XCO` as its work area) but nothing reads what
+  the other side left, except the torch case above, which needs a state
+  the game does not produce.
+- **Module-local scratch variables are separate variables.** In the
+  original they overlap in `$E8`–`$F7`; a value is never meant to pass from
+  one module to another that way, and over the demo and the drawn traces
+  none does (the game states would differ in a later frame). The
+  whole-frame comparison leaves out the one compared variable that lies in
+  that area (`tempobjid`).
 - **The object list is part of the game state** (`pop_game`): the game
   logic fills it and the drawing code reads it.
 - **More than 19 objects**, or more than 15 in one block, make the original
@@ -274,7 +382,7 @@ and of the block above that when it reaches up there.
 - **The editor's checks** (`inbuilder`) and the delay loop of frame 0 are
   left out.
 
-## 7. What the comparisons cannot see
+## 8. What the comparisons cannot see
 
 A case in which either side leaves the modelled memory is skipped
 (verification.md). Deliberate errors that only turn a compared case into a
@@ -283,7 +391,7 @@ name the test for each (`unit:`). In this part: the equality case of the
 stairs test in `CROPCHAR`, a sword number beyond the table, and the height
 a wipe leaves behind.
 
-## 8. Checks
+## 9. Checks
 
 | Check | What it compares |
 | --- | --- |
@@ -291,6 +399,8 @@ a wipe leaves behind.
 | `tests/test_objs.c` (`objs_unit`) | Hand-worked cases for the object list: positions, block indexes, marks, crops, sword, star, falling floors, who is listed |
 | `tests/fuzz_control.py`, group `@objs` | The 15 object-list routines on random game states, C against the original: every game variable, the redraw buffers and the twelve arrays of the object list. The frame-level routines of earlier milestones (`FrameAdv`, `DoCleanCut`, `MainLoop`) now run this code on both sides as well |
 | `tests/compare_fast.py` | A screen is drawn in full on both sides, then several times in a row: random marks in all nine buffers, random wipe heights, some gadget states changed, strengths set, a random object list with images from the character tables, on either page and changing pages as play does. C against the original's `ZEROLSTS`, `FAST`, `DRAWALL`: both pages (16,384 bytes), all five lists, the save-under list, the redraw buffers afterwards, and the two meter flags |
+| `tests/replay_frames.py demo` | The self-running demo of level 0 from its first frame to its end with nothing of the drawing stood in for: the original's `MainLoop` (game logic, `DoCleanCut`, `DoFast`, the lists, the blitter in main memory, `PageFlip`) in the two-bank simulator against `pop_mainloop` with the drawing code behind its hooks. After every frame: the whole game state as in `replay_demo.py`, both hi-res pages, which page is shown and drawn on, hi-res / text, the text page's fill byte |
+| `tests/replay_frames.py traces` | The same for 60 frames of random keyboard input from random places on levels 1–14 (`trace_kidstep.py`'s traces), each level with its own background and opponent tables, half of them with the level or time message on the screen |
 | `tests/mutation_gfx.py`, `tests/mutation_check.py` | Deliberate one-token errors in the drawing code and in the object-list code must be noticed by those comparisons |
 
 Recorded results are in verification.md.

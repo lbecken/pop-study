@@ -16,6 +16,11 @@
  *   H <buffer> <hex digits>       set a buffer: redbuf, wipebuf, whitebuf, topbuf,
  *                                 CDthisframe ... SNabove
  *   R <routine> <a> <x> <y>       run a routine with those register values
+ *   V <bgdata.bin>                from here on, draw: the hooks that stand in for
+ *                                 drawing call the drawing code instead (and no
+ *                                 longer leave a letter in the hook list)
+ *   T <n> <path>                  with V: an image table, 1-2 = bgtable1-2,
+ *                                 11-17 = chtable1-7
  *
  * For each R line one line is printed: "a=<n> <name>=<n> ..." listing the
  * returned value and every state variable, then
@@ -29,6 +34,9 @@
  *                 a "K 1" line asked for changes to persist)
  *   redbuf:<hex> wipebuf:<hex> whitebuf:<hex> topbuf:<hex>, and the eight
  *   collision buffers
+ * and, after a V line: pg1:<crc32> pg2:<crc32> of the two hi-res pages and
+ *   scr:<page shown><hi-res><text>.<fill byte>.<page drawn on>.<the display
+ *   switches touched, in order: 1 2 page, l h lo-res / hi-res, g t graphics / text>
  * ("-" for an empty list).  The sound queue and hook list start empty for
  * every R line.
  */
@@ -39,6 +47,8 @@
 
 #include "pop_assets.h"
 #include "pop_auto.h"
+#include "pop_gfx.h"
+#include "pop_gfxfiles.h"
 #include "pop_collide.h"
 #include "pop_control.h"
 #include "pop_loop.h"
@@ -48,6 +58,11 @@
 #include "pop_world.h"
 
 static pop_game g;
+static pop_gfx gfx;                      /* the drawing side, used after a V line */
+static int video;
+static pop_bgfile bgfile;
+static pop_imgfile tables[9];
+static uint8_t *table_dims[POP_CHTABLES];        /* image sizes of the loaded character tables */
 static uint8_t script[32];               /* a movement script for "playscript" */
 static uint8_t pristine[POP_LEVEL_SIZE];
 static char hooklog[160];
@@ -60,20 +75,47 @@ static void log_hex(char c, uint8_t v)
     log_hook("0123456789abcdef"[v >> 4]);
     log_hook("0123456789abcdef"[v & 15]);
 }
-static void h_invert(void *ctx) { (void)ctx; log_hook('v'); }
+static void h_invert(void *ctx) { (void)ctx; if (video) pop_hr_inverty(&gfx.hr); else log_hook('v'); }
 static void h_attract(void *ctx) { (void)ctx; log_hook('a'); }
 static void h_click(void *ctx) { (void)ctx; log_hook('k'); }
 static void h_goattract(void *ctx) { (void)ctx; log_hook('A'); }
 static void h_youlose(void *ctx) { (void)ctx; log_hook('L'); }
 static void h_youwin(void *ctx) { (void)ctx; log_hook('W'); }
 static void h_restart(void *ctx) { (void)ctx; log_hook('R'); }
-static void h_zeropeels(void *ctx) { (void)ctx; log_hook('z'); }
-static void h_drawscreen(void *ctx) { (void)ctx; log_hook('S'); }
-static void h_drawchanges(void *ctx) { (void)ctx; log_hook('Q'); }
-static void h_showframe(void *ctx) { (void)ctx; log_hook('P'); }
-static void h_message(void *ctx, uint8_t kind) { (void)ctx; log_hook(" clm"[kind & 3]); }
-static void h_flashon(void *ctx, uint8_t colour) { (void)ctx; log_hex('F', colour); }
-static void h_flashoff(void *ctx) { (void)ctx; log_hook('f'); }
+static void h_zeropeels(void *ctx) { (void)ctx; if (video) pop_gfx_zeropeels(&gfx); else log_hook('z'); }
+static void h_drawscreen(void *ctx) { (void)ctx; if (video) pop_sure(&gfx, &g); else log_hook('S'); }
+static void h_drawchanges(void *ctx) { (void)ctx; if (video) pop_fast(&gfx, &g); else log_hook('Q'); }
+static void h_showframe(void *ctx) { (void)ctx; if (video) pop_pageflip(&gfx, &g); else log_hook('P'); }
+static void h_message(void *ctx, uint8_t kind)
+{
+    (void)ctx;
+    if (video) pop_show_message(&gfx, &g, kind);
+    else log_hook(" clm"[kind & 3]);
+}
+static void h_flashon(void *ctx, uint8_t colour)
+{
+    (void)ctx;
+    if (video) pop_doflashon(&gfx, colour);
+    else log_hex('F', colour);
+}
+static void h_flashoff(void *ctx) { (void)ctx; if (video) pop_doflashoff(&gfx); else log_hook('f'); }
+/* (these four have no letter: without drawing there is nothing to do) */
+static void h_zerolists(void *ctx) { (void)ctx; if (video) pop_zerolsts(&gfx); }
+static void h_drawlists(void *ctx) { (void)ctx; if (video) pop_drawall(&gfx, &g); }
+static void h_cutbegin(void *ctx) { (void)ctx; if (video) pop_cut_begin(&gfx); }
+static void h_cutcopy(void *ctx) { (void)ctx; if (video) pop_cut_copy(&gfx, &g); }
+
+static uint32_t crc32(const uint8_t *p, size_t n)
+{
+    uint32_t c = 0xFFFFFFFFu;
+    size_t i;
+    int k;
+    for (i = 0; i < n; i++) {
+        c ^= p[i];
+        for (k = 0; k < 8; k++) c = (c >> 1) ^ (0xEDB88320u & (0u - (c & 1u)));
+    }
+    return ~c;
+}
 static void h_playback(void *ctx)             /* with the sounds about to be played */
 {
     uint8_t i;
@@ -521,6 +563,10 @@ int main(int argc, char **argv)
     g.hooks.you_win = h_youwin;
     g.hooks.restart = h_restart;
     g.hooks.zero_peels = h_zeropeels;
+    g.hooks.zero_lists = h_zerolists;
+    g.hooks.draw_lists = h_drawlists;
+    g.hooks.cut_begin = h_cutbegin;
+    g.hooks.cut_copy = h_cutcopy;
     g.hooks.draw_screen = h_drawscreen;
     g.hooks.draw_changes = h_drawchanges;
     g.hooks.show_frame = h_showframe;
@@ -543,6 +589,41 @@ int main(int argc, char **argv)
                 g.blueprint[i] = (uint8_t)(hi * 16 + lo);
             }
             memcpy(pristine, g.blueprint, sizeof pristine);
+        } else if (line[0] == 'V') {           /* draw from here on */
+            char *path = line + 2;
+            path[strcspn(path, "\n")] = 0;
+            pop_bgfile_free(&bgfile);
+            if (pop_bgfile_load(path, &bgfile, &err) != 0) {
+                fprintf(stderr, "%s: %s\n", path, err);
+                return 2;
+            }
+            pop_gfx_init(&gfx);
+            gfx.bg = &bgfile.data;
+            video = 1;
+        } else if (line[0] == 'T') {
+            int n = atoi(line + 2), slot;
+            char *path = strchr(line + 2, ' ');
+            if (!path || !video) { fprintf(stderr, "bad T line\n"); return 2; }
+            path++;
+            path[strcspn(path, "\n")] = 0;
+            slot = (n == 1 || n == 2) ? n - 1 : (n >= 11 && n <= 17) ? n - 9 : -1;
+            if (slot < 0) { fprintf(stderr, "bad table number\n"); return 2; }
+            pop_imgfile_free(&tables[slot]);
+            if (pop_imgfile_load(path, &tables[slot], &err) != 0) {
+                fprintf(stderr, "%s: %s\n", path, err);
+                return 2;
+            }
+            if (slot < 2) {
+                gfx.bgtable[slot] = tables[slot].tab;
+            } else {
+                /* the game logic asks for image sizes: those of this table */
+                int t = slot - 2;
+                gfx.chtable[t] = tables[slot].tab;
+                free(table_dims[t]);
+                table_dims[t] = pop_imgtab_dims(&tables[slot].tab, &dims.dims.count[t]);
+                dims.dims.wh[t] = table_dims[t];
+                if (!table_dims[t]) { fprintf(stderr, "%s: not an image table\n", path); return 2; }
+            }
         } else if (line[0] == 'K') {           /* K 1: level changes persist; K 0: undone */
             keep = line[1] && line[2] == '1';
         } else if (line[0] == 'P') {           /* poke blueprint bytes */
@@ -585,6 +666,9 @@ int main(int argc, char **argv)
             int a, x, y, result, any = 0;
             size_t b;
             g.unmodelled = 0;
+            gfx.unmodelled = gfx.hr.unmodelled = 0;
+            gfx.nswlog = 0;
+            gfx.swlog[0] = 0;
             g.leave = 0;
             nhooks = 0;
             pop_zerosound(&g.sq);
@@ -593,6 +677,7 @@ int main(int argc, char **argv)
                 fprintf(stderr, "bad R line: %s", line);
                 return 2;
             }
+            if (video && (gfx.unmodelled || gfx.hr.unmodelled)) g.unmodelled = 1;
             printf("a=%d", result);
             for (i = 0; i < NVARS; i++) printf(" %s=%u", vars[i].name, (unsigned)*vars[i].p);
             for (i = 0; i < NVARS16; i++) printf(" %s=%u", vars16[i].name, (unsigned)*vars16[i].p);
@@ -614,9 +699,20 @@ int main(int argc, char **argv)
                 printf(" %s:", bufs[b].name);
                 for (i = 0; i < bufs[b].n; i++) printf("%02x", (unsigned)bufs[b].p[i]);
             }
+            if (video) {
+                printf(" pg1:%08lx pg2:%08lx scr:%u%u%u.%02x.%02x.%s",
+                       (unsigned long)crc32(gfx.hr.vram, POP_HR_PAGE),
+                       (unsigned long)crc32(gfx.hr.vram + POP_HR_PAGE, POP_HR_PAGE),
+                       (unsigned)gfx.sw_page2 + 1, (unsigned)gfx.sw_hires, (unsigned)gfx.sw_text,
+                       (unsigned)gfx.scrncolor, (unsigned)gfx.hr.PAGE,
+                       gfx.nswlog ? gfx.swlog : "-");
+            }
             printf("\n");
         }
     }
+    pop_bgfile_free(&bgfile);
+    for (i = 0; i < sizeof tables / sizeof tables[0]; i++) pop_imgfile_free(&tables[i]);
+    for (i = 0; i < POP_CHTABLES; i++) free(table_dims[i]);
     pop_framefile_free(&frames);
     pop_seqfile_free(&seq);
     pop_dimfile_free(&dims);

@@ -32,6 +32,7 @@ Usage:
 """
 
 import os
+import pickle
 import random
 import subprocess
 import sys
@@ -48,6 +49,18 @@ FLOOR_Y = (55, 118, 181)
 
 
 class TraceHarness(fc.Harness):
+    budget = 6_000_000                       # cycles for one pass of MainLoop
+    extra = ()                               # more result keys (replay_frames.py)
+    ignore = ()                              # variables not compared (the same)
+
+    def more(self, out):
+        """Hook for a subclass: add to the outcome of a step."""
+
+    def start_trace(self, level_no, s):
+        """Hook for a subclass: called before a trace on that level begins;
+        may change the start state, returns commands for the runner."""
+        return []
+
     def begin(self, level, s, bufs):
         o = self.oracle
         o.reset()
@@ -91,12 +104,12 @@ class TraceHarness(fc.Harness):
             if label == "MainLoop":                  # entered after its `jsr rnd`
                 o.call("RND", module="GRAFIX")
                 o.cpu.sp = 0xFF
-                o.cpu.call(self.mainloop + 3, 6_000_000)
+                o.cpu.call(self.mainloop + 3, self.budget)
             elif address is None:
-                o.call(label, a, 0, 0, module=module, max_cycles=3_000_000)
+                o.call(label, a, 0, 0, module=module, max_cycles=self.budget // 2)
             else:
                 o.cpu.sp = 0xFF
-                o.cpu.call(address, 3_000_000)
+                o.cpu.call(address, self.budget // 2)
         except fc.Left as jump:
             self.left = bool(jump.args[0])           # not the loop's own way round
         except CpuError:
@@ -114,10 +127,12 @@ class TraceHarness(fc.Harness):
         lvl = ",".join("%d.%d" % (i, now[i]) for i in range(len(now))
                        if now[i] != self.level[i]) or "-"
         self.level = now
-        return {"vars": out,
-                "snd": bytes(o.peek(self.soundtable + 1, count)).hex() if count else "-",
-                "hooks": "".join(self.hooks) or "-", "lvl": lvl,
-                "bufs": {n: bytes(o.peek(self.bufaddr[n], size)).hex() for n, size in BUFFERS}}
+        result = {"vars": out,
+                  "snd": bytes(o.peek(self.soundtable + 1, count)).hex() if count else "-",
+                  "hooks": "".join(self.hooks) or "-", "lvl": lvl,
+                  "bufs": {n: bytes(o.peek(self.bufaddr[n], size)).hex() for n, size in BUFFERS}}
+        self.more(result)
+        return result
 
 
 def start_state(rng, level, level_no):
@@ -165,7 +180,7 @@ def next_input(rng, held):
     return held
 
 
-def main(argv):
+def main(argv, harness=None, what="C port and original code agree"):
     if len(argv) < 4:
         print(__doc__)
         return 2
@@ -173,7 +188,7 @@ def main(argv):
     traces = int(argv[4]) if len(argv) > 4 else 60
     rng = random.Random(int(argv[5]) if len(argv) > 5 else 1989)
 
-    h = TraceHarness(source)
+    h = harness or TraceHarness(source)
     stand = h.oracle.addr("stand")
     levels = []
     for n in range(15):
@@ -189,9 +204,14 @@ def main(argv):
     cut_at = {}
     endings = {"A": 0, "L": 0, "W": 0, "R": 0, "?": 0}
 
+    cache = os.environ.get("POP_TRACE_CACHE")    # the original's runs, kept for other runs
+    batches = []
+
     def flush():
         """Run the port on the traces gathered so far and compare.  Done in
         batches so that memory use does not grow with the number of traces."""
+        if cache:
+            batches.append((list(commands), list(expected)))
         failures, compared, off_model = counts["failures"], counts["compared"], counts["off_model"]
         dead_trace = -1
         argv_c = [runner, os.path.join(data, "framedef.bin"), os.path.join(data, "seqtable.bin"),
@@ -239,13 +259,13 @@ def main(argv):
                 problems.append("blueprint screen: C %d, original %d"
                                 % (got["blue"], want["vars"]["blue"]))
             for n in BYTES + WORDS:
-                if got[n] != want["vars"][n]:
+                if got[n] != want["vars"][n] and n not in h.ignore:
                     problems.append("%s: C %d, original %d" % (n, got[n], want["vars"][n]))
-            for key in ("snd", "hooks", "lvl"):
+            for key in ("snd", "hooks", "lvl") + tuple(h.extra):
                 if extra[key] != want[key]:
                     problems.append("%s: C %s, original %s" % (key, extra[key], want[key]))
             for n, _ in BUFFERS:
-                if extra[n] != want["bufs"][n]:
+                if extra[n] != want["bufs"][n] and n not in h.ignore:
                     problems.append("%s: C %s, original %s" % (n, extra[n], want["bufs"][n]))
             compared += 1
             if problems:
@@ -259,11 +279,28 @@ def main(argv):
         del commands[1:]
         del expected[:]
 
+    if cache and os.path.exists(cache):
+        with open(cache, "rb") as f:
+            key, kept = pickle.load(f)
+        if key != tuple(argv[4:]):
+            print("the cache %s was made with other arguments" % cache)
+            return 2
+        for batch_commands, batch_expected in kept:
+            commands[:] = batch_commands
+            expected[:] = batch_expected
+            flush()
+        if counts["failures"]:
+            print("%d traces differ" % counts["failures"])
+            return 1
+        print("%d calls compared with the original's kept results: %s" % (counts["compared"], what))
+        return 0
+
     for trace in range(traces):
         level_no = rng.randrange(1, 15)
         level = levels[level_no]
         s = start_state(rng, level, level_no)
         bufs = {name: bytes(size) for name, size in BUFFERS}
+        commands += h.start_trace(level_no, s)
         h.begin(level, s, bufs)
         commands.append("L " + level.hex())
         commands.append("S " + " ".join("%s=%d" % kv for kv in s.items()))
@@ -309,6 +346,9 @@ def main(argv):
             flush()
     flush()
     failures, compared, off_model = counts["failures"], counts["compared"], counts["off_model"]
+    if cache:
+        with open(cache, "wb") as f:
+            pickle.dump((tuple(argv[4:]), batches), f)
 
     if failures:
         print("%d traces differ" % failures)
@@ -319,10 +359,10 @@ def main(argv):
     if (ended_early + off_model) * 4 > traces:
         print("too many traces cut short: %d of %d" % (ended_early + off_model, traces))
         return 1
-    print("%d traces, %d frames (%d calls) compared: C port and original code agree; "
+    print("%d traces, %d frames (%d calls) compared: %s; "
           "%d distinct frames and actions %s seen; %d traces cut short "
           "(a read outside the modelled tables)"
-          % (traces, frames_run, compared, len(seen_frames), sorted(seen_actions),
+          % (traces, frames_run, compared, what, len(seen_frames), sorted(seen_actions),
              ended_early + off_model))
     print("   in the original's run: %d frames changed the level, sounds %s were played, "
           "up to %d objects in transition at once, a floor was falling in %d frames"

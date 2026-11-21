@@ -35,4 +35,11 @@ typedef struct pop_imgfile {
 int pop_imgfile_load(const char *path, pop_imgfile *out, const char **err);
 void pop_imgfile_free(pop_imgfile *f);
 
+/* Width (bytes) and height (lines) of every image of a table, in the form
+ * pop_imgdims wants: what DIMCHAR finds in the table in memory.  The game
+ * logic must be given the sizes of the tables that are actually loaded
+ * (the opponents' table changes with the level).  Returns a block of
+ * *count pairs for the caller to free, or NULL. */
+uint8_t *pop_imgtab_dims(const pop_imgtab *t, uint16_t *count);
+
 #endif /* POP_GFXFILES_H */

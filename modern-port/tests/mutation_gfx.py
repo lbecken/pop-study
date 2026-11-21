@@ -1,22 +1,25 @@
 #!/usr/bin/env python3
-"""Do compare_rooms.py and compare_fast.py notice a wrong redraw?  A check
-of the tests themselves.
+"""Do compare_rooms.py, compare_fast.py and replay_frames.py notice wrong
+drawing?  A check of the tests themselves.
 
 New code for the pop-study project.  Not part of CTest.
 
-Each entry is one small deliberate error in src/video/pop_frameadv.c or
-pop_lists.c.  The script builds pop_gfxrun with that one change and runs
-the two comparisons, one of which must then report a mismatch.  Entries
+Each entry is one small deliberate error in src/video/pop_frameadv.c,
+pop_lists.c or pop_screen.c.  The script builds pop_gfxrun and pop_worldrun
+with that one change and runs the comparisons (full redraws, partial
+redraws, the demo and random-input traces drawn frame by frame), one of
+which must then report a mismatch.  Entries
 with a reason are changes that cannot make a difference for what the
 comparisons draw; for those both must still pass.  The original's results
-are computed once and reused (POP_ROOMS_CACHE, POP_FAST_CACHE).  A reason
+are computed once and reused (POP_ROOMS_CACHE, POP_FAST_CACHE,
+POP_DEMO_CACHE, POP_TRACE_CACHE).  A reason
 that starts with "unit:<test file>" names a unit test that is built with
 the error instead and must fail: for errors the comparisons cannot see
 because the case leaves the modelled memory and is skipped.
 
 Usage:
     mutation_gfx.py <data dir> <original checkout> [variations per level]
-                    [seed] [screens per level for compare_fast]
+                    [seed] [screens per level for compare_fast] [traces]
 """
 
 import concurrent.futures
@@ -119,9 +122,7 @@ FRAMEADV = [
      "        v->YCO = v->gatebot;\n        v->IMAGE = K(gatebotORA);\n        v->OPACITY = POP_OP_ORA;\n        pop_addback(v);", None),
     ("        if (a < 7) break;                      /* would stick out of the block */", "        ;", None),
     ("        if (u8(a - 7) < v->blockthr) break;\n        pop_addback(v);", "        if (u8(a - 8) < v->blockthr) break;\n        pop_addback(v);", None),
-    ("    if (h == 0 || h >= 9) return;", "    if (h >= 9) return;",
-     "the wrong version then indexes the table at -1, outside the piece tables, and the "
-     "comparison skips the screen; test_gfx.c has the case (a gate 28 units open)"),
+    ("    if (h == 0 || h >= 9) return;", "    if (h >= 9) return;", None),
     ("    v->IMAGE = T(gate8b, h - 1u);", "    v->IMAGE = T(gate8b, h);", None),
     ("    v->YCO = u8(v->gatebot - 2);\n    v->IMAGE = K(gatebotORA);\n    pop_addfore(v);", "    v->YCO = v->gatebot;\n    v->IMAGE = K(gatebotORA);\n    pop_addfore(v);", None),
     ("    case POP_LOOSE:  drawlooseb(v); break;", "", None),
@@ -419,8 +420,84 @@ OBJS = [
 ]
 OBJS = [m for m in OBJS if m[2] != "placeholder"]
 
+# --- messages and the screen (replay_frames.py) ---
+SCREEN = [
+    ("enum { MY = 90, LOWMY = 153, HICONTY = 73, LOWCONTY = 168 };", "enum { MY = 91, LOWMY = 153, HICONTY = 73, LOWCONTY = 168 };", None),
+    ("enum { MY = 90, LOWMY = 153, HICONTY = 73, LOWCONTY = 168 };", "enum { MY = 90, LOWMY = 152, HICONTY = 73, LOWCONTY = 168 };", None),
+    ("enum { MY = 90, LOWMY = 153, HICONTY = 73, LOWCONTY = 168 };", "enum { MY = 90, LOWMY = 153, HICONTY = 74, LOWCONTY = 168 };", None),
+    ("enum { MY = 90, LOWMY = 153, HICONTY = 73, LOWCONTY = 168 };", "enum { MY = 90, LOWMY = 153, HICONTY = 73, LOWCONTY = 167 };", None),
+    ("static const box CONTBOX  = { HICONTY, 13, 0, 0x7C };", "static const box CONTBOX  = { HICONTY, 12, 0, 0x7C };", None),
+    ("static const box MSGBOX   = { MY, 15, 0, 0x7B };", "static const box MSGBOX   = { MY, 15, 1, 0x7B };", None),
+    ("static const box LEVELMSG = { MY - 5, 16, 3, 0x7A };", "static const box LEVELMSG = { MY - 5, 16, 2, 0x7A };", None),
+    ("static const box TIMELEFT = { MY, 11, 0, 0x7D };", "static const box TIMELEFT = { MY, 11, 0, 0x7B };", None),
+    ("static const box SECONDS  = { MY - 5, 14, 0, 0x7F };", "static const box SECONDS  = { MY - 5, 15, 0, 0x7F };", None),
+    ("static const uint8_t DIGIT1[13] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x71, 0x71, 0x71 };",
+     "static const uint8_t DIGIT1[13] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x71, 0x71, 0x72 };", None),
+    ("static const uint8_t DIGIT2[13] = { 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79,",
+     "static const uint8_t DIGIT2[13] = { 0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x76, 0x77, 0x79, 0x78,", None),
+    ("    v->OFFSET = b->offset;\n", "", None),
+    ("    v->OPACITY = POP_OP_STA | 0x40;", "    v->OPACITY = POP_OP_STA;", None),
+    ("    return g->level >= 13 ? 12 : g->level;", "    return g->level >= 14 ? 12 : g->level;",
+     "unit:test_gfx.c: the wrong version looks up digit 13, which the tables do not have, and "
+     "the case is skipped"),
+    ("    if (getlevelno(g) >= 10) v->OFFSET = 0;    /* two digits", "    if (getlevelno(g) >= 11) v->OFFSET = 0;    /* two digits", None),
+    ("    v->OPACITY = POP_OP_ORA;\n    pop_addmsg(v);\n    v->XCO = u8(v->XCO + 6);", "    v->OPACITY = POP_OP_STA;\n    pop_addmsg(v);\n    v->XCO = u8(v->XCO + 6);", None),
+    ("    v->XCO = u8(v->XCO + 6);", "    v->XCO = u8(v->XCO + 5);", None),
+    ("    if (a != 0) {\n        v->IMAGE = a;", "    {\n        v->IMAGE = a;",
+     "unit:test_gfx.c: the wrong version asks for image 0 on levels 0 to 9, which no table has, "
+     "and the case is skipped"),
+    ("        pop_addmsg(v);\n        v->XCO = u8(v->XCO + 1);\n    }\n    v->IMAGE = DIGIT2[x];", "        pop_addmsg(v);\n    }\n    v->IMAGE = DIGIT2[x];", None),
+    ("    if (g->MinLeft < 2 && g->kid.action != 3 && g->kid.action != 4 && g->kid.block_y == 1) {",
+     "    if (g->kid.action != 3 && g->kid.action != 4 && g->kid.block_y == 1) {", None),
+    ("    if (g->MinLeft < 2 && g->kid.action != 3 && g->kid.action != 4 && g->kid.block_y == 1) {",
+     "    if (g->MinLeft < 2 && g->kid.action != 4 && g->kid.block_y == 1) {", None),
+    ("    if (g->MinLeft < 2 && g->kid.action != 3 && g->kid.action != 4 && g->kid.block_y == 1) {",
+     "    if (g->MinLeft < 2 && g->kid.action != 3 && g->kid.block_y == 1) {", None),
+    ("    if (g->MinLeft < 2 && g->kid.action != 3 && g->kid.action != 4 && g->kid.block_y == 1) {",
+     "    if (g->MinLeft < 2 && g->kid.action != 3 && g->kid.action != 4) {", None),
+    ("    superim1(v);\n    v->YCO = u8(v->YCO - 5);\n    v->XCO = u8(v->XCO + 1);", "    superim1(v);\n    v->YCO = u8(v->YCO - 4);\n    v->XCO = u8(v->XCO + 1);", None),
+    ("    v->YCO = u8(v->YCO - 5);\n    v->XCO = u8(v->XCO + 1);\n    v->OPACITY = POP_OP_ORA;", "    v->YCO = u8(v->YCO - 5);\n    v->OPACITY = POP_OP_ORA;", None),
+    ("    v->OPACITY = POP_OP_ORA;\n    pop_getminleft(g);", "    v->OPACITY = POP_OP_ORA;", None),
+    ("    if (temp < 2) temp = g->SecLeft;", "    if (temp < 1) temp = g->SecLeft;", None),
+    ("    if ((temp >> 4) != 0) {\n        v->IMAGE = digit2(v, temp >> 4);", "    {\n        v->IMAGE = digit2(v, temp >> 4);", None),
+    ("        pop_addmsg(v);\n    }\n    v->XCO = u8(v->XCO + 1);\n    v->IMAGE = digit2(v, temp & 0x0F);", "        pop_addmsg(v);\n    }\n    v->IMAGE = digit2(v, temp & 0x0F);", None),
+    ("    if (g->MinLeft >= 2) return;\n", "", None),
+    ("    setupimage(v, &SECONDS);\n    v->YCO = y;", "    setupimage(v, &SECONDS);", None),
+    ("    v->YCO = y;\n    v->OPACITY = POP_OP_STA;", "    v->YCO = y;", None),
+    ("    if ((g->kid.block_x & 1) == 0) v->YCO = LOWCONTY;", "    if ((g->kid.block_x & 1) != 0) v->YCO = LOWCONTY;", None),
+    ("    case POP_SHOW_CONTINUE: pop_continuemsg(v, g); break;", "    case POP_SHOW_CONTINUE: break;", None),
+    ("    case POP_SHOW_LEVEL:    pop_printlevel(v, g); break;", "    case POP_SHOW_LEVEL:    pop_timeleftmsg(v, g); break;", None),
+    ("    v->scrncolor = value;                      /* (only filled anew if the value changes) */", "    (void)value;", None),
+    ("    v->hr.PAGE = 0x20;\n    pop_lrclse(v, 0xA0);", "    v->hr.PAGE = 0;\n    pop_lrclse(v, 0xA0);", None),
+    ("    pop_lrclse(v, 0xA0);                       /* spaces */\n", "", None),
+    ("    page2(v, 0);\n    text(v, 1);", "    page2(v, 0);", None),
+    ("    page2(v, 0);\n    text(v, 1);", "    text(v, 1);", None),
+    ("    page2(v, 0);\n    text(v, 1);", "    text(v, 1);\n    page2(v, 0);", None),
+    ("    v->hr.PAGE = 0;\n    to = u8(v->hr.PAGE + 0x20);", "    to = u8(v->hr.PAGE + 0x20);", None),
+    ("    from = to ^ 0x60;", "    from = to;", None),
+    ("    g->height = v->IMAGE = from;", "    v->IMAGE = from;",
+     "the game logic sets the height before it uses it, and the next drawing routine starts "
+     "from the game's value"),
+    ("    pop_hr_copyscrn(&v->hr, from, to);", "    pop_hr_copyscrn(&v->hr, to, from);", None),
+    ("    if (v->hr.PAGE == 0) {\n        v->hr.PAGE = 0x20;\n        page2(v, 0);", "    if (v->hr.PAGE != 0) {\n        v->hr.PAGE = 0x20;\n        page2(v, 0);", None),
+    ("        v->hr.PAGE = 0x20;\n        page2(v, 0);                           /* show page 1, draw on page 2 */", "        v->hr.PAGE = 0x20;\n        page2(v, 1);", None),
+    ("        v->hr.PAGE = 0;\n        page2(v, 1);\n    }\n    hires(v, 1);", "        v->hr.PAGE = 0;\n        page2(v, 0);\n    }\n    hires(v, 1);", None),
+    ("    hires(v, 1);\n    text(v, 0);", "    text(v, 0);", None),
+    ("    hires(v, 1);\n    text(v, 0);", "    hires(v, 1);", None),
+    ("    hires(v, 1);\n    text(v, 0);", "    text(v, 0);\n    hires(v, 1);", None),
+    ("    pop_lrclse(v, colour);\n    page2(v, 0);\n    hires(v, 0);", "    page2(v, 0);\n    hires(v, 0);", None),
+    ("    pop_lrclse(v, colour);\n    page2(v, 0);\n    hires(v, 0);", "    pop_lrclse(v, colour);\n    hires(v, 0);", None),
+    ("    pop_lrclse(v, colour);\n    page2(v, 0);\n    hires(v, 0);", "    pop_lrclse(v, colour);\n    page2(v, 0);", None),
+    ("    if (v->hr.PAGE == 0) page2(v, 1);\n    hires(v, 1);\n}", "    page2(v, 1);\n    hires(v, 1);\n}", None),
+    ("    if (v->hr.PAGE == 0) page2(v, 1);\n    hires(v, 1);\n}", "    if (v->hr.PAGE == 0) page2(v, 1);\n}", None),
+    ("static void page2(pop_gfx *v, uint8_t on) { v->sw_page2 = on; note(v, on ? '2' : '1'); }",
+     "static void page2(pop_gfx *v, uint8_t on) { v->sw_page2 = on; note(v, on ? '1' : '2'); }", None),
+    ("static void hires(pop_gfx *v, uint8_t on) { v->sw_hires = on; note(v, on ? 'h' : 'l'); }",
+     "static void hires(pop_gfx *v, uint8_t on) { note(v, on ? 'h' : 'l'); }", None),
+]
+
 FILES = (("pop_frameadv.c", FRAMEADV), ("pop_frameadv.c", FAST), ("pop_frameadv.c", OBJS),
-         ("pop_lists.c", LISTS))
+         ("pop_lists.c", LISTS), ("pop_screen.c", SCREEN))
 
 
 def main(argv):
@@ -434,11 +511,18 @@ def main(argv):
     fixed = [os.path.join(PORT, "src", "core", c) for c in core if c.endswith(".c")] \
         + [os.path.join(PORT, "src", "assets", "pop_gfxfiles.c"),
            os.path.join(PORT, "tools", "pop_gfxrun.c")]
-    video = ("pop_hires.c", "pop_lists.c", "pop_frameadv.c")
-    includes = ["-I" + os.path.join(PORT, "src", d) for d in ("core", "video", "assets")]
+    # the whole-frame comparisons use the other runner
+    world = [f for f in fixed if not f.endswith("pop_gfxrun.c")] \
+        + [os.path.join(PORT, "src", "assets", "pop_assets.c"),
+           os.path.join(PORT, "src", "audio", "pop_sfx.c"),
+           os.path.join(PORT, "tools", "pop_worldrun.c")]
+    video = ("pop_hires.c", "pop_lists.c", "pop_frameadv.c", "pop_screen.c")
+    includes = ["-I" + os.path.join(PORT, "src", d) for d in ("core", "video", "assets", "audio")]
     per_level = argv[5] if len(argv) > 5 else "30"
+    traces = argv[6] if len(argv) > 6 else "30"
     cache = os.path.join(tempfile.mkdtemp(), "rooms.cache")
-    env = dict(os.environ, POP_ROOMS_CACHE=cache, POP_FAST_CACHE=cache + ".fast")
+    env = dict(os.environ, POP_ROOMS_CACHE=cache, POP_FAST_CACHE=cache + ".fast",
+               POP_DEMO_CACHE=cache + ".demo", POP_TRACE_CACHE=cache + ".trace")
 
     only = os.environ.get("POP_MUT_ONLY")    # rerun the entries whose text contains this
     jobs, stale = [], 0
@@ -451,7 +535,7 @@ def main(argv):
                       % (name, text.count(old), old.strip()[:70]))
                 stale += 1
                 continue
-            if only is None or only in old or only in new:
+            if only is None or only in old or only in new or only == name:
                 jobs.append((name, text.replace(old, new), old, new, why))
 
     def build_and_run(name, source_text, unit=None):
@@ -481,6 +565,17 @@ def main(argv):
                 return r.returncode
             r = subprocess.run([sys.executable, os.path.join(HERE, "compare_fast.py"), exe, data,
                                 source, per_level, seed], capture_output=True, text=True, env=env)
+            if r.returncode != 0:
+                return r.returncode
+            exe2 = os.path.join(work, "world")
+            subprocess.run(["cc", "-std=c17", "-O1"] + includes + sources + world
+                           + ["-o", exe2, "-lm"], check=True)
+            frames = [sys.executable, os.path.join(HERE, "replay_frames.py"), exe2, data, source]
+            r = subprocess.run(frames + ["demo"], capture_output=True, text=True, env=env)
+            if r.returncode != 0:
+                return r.returncode
+            r = subprocess.run(frames + ["traces", traces, seed], capture_output=True, text=True,
+                               env=env)
             return r.returncode
         finally:
             shutil.rmtree(work)

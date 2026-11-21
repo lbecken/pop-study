@@ -25,6 +25,7 @@ Usage:
 """
 
 import os
+import pickle
 import subprocess
 import sys
 
@@ -35,14 +36,14 @@ import fuzz_control as fc  # noqa: E402
 from fuzz_control import BUFFERS, BYTES, WORDS  # noqa: E402
 from trace_kidstep import TraceHarness  # noqa: E402
 
-def main(argv):
-    if len(argv) < 4:
-        print(__doc__)
-        return 2
-    runner, data, source = argv[1:4]
-    max_frames = int(argv[4]) if len(argv) > 4 else 600
-
-    h = TraceHarness(source)
+def replay(h, runner, data, source, max_frames, first_commands=()):
+    """Play the demo in the original (harness h) and in the port; compare
+    after every call.  Returns (frames, seen, story, ended) or None."""
+    cache = os.environ.get("POP_DEMO_CACHE")     # the original's run, kept for other runs
+    if cache and os.path.exists(cache):
+        with open(cache, "rb") as f:
+            commands, expected, summary = pickle.load(f)
+        return compare(h, runner, data, commands, expected, summary, max_frames)
     with open(os.path.join(source, "01 POP Source", "Levels", "LEVEL0"), "rb") as f:
         level = f.read()
 
@@ -52,7 +53,8 @@ def main(argv):
     s.update(yellowflag=0x80, ShadFace=86, blue=1)
     bufs = {name: bytes(size) for name, size in BUFFERS}
     h.begin(level, s, bufs)
-    commands = ["K 1", "L " + level.hex(), "S " + " ".join("%s=%d" % kv for kv in s.items())]
+    commands = list(first_commands)
+    commands += ["K 1", "L " + level.hex(), "S " + " ".join("%s=%d" % kv for kv in s.items())]
     commands += ["H %s %s" % (name, bufs[name].hex()) for name, _ in BUFFERS]
     expected = []
 
@@ -87,18 +89,26 @@ def main(argv):
         if h.left:
             ended = "GOATTRACT" if "A" in want["hooks"] else "the script's end-of-demo"
             break
+    summary = (frames, seen, story, ended)
+    if cache:
+        with open(cache, "wb") as f:
+            pickle.dump((commands, expected, summary), f)
+    return compare(h, runner, data, commands, expected, summary, max_frames)
 
+
+def compare(h, runner, data, commands, expected, summary, max_frames):
+    frames, seen, story, ended = summary
     argv_c = [runner] + [os.path.join(data, n) for n in
                          ("framedef.bin", "seqtable.bin", "imgdims.bin", "autodata.bin")]
     out = subprocess.run(argv_c, input="\n".join(commands) + "\n", capture_output=True,
                          text=True)
     if out.returncode != 0:
         print("pop_worldrun failed: " + out.stderr[-500:])
-        return 1
+        return None
     lines = out.stdout.splitlines()
     if len(lines) != len(expected):
         print("expected %d result lines, got %d" % (len(expected), len(lines)))
-        return 1
+        return None
 
     for n, (line, (name, want)) in enumerate(zip(lines, expected)):
         got, extra = {}, {}
@@ -113,26 +123,39 @@ def main(argv):
             print("call %d (%s): outside the modelled tables (original: %s, port: %s)"
                   % (n, name, want if isinstance(want, str) else "ok",
                      "stopped" if got["unmodelled"] else "ok"))
-            return 1
+            return None
         problems = []
         if got["blue"] != want["vars"]["blue"]:
             problems.append("blueprint screen: C %d, original %d"
                             % (got["blue"], want["vars"]["blue"]))
         problems += ["%s: C %d, original %d" % (k, got[k], want["vars"][k])
-                     for k in BYTES + WORDS if got[k] != want["vars"][k]]
+                     for k in BYTES + WORDS if got[k] != want["vars"][k] and k not in h.ignore]
         problems += ["%s: C %s, original %s" % (k, extra[k], want[k])
-                     for k in ("snd", "hooks", "lvl") if extra[k] != want[k]]
+                     for k in ("snd", "hooks", "lvl") + tuple(h.extra) if extra[k] != want[k]]
         problems += ["%s: C %s, original %s" % (k, extra[k], want["bufs"][k])
-                     for k, _ in BUFFERS if extra[k] != want["bufs"][k]]
+                     for k, _ in BUFFERS if extra[k] != want["bufs"][k] and k not in h.ignore]
         if problems:
             print("MISMATCH at call %d (%s), frame %d" % (n, name, n - 1))
             for p in problems[:12]:
                 print("   " + p)
-            return 1
+            return None
 
     if not ended:
         print("the demo did not end within %d frames" % max_frames)
+        return None
+    return frames, seen, story, ended
+
+
+def main(argv):
+    if len(argv) < 4:
+        print(__doc__)
+        return 2
+    runner, data, source = argv[1:4]
+    max_frames = int(argv[4]) if len(argv) > 4 else 600
+    result = replay(TraceHarness(source), runner, data, source, max_frames)
+    if result is None:
         return 1
+    frames, seen, story, ended = result
     print("demo replayed: %d frames (passes of MainLoop), C port and original code agree "
           "after every one" % frames)
     print("   in the original's run: the kid passed through screens %s, %d distinct frames; "

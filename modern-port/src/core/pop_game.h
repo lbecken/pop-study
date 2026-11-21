@@ -108,11 +108,16 @@ typedef struct pop_game_hooks {
     void (*you_win)(void *ctx);          /* YouWin: the princess's room */
     void (*restart)(void *ctx);          /* RESTART: load `level` and start it */
 
-    /* drawing */
-    void (*draw_screen)(void *ctx);      /* sure: the whole background of VisScrn */
-    void (*draw_changes)(void *ctx);     /* addmobs, the characters, fast: what changed */
+    /* drawing: the display lists and the two pages are the video side's
+     * (src/video; docs/port/frame-drawing.md section 5 has the order) */
+    void (*zero_lists)(void *ctx);       /* zerolsts: empty the display lists */
+    void (*draw_screen)(void *ctx);      /* sure: list the whole background of SCRNUM */
+    void (*draw_changes)(void *ctx);     /* fast: list what the marks and the objects ask for */
+    void (*draw_lists)(void *ctx);       /* drawall: draw the lists on the hidden page */
     void (*show_frame)(void *ctx);       /* PageFlip */
     void (*zero_peels)(void *ctx);       /* zeropeels: forget what was drawn */
+    void (*cut_begin)(void *ctx);        /* DoCleanCut, drawbg: page 2 hidden behind a blank screen */
+    void (*cut_copy)(void *ctx);         /* DoCleanCut: copy the finished background to page 1 */
     void (*show_message)(void *ctx, uint8_t kind);           /* POP_SHOW_* over the frame */
     void (*flash_on)(void *ctx, uint8_t colour);             /* doflashon */
     void (*flash_off)(void *ctx);        /* doflashoff */

@@ -1467,8 +1467,10 @@ class Left(Exception):
 
 
 class Harness:
-    def __init__(self, source):
-        self.oracle = Oracle(source)
+    def __init__(self, source, oracle=None):
+        # (another oracle with the same interface: replay_frames.py runs
+        # the original with its drawing code, in two memory banks)
+        self.oracle = oracle or Oracle(source)
         self.addr = {n: self.oracle.addr(n, IN_MODULE.get(n)) for n in BYTES + WORDS
                      if n != "FrameCountH"}
         self.addr["FrameCountH"] = self.addr["FrameCount"] + 1
@@ -1569,6 +1571,7 @@ class Harness:
     def trap_dimchar(self, cpu):
         """DIMCHAR: In A = image #, X = table #; out A = width, X = height."""
         image, table = cpu.a, cpu.x
+        self.oracle.poke("IMAGE", image)             # (`sta IMAGE`; the same cell as `height`)
         if table >= len(self.dims) or not 1 <= image <= len(self.dims[table]):
             self.stray = True                        # the original would read stray memory
             cpu.a = cpu.x = 0

@@ -118,7 +118,7 @@ Five things in it are this project's, not the original's:
   does it (`docs/port/blitter.md` §8, unknown G4).
 - **Only the table of an image file is loaded**, up to the end of its last
   image. Some files are longer than their table and than the space the
-  game has for it (`docs/port/frame-drawing.md` §5); loading a table over
+  game has for it (`docs/port/frame-drawing.md` §6); loading a table over
   another one is refused.
 - **The copy-protection flag `purpleflag` is 1**, as a passed check leaves
   it (`docs/port/redraw.md` §3). With the 0 that the bare modules start
@@ -130,6 +130,19 @@ Five things in it are this project's, not the original's:
 - **Not modelled**: the two `$D000` banks of each language card, the ROM
   switches, 80STORE, and all video output. The oracle produces page bytes,
   never a picture.
+
+**Whole frames.** `modern-port/tests/replay_frames.py` puts the test
+harness of the single-routine tests on this oracle (a thin class gives it
+the one-bank oracle's interface, with game memory in the auxiliary bank)
+and takes the stand-ins for drawing away: `dimchar`, `inverty`,
+`zeropeels`, `sure`, `fast`, `PageFlip`, the three message routines,
+`doflashon`, `doflashoff`, `lrcls`, `lrclse`, `copyscrn` and `drawall` run
+as they are. Still stood in for: the keyboard, the vertical-blank wait
+(`vblank` polls `$C019`), sound, the disk and the scenes. The display soft
+switches `$C050`–`$C057` are followed through read hooks, to know which
+page the monitor would show. A trap is keyed by address only; the harness
+checks that no trapped game address is also an address of the blitter's
+code in main memory.
 
 ## Limits
 

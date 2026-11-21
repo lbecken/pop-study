@@ -9,13 +9,16 @@
  *   T <n> <path>         image table: 1, 2 = bgtable1, bgtable2; 11-17 = chtable1-7
  *   S name=value ...     level BGset1 KidScrn KidBlockX KidBlockY PAGE
  *                        KidStrength MaxKidStr OppStrength ShadID mergetimer
- *                        GuardColor backtolife
+ *                        GuardColor backtolife KidAction MinLeft SecLeft
+ *                        FrameCount FrameCountH
  *   P index=value ...    poke level bytes
  *   H <hex>              the redraw buffers (310 bytes)
  *   O <n> <12 numbers per object>   the object list: INDX X OFF Y IMG FACE TYP CU CD CL CR TAB
  *   R setinitials        SETINITIALS
  *   R room <screen>      GETSCRNS, then DoSure: SURE, the lists drawn
  *   R fast               ZEROLSTS, FAST, DRAWALL on the screen of the last room
+ *   R msg <kind>         ZEROLSTS, a message (1 "continue", 2 the level, 3 the time
+ *                        left), DRAWALL
  *   R lists              print the lists of the last room
  * Output of `R room`: unmodelled, CRC-32 of the page drawn and of the
  * three lists, and the lists' lengths.  `R fast` adds the message and wipe
@@ -165,6 +168,11 @@ int main(int argc, char **argv)
                 else if (!strcmp(tok, "mergetimer")) g.mergetimer = (uint8_t)val;
                 else if (!strcmp(tok, "GuardColor")) g.GuardColor = (uint8_t)val;
                 else if (!strcmp(tok, "backtolife")) g.backtolife = (uint8_t)val;
+                else if (!strcmp(tok, "KidAction")) g.kid.action = (uint8_t)val;
+                else if (!strcmp(tok, "MinLeft")) g.MinLeft = (uint8_t)val;
+                else if (!strcmp(tok, "SecLeft")) g.SecLeft = (uint8_t)val;
+                else if (!strcmp(tok, "FrameCount")) g.FrameCount[0] = (uint8_t)val;
+                else if (!strcmp(tok, "FrameCountH")) g.FrameCount[1] = (uint8_t)val;
                 else { fprintf(stderr, "unknown variable %s\n", tok); return 2; }
                 tok = strtok(NULL, " \n");
             }
@@ -207,10 +215,15 @@ int main(int argc, char **argv)
                 pop_drawall(&v, &g);
                 print_lists();
                 printf("\n");
-            } else if (!strcmp(name, "fast")) {
-                g.SCRNUM = g.VisScrn;                    /* DoFast, without objects and messages */
+            } else if (!strcmp(name, "fast") || !strcmp(name, "msg")) {
                 pop_zerolsts(&v);
-                pop_fast(&v, &g);
+                if (name[0] == 'f') {                    /* DoFast, without the game logic */
+                    g.SCRNUM = g.VisScrn;
+                    pop_fast(&v, &g);
+                } else {
+                    v.redkidmeter = v.redoppmeter = 0;
+                    pop_show_message(&v, &g, (uint8_t)a);
+                }
                 pop_drawall(&v, &g);
                 print_lists();
                 {
@@ -220,13 +233,14 @@ int main(int argc, char **argv)
                     peel = crc32(peel, v.peelIMGL + base + 1, n);
                     peel = crc32(peel, v.peelIMGH + base + 1, n);
                     printf(" msg=%08lx wipe=%08lx nmsg=%u nwipe=%u rb=%08lx redkid=%u redopp=%u"
-                           " other=%08lx peel=%08lx npeel=%u\n",
+                           " other=%08lx peel=%08lx npeel=%u minleft=%u secleft=%u\n",
                            (unsigned long)list_crc(v.msgX, v.msgY, v.msgIMG, v.msgOP, v.msgOFF),
                            (unsigned long)wipe_crc(), (unsigned)v.msgX[0], (unsigned)v.wipeX[0],
                            (unsigned long)crc32(0, g.rb, POP_RB_SIZE), (unsigned)v.redkidmeter,
                            (unsigned)v.redoppmeter,
                            (unsigned long)crc32(0, v.hr.vram + (v.hr.PAGE ? 0 : POP_HR_PAGE), POP_HR_PAGE),
-                           (unsigned long)peel, (unsigned)n);
+                           (unsigned long)peel, (unsigned)n, (unsigned)g.MinLeft,
+                           (unsigned)g.SecLeft);
                 }
             } else if (!strcmp(name, "lists")) {         /* for a failing case: the lists in full */
                 unsigned k;

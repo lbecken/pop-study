@@ -339,7 +339,8 @@ void pop_zerored(pop_game *g)
 
 static void dofast(pop_game *g)                /* DoFast, TOPCTRL.S 961-982 */
 {
-    pop_zeroobjs(g);                           /* ZEROLSTS (the display lists: the hook's business) */
+    pop_zeroobjs(g);                           /* ZEROLSTS */
+    HOOK(zero_lists);
     g->SCRNUM = g->VisScrn;
     if (g->redrawflg != 0) {                   /* develpatch: a forced full redraw */
         g->redrawflg--;
@@ -350,17 +351,22 @@ static void dofast(pop_game *g)                /* DoFast, TOPCTRL.S 961-982 */
     pop_addchars(g);                           /* characters; the mirror; meters if a strength changed */
     HOOK(draw_changes);                        /* FAST: the lists, from the marks and the objects */
     (void)pop_dispmsg(g);
+    HOOK(draw_lists);                          /* DRAWALL */
 }
 
 void pop_cleancut(pop_game *g)                 /* DoCleanCut, drawbg, DoSure */
 {
+    HOOK(cut_begin);                           /* the background goes on page 2, out of sight */
     g->cutplan = 0;
     g->CUTTIMER = 2;                           /* no other cut for 2 frames */
-    g->SCRNUM = g->VisScrn;
+    g->SCRNUM = g->VisScrn;                    /* DoSure */
+    HOOK(zero_lists);
     HOOK(draw_screen);
     HOOK(zero_peels);
     pop_zerored(g);
+    HOOK(draw_lists);
     pop_markmeters(g);
+    HOOK(cut_copy);                            /* characters are added on page 1 */
     dofast(g);
     HOOK(show_frame);
 }

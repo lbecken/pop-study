@@ -15,7 +15,9 @@ Here a screen is first drawn in full on both sides (as in compare_rooms.py),
 then several times in a row: random marks are written into the redraw
 buffers, some gadget states are changed, strengths are set, and the
 original's ZEROLSTS, FAST and DRAWALL are run in the two-bank simulator and
-pop_zerolsts, pop_fast and pop_drawall in C.  After each step the 8,192
+pop_zerolsts, pop_fast and pop_drawall in C.  Then two of the three
+messages (PRINTLEVEL, TIMELEFTMSG, CONTINUEMSG) are drawn over the picture
+from random levels, times and positions of the kid.  After each step the 8,192
 bytes of the page drawn on, the five display lists (background, foreground,
 mid, message, wipe), the 310 bytes of the redraw buffers and the two meter
 flags must be equal.
@@ -61,7 +63,8 @@ LISTS = cr.LISTS + (("msg", ("msgX", "msgY", "msgIMG", "msgOP", "msgOFF")),
                     ("wipe", ("wipeX", "wipeY", "wipeH", "wipeW", "wipeCOL")))
 STEPS = 3                    # partial redraws after each full one
 CRCS = ("page", "other", "back", "fore", "mid", "msg", "wipe", "peel", "rb")
-COUNTS = ("nback", "nfore", "nmid", "nmsg", "nwipe", "npeel", "redkid", "redopp")
+COUNTS = ("nback", "nfore", "nmid", "nmsg", "nwipe", "npeel", "redkid", "redopp", "minleft",
+          "secleft")
 # character tables: number as the runner's T command wants it, table, file.
 # chtable6 and chtable7 are for the princess scenes and take the place of
 # other tables (GAMEEQ.S 12-15); during play they are not in memory.
@@ -73,19 +76,27 @@ OBJ_FIELDS = ("objINDX", "objX", "objOFF", "objY", "objIMG", "objFACE", "objTYP"
 MAXPEEL = 46
 
 
-def original_fast(o, page, objects):
+MESSAGES = {1: "continuemsg", 2: "printlevel", 3: "timeleftmsg"}      # by POP_SHOW_* (pop_loop.h)
+
+
+def original_fast(o, page, objects, message=None):
     try:
         o.call("zerolsts")
-        o.set_vars({"objX": objects})        # (ZEROLSTS empties the object list too)
-        o.set_vars({"SCRNUM": o.var("VisScrn")})
-        o.call("fast", max_cycles=80_000_000)
+        if message is None:
+            o.set_vars({"objX": objects})    # (ZEROLSTS empties the object list too)
+            o.set_vars({"SCRNUM": o.var("VisScrn")})
+            o.call("fast", max_cycles=80_000_000)
+        else:
+            o.set_vars({"redkidmeter": 0, "redoppmeter": 0})
+            o.call(MESSAGES[message])
         o.call("drawall", max_cycles=80_000_000)
     except CpuError:
         return None
     out = {"page": zlib.crc32(o.page(2 if page else 1)),
            "other": zlib.crc32(o.page(1 if page else 2)),
            "rb": zlib.crc32(o.cpu.peek(REDBUFS, AUX, RB_SIZE)),
-           "redkid": o.var("redkidmeter"), "redopp": o.var("redoppmeter")}
+           "redkid": o.var("redkidmeter"), "redopp": o.var("redoppmeter"),
+           "minleft": o.var("MinLeft"), "secleft": o.var("SecLeft")}
     base = MAXPEEL if page else 0
     count = o.cpu.peek(o.addr("peelX") + base, AUX)
     out["npeel"] = count
@@ -354,6 +365,26 @@ def original_results(source, per_level, seed):
                     if rng.random() < 0.5:   # after the block itself: its pieces move the column
                         rb[RB[rng.choice(("red", "red", "move", "wipe"))] + at % 30] = 1
                 fast(rb)
+
+            # then messages over the picture, each from the state it reads
+            for _ in range(2):
+                kind = rng.choice((1, 2, 2, 3, 3, 3))
+                count = rng.choice((rng.randrange(43505), 43505 - rng.randint(1, 1450),
+                                    725 * rng.randint(1, 59), rng.randrange(43505, 65536)))
+                state = {"level": rng.choice((level_no, rng.randrange(15), 9, 10, 12, 13, 14)),
+                         "KidBlockX": rng.randrange(10), "KidBlockY": rng.randrange(3),
+                         "KidAction": rng.randrange(8),
+                         "MinLeft": rng.choice((0, 1, 1, 2, 0x15, 0xFF)),
+                         "SecLeft": rng.randrange(256),
+                         "FrameCount": count & 0xFF, "FrameCountH": count >> 8}
+                o.set_vars({k: v for k, v in state.items() if k != "FrameCountH"})
+                o.cpu.poke(o.addr("FrameCount") + 1, AUX, state["FrameCountH"])
+                commands.append("S " + " ".join("%s=%d" % kv for kv in state.items()))
+                commands.append("R msg %d" % kind)
+                expected.append((level_no, screen, "msg",
+                                 original_fast(o, page, 0, kind) if drawn else None))
+                o.set_vars({"level": level_no})
+                commands.append("S level=%d" % level_no)
     return commands, expected
 
 
@@ -368,7 +399,7 @@ def compare(runner, data, commands, expected):
         print("expected %d result lines, got %d" % (len(expected), len(lines)))
         return 1
     which = [i for i, c in enumerate(commands) if c.startswith("R ")]   # one result line each
-    failures = skipped = compared = 0
+    failures = skipped = compared = messages = 0
     most = dict.fromkeys(COUNTS[:6], 0)
     meters = 0
     tainted = False
@@ -385,15 +416,16 @@ def compare(runner, data, commands, expected):
         # on the same screen may not mean anything.
         if want is None or got["unmodelled"]:
             tainted = True
-        if what != "fast":
+        if what not in ("fast", "msg"):
             continue
         if tainted:
             skipped += 1
             continue
         compared += 1
+        messages += what == "msg"
         for k in most:
             most[k] = max(most[k], want[k])
-        meters += want["nmsg"] > 0
+        meters += what == "fast" and want["nmsg"] > 0
         problems = ["%s: C %x, original %x" % (k, got[k], want[k])
                     for k in COUNTS + CRCS if got[k] != want[k]]
         if problems:
@@ -416,10 +448,11 @@ def compare(runner, data, commands, expected):
     if skipped * 4 > compared + skipped:
         print("too many skipped: %d of %d" % (skipped, compared + skipped))
         return 1
-    print("%d partial redraws compared: C and original agree on every byte of both pages, on the "
-          "five display lists and the save-under list, on the redraw buffers afterwards and on "
-          "the meter flags; "
-          "%d skipped (outside the modelled memory)" % (compared, skipped))
+    print("%d partial redraws and %d messages compared: C and original agree on every byte of "
+          "both pages, on the five display lists and the save-under list, on the redraw buffers "
+          "afterwards and on the meter flags; " % (compared - messages, messages))
+    print("   "
+          "%d skipped (outside the modelled memory)" % skipped)
     print("   longest lists in the original's runs: %d background, %d foreground, %d mid, "
           "%d message, %d wipe, %d save-under entries; %d redraws drew a strength meter"
           % (most["nback"], most["nfore"], most["nmid"], most["nmsg"], most["nwipe"], most["npeel"],

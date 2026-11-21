@@ -577,7 +577,7 @@ LOOP_MUTANTS = [
     ("    HOOK(draw_changes);                        /* FAST: the lists, from the marks and the objects */\n    (void)pop_dispmsg(g);",
      "    (void)pop_dispmsg(g);\n    HOOK(draw_changes);", None),
     ("    g->cutplan = 0;\n    g->CUTTIMER = 2;", "    g->cutplan = 0;\n    g->CUTTIMER = 1;", None),
-    ("    HOOK(zero_peels);\n    pop_zerored(g);\n    pop_markmeters(g);", "    HOOK(zero_peels);\n    pop_markmeters(g);\n    pop_zerored(g);", None),
+    ("    pop_zerored(g);\n    HOOK(draw_lists);\n    pop_markmeters(g);", "    pop_markmeters(g);\n    HOOK(draw_lists);\n    pop_zerored(g);", None),
     ("    if (g->cutplan != 0) {\n        pop_cleancut(g);\n        return;\n    }", "", None),
     ("    g->redrawflg = 0;\n    g->ManCtrl = 0;", "    g->redrawflg = 0;", None),
     ("    g->NextTimeMsg = 0;\n    g->MinLeft = g->SecLeft = 0xFF;", "    g->NextTimeMsg = 0;\n    g->MinLeft = 0xFF;", None),
@@ -838,9 +838,11 @@ def main(argv):
     core = ("pop_control.c", "pop_collide.c", "pop_mover.c", "pop_auto.c", "pop_top.c",
             "pop_loop.c", "pop_objs.c", "pop_seq.c", "pop_sound.c", "pop_world.c")
     others = [os.path.join(PORT, *p) for p in (
-        ("src", "assets", "pop_assets.c"), ("src", "audio", "pop_sfx.c"),
-        ("tools", "pop_worldrun.c"))]
-    includes = ["-I" + os.path.join(PORT, "src", d) for d in ("core", "assets", "audio")]
+        ("src", "assets", "pop_assets.c"), ("src", "assets", "pop_gfxfiles.c"),
+        ("src", "audio", "pop_sfx.c"), ("src", "video", "pop_hires.c"),
+        ("src", "video", "pop_lists.c"), ("src", "video", "pop_frameadv.c"),
+        ("src", "video", "pop_screen.c"), ("tools", "pop_worldrun.c"))]
+    includes = ["-I" + os.path.join(PORT, "src", d) for d in ("core", "assets", "audio", "video")]
 
     jobs = []
     stale = 0

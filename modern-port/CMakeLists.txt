@@ -45,7 +45,7 @@ add_library(pop_core STATIC src/core/pop_seq.c src/core/pop_sound.c src/core/pop
 target_include_directories(pop_core PUBLIC src/core)
 
 # Video: the blitter, the display lists, the redraw of a screen.  No I/O, no SDL.
-add_library(pop_video STATIC src/video/pop_hires.c src/video/pop_lists.c
+add_library(pop_video STATIC src/video/pop_hires.c src/video/pop_lists.c src/video/pop_screen.c
             src/video/pop_frameadv.c)
 target_include_directories(pop_video PUBLIC src/video)
 target_link_libraries(pop_video PUBLIC pop_core)
@@ -228,6 +228,14 @@ if(POP_SOURCE_DIR)
            COMMAND "${Python3_EXECUTABLE}"
                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/trace_kidstep.py"
                    "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}" "${POP_SOURCE_DIR}" 60 1989)
+  add_test(NAME frames_demo_c_vs_original
+           COMMAND "${Python3_EXECUTABLE}"
+                   "${CMAKE_CURRENT_SOURCE_DIR}/tests/replay_frames.py"
+                   "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}" "${POP_SOURCE_DIR}" demo)
+  add_test(NAME frames_traces_c_vs_original
+           COMMAND "${Python3_EXECUTABLE}"
+                   "${CMAKE_CURRENT_SOURCE_DIR}/tests/replay_frames.py"
+                   "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}" "${POP_SOURCE_DIR}" traces 30 1989)
 else()
   message(STATUS "POP_SOURCE_DIR not set: original-data tests are not built")
 endif()

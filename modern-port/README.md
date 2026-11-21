@@ -23,12 +23,15 @@ checkout of the original source and is never stored in this repository.
 | The display lists and their drawing, and the full redraw of a screen from the level (`GRAFIX.S`, `FRAMEADV.S` `SURE`) | ported; every screen of the 15 levels compared with the original's page, plus random gadget states. Piece tables are generated data, images are read from your checkout |
 | What changes from frame to frame: the redraw marks, wipes, strength meters (`FRAMEADV.S` `FAST`, `GAMEBG.S`) | ported; page, lists and marks compared with the original on random marks |
 | Characters, swords, impact stars and falling floors: which are listed for drawing, where, cut how (`TOPCTRL.S` `addchars`, `CTRLSUBS.S`, `MOVER.S` `ADDMOBS`), and their drawing with save-under | ported; the list compared on random game states, the two pages on random lists |
-| Messages, whole frames on screen, colour, reading keys and joystick, sound output, music, SDL3 shell | not started (hooks) |
+| Messages, the two display pages, screen changes; a whole frame of the game with its drawing (`TOPCTRL.S` `DoFast`, `DoCleanCut`, `SUBS.S` `PAGEFLIP`, `GAMEBG.S`) | ported; the demo and random play compared with the original frame by frame, both hi-res pages byte for byte |
+| Colour (the pages are bytes, not yet a picture), reading keys and joystick, sound output, music, SDL3 shell | not started (hooks) |
 
 There is no runnable game yet and no SDL3 dependency yet. The nearest thing
-is `tests/replay_demo.py`, which plays the original's demo level in the port,
-one `pop_mainloop` call per frame, next to the original's `MainLoop` in a 6502
-simulator.
+is `tests/replay_frames.py demo`, which plays the original's demo level in
+the port, one `pop_mainloop` call per frame with the drawing code behind its
+hooks, next to the original's `MainLoop` and blitter in a 6502 simulator,
+and compares the two hi-res pages after every frame. What comes out is page
+bytes; turning them into a picture is the next step.
 See `../docs/port/` for per-subsystem notes and `../docs/milestones.md` for the plan.
 
 ## Layout

@@ -227,11 +227,10 @@ following is game state, and is in the port (`pop_frameadv`):
 | `dispmsg` | the message timer (section 4) |
 | `flashoff` | `lightning` counts down |
 
-Everything else the drawing code does is picture: `draw_screen`,
-`draw_changes` and `show_frame` hooks. The redraw buffers and the object
-list are read by `draw_changes`, the original's `FAST`, which is ported in
-`src/video` (`pop_fast`, frame-drawing.md) and not yet connected to these
-hooks (milestone 10c-3).
+Everything else the drawing code does is picture, behind hooks: the
+display lists, the two pages and the switches belong to `src/video`
+(frame-drawing.md §5 has the order of calls and the routine behind each
+hook).
 
 `setupkid` (`TOPCTRL.S:803-810`) inserts a delay (`pause` 25) in frames in
 which the kid has frame 0, that is after he has gone up the stairs: timing,

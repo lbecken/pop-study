@@ -212,6 +212,9 @@ void pop_removeobj(pop_game *g, uint8_t lastpotion)
 static void dimchar(pop_game *g, uint8_t image, uint8_t table, uint8_t *w, uint8_t *h)
 {
     const pop_imgdims *d = g->dims;
+    /* DIMCHAR passes the image number to the blitter in the cell IMAGE,
+     * which is also the wipe height (EQ.S 384), and it stays there */
+    g->height = image;
     if (!d || table >= POP_CHTABLES || image == 0 || image > d->count[table]) {
         g->unmodelled = 1;                     /* the original reads stray memory */
         *w = *h = 0;

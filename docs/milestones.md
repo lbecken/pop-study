@@ -57,8 +57,8 @@ The original checkout stays outside this repository and is never written to.
 | 10a | The blitter in C (`HIRES.S`: `lay`, `fastlay`, `layrsave`, `peel`, masks, the five draw modes, mirroring, cropping) writing a 40 × 192-byte hi-res page. Needs the oracle extended to two memory banks, so that the original blitter itself runs in the simulator on the original image tables | Page bytes after each call, C against the original blitter, on random images, positions and modes: done, with 73 unit checks and 59 deliberate bugs. Side results: the Python blitter model of milestone 3 and the room model of milestone 5 now agree byte for byte with the original code's output (all 336 screens of the 15 levels); `docs/port/blitter.md` | **done** |
 | 10b | Full-screen redraw in C (`SURE`, the image lists, `drawall`), replacing the Python model as the reference | The finished page and the three display lists for all 336 screens and the null screen of each level, and for random gadget states and pieces, C against the original code: done, with 122 unit checks and 105 deliberate bugs; piece tables generated into `bgdata.bin`; `docs/port/redraw.md` | **done** |
 | 10c-1 | Partial redraw in C: `FAST` and the redraw buffers, wipes, floor pieces over a character, the top line, strength meters | The page, the five display lists, the redraw buffers and the meter flags after random marks, C against the original code: done, with unit checks and deliberate bugs; `docs/port/frame-drawing.md` | **done** |
-| 10c-2 | The object list: characters with cropping, swords, impact stars, falling floors (`addchars`, `addmobs`) in `src/core/pop_objs.c`, and their drawing (`drawobjs`, `sortlist`) in `pop_fast`; save-under across the two pages | The object list from random game states (15 routines), and both pages from random object lists, C against the original: done, with unit checks and deliberate bugs; `docs/port/frame-drawing.md` §4-5 | **done** |
-| 10c-3 | Messages, page flipping, the whole frame (`DoFast`, `DoCleanCut`) | The page after every frame of the demo, C against the original | |
+| 10c-2 | The object list: characters with cropping, swords, impact stars, falling floors (`addchars`, `addmobs`) in `src/core/pop_objs.c`, and their drawing (`drawobjs`, `sortlist`) in `pop_fast`; save-under across the two pages | The object list from random game states (15 routines), and both pages from random object lists, C against the original: done, with unit checks and deliberate bugs; `docs/port/frame-drawing.md` §4, §6 | **done** |
+| 10c-3 | Messages, the two display pages and what is shown (`PageFlip`, `DoCleanCut`, the flash), the frame as a whole behind the core's hooks | Game state, both hi-res pages and the display state after every frame of the demo (393 frames) and of random-input traces on levels 1-14, C against the original with its drawing code in the two-bank simulator: done; `docs/port/frame-drawing.md` §5 | **done** |
 | 10d | Presentation: 280 × 192 dot buffer and the artifact-colour filter of decision D3; frames written as PNG | Dot buffer derived from compared page bytes; colour model documented, checked by eye only (no emulator captures available) | |
 | 11 | Verification pass: compatibility matrix, emulator comparison, profiling | `docs/verification.md` | |
 | 12 | Optional: Blender → sprite-sheet pipeline document | – | |
@@ -92,6 +92,13 @@ say so if you want it drawn elsewhere.
 configurable.
 *Alternative:* calibrate to measured emulator timing per scene, including the
 pauses caused by sound.
+*Evidence since milestone 10c:* with the original's whole frame running in
+the simulator, the ordinary frames of the demo take 106 ms on average
+before sound (9.4 a second; between 50 and 220 ms depending on what is on
+the screen), and a change of screen about 0.6 s (unknown T1). The default
+is therefore somewhat faster and much steadier than the original was. It
+stays the default until the shell exists and can be judged by eye; the
+measured figures make the alternative possible without an emulator.
 
 **D3. Colour rendering.**
 *Default:* render a 280 × 192 dot buffer exactly as the blitter would and apply

@@ -721,6 +721,7 @@ void pop_sure(pop_gfx *v, pop_game *g)
 {
     int row;
     uint8_t col;
+    pop_gfx_cells_in(v, g);
     v->genCLS = 1;
     v->addmid_sel = 0;                         /* setback */
     getprev(v, g);
@@ -743,6 +744,7 @@ void pop_sure(pop_gfx *v, pop_game *g)
         reddsure(v, g);
         nextblock(v);
     }
+    pop_gfx_cells_out(v, g);
 }
 
 /* --- objects: characters, swords, impact stars, falling floors ---------------------------------- */
@@ -1101,6 +1103,7 @@ void pop_fast(pop_gfx *v, pop_game *g)
 {
     int row;
     uint8_t col;
+    pop_gfx_cells_in(v, g);
     getprev(v, g);
     blue(g, g->SCRNUM);
     v->redkidmeter = metbufs(g, 20, 3);        /* a meter under a redrawn block is drawn again */
@@ -1131,4 +1134,5 @@ void pop_fast(pop_gfx *v, pop_game *g)
     drawobjs(v, g);
     if (v->redkidmeter != 0) pop_drawkidmeter(v, g);         /* UPDATEMETERS */
     if (v->redoppmeter != 0) pop_drawoppmeter(v, g);
+    pop_gfx_cells_out(v, g);
 }

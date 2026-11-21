@@ -20,6 +20,18 @@ void pop_gfx_init(pop_gfx *v)
     v->dummy[0] = v->dummy[1] = POP_MAXPEEL;
 }
 
+void pop_gfx_cells_in(pop_gfx *v, const pop_game *g)
+{
+    v->IMAGE = g->height;
+    v->OFFSET = g->OFFSET;
+}
+
+void pop_gfx_cells_out(const pop_gfx *v, pop_game *g)
+{
+    g->height = v->IMAGE;
+    g->OFFSET = v->OFFSET;
+}
+
 pop_image pop_imgtab_image(const pop_imgtab *t, uint8_t number)
 {
     pop_image im = { NULL, 0 };
@@ -321,8 +333,9 @@ static void drawmsg(pop_gfx *v)                /* DRAWMSG */
     }
 }
 
-void pop_drawall(pop_gfx *v, const pop_game *g)
+void pop_drawall(pop_gfx *v, pop_game *g)
 {
+    pop_gfx_cells_in(v, g);
     dogen(v, g);
     sngpeel(v);                                /* the peel list set up two frames ago */
     pop_zeropeel(v);
@@ -332,4 +345,5 @@ void pop_drawall(pop_gfx *v, const pop_game *g)
     drawfore(v);
     drawmsg(v);
     if (v->hr.unmodelled) v->unmodelled = 1;
+    pop_gfx_cells_out(v, g);
 }

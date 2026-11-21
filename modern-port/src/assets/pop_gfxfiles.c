@@ -128,3 +128,25 @@ void pop_imgfile_free(pop_imgfile *f)
         memset(f, 0, sizeof *f);
     }
 }
+
+uint8_t *pop_imgtab_dims(const pop_imgtab *t, uint16_t *count)
+{
+    uint16_t n, i;
+    uint8_t *wh;
+    *count = 0;
+    if (!t->data || t->size < 1) return NULL;
+    n = t->data[0];
+    wh = malloc(2u * (size_t)n + 1u);
+    if (!wh) return NULL;
+    for (i = 0; i < n; i++) {
+        pop_image im = pop_imgtab_image(t, (uint8_t)(i + 1));
+        if (!im.bytes || im.size < 2) {
+            free(wh);
+            return NULL;
+        }
+        wh[2u * i] = im.bytes[0];
+        wh[2u * i + 1u] = im.bytes[1];
+    }
+    *count = n;
+    return wh;
+}

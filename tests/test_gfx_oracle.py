@@ -208,7 +208,7 @@ def test_the_two_inverty_routines_are_the_same_code():
 
 def test_only_the_table_of_an_image_file_is_loaded():
     """IMG.CHTAB4.GD is longer than the space the game has for it; its
-    images end well inside (docs/port/frame-drawing.md §5)."""
+    images end well inside (docs/port/frame-drawing.md §6)."""
     from pop_banked import AUX
     from pop_gfx_oracle import GfxOracle
     from pop_oracle import BLUEPRINT
