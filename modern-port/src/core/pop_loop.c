@@ -320,6 +320,10 @@ void pop_songcues(pop_game *g)
         if ((g->ChgKidStr | g->ChgOppStr) != 0) return;      /* and blows landing */
     }
     HOOK1(play_song, g->SongCue);              /* (the game stands still meanwhile) */
+    /* "clr kbd", TOPCTRL.S 1453: a key typed before the song is forgotten.
+     * (While the song plays the original watches the keyboard itself,
+     * MUSICKEYS: not ported, there being no music.) */
+    if (g->hooks.key_strobe) (void)g->hooks.key_strobe(g->hooks.ctx);
     g->SongCue = 0;
     pop_clearjoy(g);
 }
@@ -386,6 +390,7 @@ void pop_frameadv(pop_game *g)
 void pop_initgame(pop_game *g)
 {
     g->redrawflg = 0;
+    g->SINGSTEP = 0;
     g->ManCtrl = 0;
     g->vibes = 0;
     g->invert = 0;

@@ -40,7 +40,7 @@ endif()
 # Game rules: no I/O, no SDL.
 add_library(pop_core STATIC src/core/pop_seq.c src/core/pop_sound.c src/core/pop_world.c
             src/core/pop_control.c src/core/pop_collide.c
-            src/core/pop_mover.c src/core/pop_auto.c src/core/pop_top.c src/core/pop_loop.c
+            src/core/pop_mover.c src/core/pop_auto.c src/core/pop_top.c src/core/pop_loop.c src/core/pop_keys.c
             src/core/pop_objs.c)
 target_include_directories(pop_core PUBLIC src/core)
 
@@ -138,6 +138,9 @@ add_test(NAME top_unit COMMAND test_top)
 add_executable(test_loop tests/test_loop.c)
 target_link_libraries(test_loop PRIVATE pop_core)
 add_test(NAME loop_unit COMMAND test_loop)
+add_executable(test_keys tests/test_keys.c)
+target_link_libraries(test_keys PRIVATE pop_core)
+add_test(NAME keys_unit COMMAND test_keys)
 add_executable(test_objs tests/test_objs.c)
 target_link_libraries(test_objs PRIVATE pop_core)
 add_test(NAME objs_unit COMMAND test_objs)
@@ -263,6 +266,12 @@ if(POP_SOURCE_DIR)
                    "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_app.py"
                    "$<TARGET_FILE:pop_headless>" "$<TARGET_FILE:pop_worldrun>" "${POP_DATA}"
                    "${POP_SOURCE_DIR}")
+  # the special keys, typed at the game as the shell runs it
+  add_test(NAME app_keys
+           COMMAND "${Python3_EXECUTABLE}"
+                   "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_keys.py"
+                   "$<TARGET_FILE:pop_headless>" "${POP_DATA}" "${POP_SOURCE_DIR}"
+                   "${CMAKE_BINARY_DIR}/keys_test")
   # replacement pictures (--images): the same game with other pictures, or refused
   add_test(NAME images_option
            COMMAND "${Python3_EXECUTABLE}"

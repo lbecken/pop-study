@@ -77,7 +77,7 @@ python3 tools/assets/make_placeholder_set.py ../pop-original build/placeholders
 POP_SOURCE_DIR=../pop-original python3 -m pytest tests -q
 ```
 
-Without `POP_SOURCE_DIR` the 55 integration tests are skipped and only the
+Without `POP_SOURCE_DIR` the 61 integration tests are skipped and only the
 synthetic-data unit tests run. `build/` is git-ignored.
 
 The C port:
@@ -123,13 +123,15 @@ level and random play on the other levels come out the same in the port,
 frame for frame, in every byte of both hi-res pages. Around that there is a
 simple model of the colours a monitor makes of those bytes, and a shell
 (milestone 7): an SDL3 window with keys and sound effects, and a headless
-player that writes frames as PNG files.
+player that writes frames as PNG files. The keys are the original's
+(milestone 13): its key handler is ported too, with the freeze, the time
+display, the sound switch, saved games and the typed code words.
 
 What that amounts to: the levels of your own checkout can be played. What
 it does not: nothing has been compared with a real Apple II or an emulator;
 the shell was written on a machine without a display and has never been
-seen running; the title sequence, the scenes with the princess, the
-endings, music and saved games are not ported; the colours are a model,
+seen running, nor a key pressed in it; the title sequence, the scenes with
+the princess, the endings and the music are not ported; the colours are a model,
 checked by eye. See `docs/milestones.md`, `docs/compatibility-matrix.md`
 and `modern-port/README.md`.
 

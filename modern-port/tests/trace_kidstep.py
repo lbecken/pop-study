@@ -150,7 +150,7 @@ def start_state(rng, level, level_no):
     scrn, row, col = rng.choice(guarded if guarded and rng.random() < 0.5 else spots)
     s = fc.fw.random_state(rng)
     for n in fc.EXTRA + fc.COLL_VARS + fc.MOVER_VARS + fc.AUTO_VARS + fc.TOP_VARS \
-            + fc.LOOP_VARS + fc.OBJ_VARS:
+            + fc.LOOP_VARS + fc.OBJ_VARS + fc.KEY_VARS:
         s[n] = 0
     s.update(yellowflag=0x80, MinLeft=0xFF, SecLeft=0xFF, NextLevel=level_no)
     s["MaxKidStr"] = 3

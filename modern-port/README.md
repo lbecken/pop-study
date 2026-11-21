@@ -26,7 +26,8 @@ checkout of the original source and is never stored in this repository.
 | Messages, the two display pages, screen changes; a whole frame of the game with its drawing (`TOPCTRL.S` `DoFast`, `DoCleanCut`, `SUBS.S` `PAGEFLIP`, `GAMEBG.S`) | ported; the demo and random play compared with the original frame by frame, both hi-res pages byte for byte |
 | From page bytes to pixels: the dots, and a simple model of the colours a monitor makes of them (`pop_present.c`; not from the game's source) | done; the colours checked by eye only |
 | A program to start: the game as one object (`src/app`), a headless player, and an SDL3 shell (`src/sdl`: window, keys, sound effects, fixed timestep) | new code; draws exactly what the tested runner draws; the shell has only been run without a display |
-| Title sequence, scenes with the princess, endings, music, saved games, the original's special keys | not ported |
+| The keyboard's special keys (freeze, sound, restart, show time, save), typed code words, joystick reading, saving and resuming a game (`SPECIALK.S` `KEYS`, `GRAFIX.S` `CONTROLLER`, `MISC.S`) | ported; each routine and whole frames with the original's key handling compared with the original; keys typed at the app checked for their effect |
+| Title sequence, scenes with the princess, endings, music | not ported |
 
 With SDL3 installed the build produces `pop_sdl`, which plays the levels of
 your checkout in a window:
@@ -37,7 +38,8 @@ cmake --build build
 build/pop_sdl --source <original checkout> --data build/data [--level 1]
 ```
 
-Arrows (or J L I K, U O) and Shift; `../docs/port/shell.md` has the rest and,
+Arrows (or J L I K, U O) and Shift; Escape freezes, space shows the time
+left, ctrl-A starts the level again, ctrl-Q leaves; `../docs/port/shell.md` has the rest and,
 importantly, what of it has never been tried: it was written and tested on a
 machine without a display. Without SDL3, `build/pop_headless` plays the game
 into PNG frames and a WAV file.
@@ -76,8 +78,8 @@ tools/        command-line helpers (pop_seqdump, pop_sfxdump, pop_worldrun,
 tests/        C tests, C-versus-Python comparisons, and C-versus-original
               comparisons (fuzz_world.py, fuzz_control.py, trace_kidstep.py,
               replay_demo.py, fuzz_hires.py, compare_rooms.py, compare_fast.py,
-              replay_frames.py), checks of the shell (check_app.py, check_sdl.py,
-              check_images.py)
+              replay_frames.py), checks of the shell (check_app.py, check_keys.py,
+              check_sdl.py, check_images.py)
 ```
 
 ## Build and test

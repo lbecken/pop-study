@@ -130,14 +130,36 @@ typedef struct pop_game_hooks {
     void (*speaker_click)(void *ctx);    /* a read of $C030, COLL.S 403 */
 
     /* the loop */
-    void (*strobe)(void *ctx);           /* strobe: set keypress, keydown, joyX/Y, BTN0/1 */
+    void (*strobe)(void *ctx);           /* strobe: set keypress, keydown, joyX/Y, BTN0/1,
+                                          * or call pop_strobe with the hooks below in place */
+    /* the keyboard and the controller as hardware (pop_keys.c) */
+    uint8_t (*key_latch)(void *ctx, int waiting);    /* $C000: the last key; high bit while it
+                                          * has not been read.  waiting: the game is frozen and
+                                          * KEYS loops here until a key comes; a shell returns
+                                          * without one only when it is ending the session */
+    uint8_t (*key_strobe)(void *ctx);    /* $C010: high bit while any key is down; the key in
+                                          * the latch now counts as read */
+    void (*read_paddles)(void *ctx);     /* PREAD: raw positions (about 0-70) to joyX, joyY;
+                                          * 128 or more: nothing connected */
+    void (*read_buttons)(void *ctx);     /* $C061, $C062 to BTN0, BTN1 */
+    void (*save_game)(void *ctx);        /* savegame: write pop_game.savedgame */
+    void (*load_game)(void *ctx);        /* loadgame: fill pop_game.savedgame */
+    void (*show_version)(void *ctx);     /* dispversion: the version line, until a key */
     void (*princess_cut)(void *ctx, uint8_t cut);            /* cutprincess, playcut */
     void (*copy_check)(void *ctx);       /* yellowcheck: may set yellowflag negative */
 } pop_game_hooks;
 
+/* The saved game, GAMEEQ.S 67-74. */
+enum { POP_SAV_LEVEL = 0, POP_SAV_STRENGTH = 1, POP_SAV_MAXED = 2, POP_SAV_TIMER = 3,
+       POP_SAV_NEXTMSG = 6 };
+
 /* Why the level being played was left (pop_game.leave). */
 enum {
-    POP_LEAVE_NONE = 0, POP_LEAVE_ATTRACT, POP_LEAVE_LOSE, POP_LEAVE_WIN, POP_LEAVE_RESTART
+    POP_LEAVE_NONE = 0, POP_LEAVE_ATTRACT, POP_LEAVE_LOSE, POP_LEAVE_WIN, POP_LEAVE_RESTART,
+    /* Not a way out of the level: the game is frozen (ESC) and the shell
+     * stopped waiting for the key that would unfreeze it.  The pass was
+     * abandoned in KEYS; the original would still be waiting there. */
+    POP_LEAVE_FROZEN
 };
 
 /* The object list, EQ.S 299, and the kinds of object, GAMEBG.S / FRAMEADV.S. */
@@ -299,6 +321,16 @@ typedef struct pop_game {
     uint8_t  FrameCount[2];              /* frames played, low and high byte */
     uint8_t  NextTimeMsg;                /* twice the number of the next time message */
     uint8_t  soundon;
+    /* --- keys and the controller (pop_keys.c) --- */
+    uint8_t  SINGSTEP;                   /* $21: frozen; ESC advances one frame */
+    uint8_t  develment;                  /* $20E: the cheat keys work */
+    uint8_t  keybufptr;                  /* $CA: where the last key went in keybuf */
+    uint8_t  keybuf[10];                 /* $3AC: the last ten keys, for the code words */
+    uint8_t  musicon;                    /* $31A */
+    uint8_t  jvert, jhoriz, jbtns;       /* $20A-$20C: joystick axes reversed, buttons swapped */
+    uint8_t  jthres[4];                  /* $206: jthres1x, 1y, 2x, 2y: where left ends and
+                                          * right begins, up ends and down begins */
+    uint8_t  savedgame[16];              /* $B6F0: what goes to disk, POP_SAV_* */
     /* Not an original variable: why the frame was abandoned, POP_LEAVE_*. */
     uint8_t  leave;
     uint8_t  waitingtojump;              /* $A7 */

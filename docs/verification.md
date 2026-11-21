@@ -65,6 +65,12 @@ python3 modern-port/tests/mutation_check.py build/port/data ../pop-original
 python3 modern-port/tests/mutation_gfx.py build/port/data ../pop-original
 ```
 
+The special keys, typed at the game as the shell runs it:
+
+```bash
+python3 modern-port/tests/check_keys.py build/port/pop_headless build/port/data ../pop-original build/keys_test
+```
+
 Replacement pictures: the converter's round trip is in pytest; the route
 into the port, with generated placeholders:
 
@@ -205,6 +211,11 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | 2026-11-21 | `check_images.py` (`images_option`); `check_sdl.py` extended | ASan builds; SDL3 dummy drivers | `--images`: copies of the original tables give the checkout's frames byte for byte (15 games, 2,088 frames); placeholder pictures give the same game state after each of 2,115 frames in `pop_worldrun`, the same level exits, display switches and sounds in `pop_app`, and other pictures; 15 faulty directories refused. The SDL shell with `--images` shows `pop_headless`'s picture of the placeholders and refuses them without their provenance file. Eleven deliberate errors put into the loading code by hand: ten noticed by `check_images.py`; one without effect (ignoring which opponent set a table's *count* is checked against: all five sets have 32 images). **No real replacement artwork exists**; this tests the route, not art |
 | 2026-11-21 | CTest, pytest, after the above | GCC 13.3 `-Werror` ASan/UBSan with SDL3; Clang 18.1 `-Werror` with SDL3; no source | 32/32, 32/32, 14/14; pytest 211 passed with the source, 156 passed and 55 skipped without |
 | 2026-11-21 | `mutation_check.py`, 400 cases, seed 1989, the entries of `pop_top.c`, `pop_loop.c` and the object list (`pop_objs.c`, `ADDMOBS`), with the frame code as it stands at the end of milestone 10 | – | 376 deliberate errors: 362 noticed, 5 by a unit test only, 9 without effect, 0 missed. (A run of all 568 was cut off by a restart of the machine after 315 entries, none missed; this is the part it had not finished, run again from the start of these files) |
+| 2026-11-21 | `fuzz_control.py @keys`, 400 cases per routine, seed 1989 | ASan build of the runner | 5,109 cases over 13 routines agree (91 more skipped): `KEYS`, `LegitKeys`, `DevelKeys`, `checkcodes`, `addkey`, `STROBE`, `JREAD`, `BREAD`, `CONTROLLER`, `SETCENTER`, `DOSAVEGAME`, `STARTRESUME`, and whole passes of `MainLoop` with the original's own `STROBE` in place of a trap. The simulator got a keyboard for this: a latch at `$C000`, a strobe cleared by any access to `$C010`, further keys arriving when it is cleared; the paddle timing loop is trapped and delivers chosen readings. The first run differed in one routine: `STARTRESUME` leaves `SINGSTEP` 0, because `initgame` clears it, which the port's did not (there had been no such variable); the full suite then showed the same for `RESTART`. Comparing also what is left in the keyboard latch showed a third omission, in code ported long ago: `songcues` clears the strobe where a song starts (`TOPCTRL.S:1453`) |
+| 2026-11-21 | `mutation_check.py`, entries of `pop_keys.c` and the three lines added to `pop_loop.c` and `pop_top.c`, 400 cases, seed 1989 | – | 130 deliberate errors: 120 noticed, 3 by a unit test only (the freeze the shell gives up on, and the key-buffer pointer beyond the buffer, which the comparison skips), 7 without effect (each with its reason: for instance, no key is both a special key and the end of a code word, so the order of the two handlers cannot matter), 0 missed. The first run missed 8: three are among the 7; the others needed what is left in the keyboard latch to be compared, a sound waiting in the queue when ctrl-S is pressed, `SKIP` typed on the levels where it stops working, and reversal flags with values that the fall-through in `LegitKeys` turns into other keys |
+| 2026-11-21 | `check_keys.py` (`app_keys`), `check_app.py` extended, `check_sdl.py` extended | ASan builds; SDL3 dummy drivers | Keys typed at `pop_app` have their effect: three freezes and releases leave 60 frames identical to the unfrozen game's; space shows the time left from frame 73 to 91; ctrl-S silences and beeps; ctrl-A restarts; ctrl-R ends; `SKIP` reaches level 2, `TINA` level 14 only after `POP`; under ctrl-K the J key steers exactly as the joystick did; ctrl-G saves from level 3 and the game resumes there. `check_app.py` now follows the game through 19 restarts of a level (ctrl-A, or the kid dead and the button pressed), 3,208 frames: this found that `pop_app` drew the first frame after a restart one pass late, because the reason for leaving was still set when the level began again; with that line taken out again the check fails at the first restart. The SDL shell, with keys given as Apple II codes and as key events pushed into SDL's queue by name: frozen for good it leaves; released it shows the unfrozen game's picture; ctrl-R leads to the demo; `SKIP` in small letters and capitals to level 2; ctrl-Q leaves; arrows and F1 type nothing |
+| 2026-11-21 | `tests/test_keys_original.py` (pytest) | Python 3 | 6 tests of facts the notes rely on, read off the assembled original: `GTONE` is 50 speaker accesses 157 cycles apart, 7,872 cycles, and the app's four numbers are those; `INITSYSTEM` assembles `lda #0` for the development flag; `FinalDisk` is 0 in `SPECIALK.S` and 1 in `TOPCTRL.S` and `MASTER.S`; the seven code words as stored; `BREAD`'s two branches load the same buttons into the same variables; `SavMaxed` occurs only where it is declared |
+| 2026-11-21 | CTest, pytest, with milestone 13 | GCC 13.3 `-Werror` ASan/UBSan with SDL3; Clang 18.1 `-Werror` with SDL3; no source | 34/34, 34/34, 15/15; `fuzz_control.py` over all groups: 74,632 cases over 189 routines agree (968 skipped); pytest 217 passed with the source, 156 passed and 61 skipped without |
 
 ## Kinds of evidence
 
@@ -219,7 +230,7 @@ python3 tools/extract_assets/extract_animdata.py --source ../pop-original --out 
 | Two implementations | C interpreter vs Python decoder, 45,600 ticks identical; C effect renderer vs Python, 26,204 samples | catches slips, not a shared misreading |
 | Executing the original | sound effects obtained by running the assembled `SOUND.S` in a 6502 simulator; timing equals the hand-derived loop formula | strong for behaviour; depends on the simulator's cycle table |
 | Differential fuzzing | each ported C routine against the original routine in the simulator, on random states wider than valid ones (`docs/oracle.md`) | strong: independent of my reading of the code; depends on the assembler and simulator being right |
-| Mutation check | 568 deliberately wrong builds of the control, collision, moving-object, opponent, top-level, loop and object-list code (`modern-port/tests/mutation_check.py`), 59 of the blitter and 319 of the redraw, message and screen code (`mutation_hires.py`, `mutation_gfx.py`), each run against the comparison | shows the comparison has teeth, and where its inputs were thin: every first run missed some errors, and the situations that expose them were then added. One error is invisible to the comparison by its own skip rule (below) and is checked against a unit test instead |
+| Mutation check | 698 deliberately wrong builds of the control, collision, moving-object, opponent, top-level, loop, object-list and key-handling code (`modern-port/tests/mutation_check.py`), 59 of the blitter and 319 of the redraw, message and screen code (`mutation_hires.py`, `mutation_gfx.py`), each run against the comparison | shows the comparison has teeth, and where its inputs were thin: every first run missed some errors, and the situations that expose them were then added. One error is invisible to the comparison by its own skip rule (below) and is checked against a unit test instead |
 | Multi-frame trace | the original's level start, then its whole `NextFrame` for 60 frames of random input with state carried over, C against the original after each call | strong for how the routines work together; the clock, messages and drawing inside the frame are stand-ins on both sides |
 | Replay of the demo | level 0 driven by the original's own demo script from its first frame to the jump back to the title sequence | strong: a complete, meaningful stretch of play (walking, jumping, a sword fight to the death, three screen changes) with no test-made input; the random generator's seed is fixed, so it is one of the possible demos |
 | Whole frames with the picture | the demo and random-input traces with the original's drawing code running too (`replay_frames.py`): game state, both hi-res pages and the display switches after every frame | strong: the complete path from input to page bytes, in the order and with the shared memory the game really has; it found three couplings between game logic and drawing that tests of the parts could not. Still page bytes, not a picture, and still this project's assembler and simulator on both the original's side |
@@ -300,6 +311,14 @@ compares the port with the original *source code run by this project's own
 assembler and simulator*. A fault in those two that affects both sides the
 same way would not show.
 
+**Since then** (the replacement-picture route and milestone 13, the special
+keys): 130 more deliberate errors, in the key handling, all accounted for;
+13 more routines compared with the original (189 in all). The coverage
+figures above were not measured again. `pop_keys.c` measured by itself,
+under its unit test, the `@keys` comparison and `check_keys.py`: all 166
+lines, 89.9 % of 138 branch directions; what is not taken is a hook being
+absent, and the test for a letter in a code word, which never fails.
+
 ## Not verified
 
 - **Nothing has been compared with the running game.** The repository has no
@@ -310,6 +329,14 @@ same way would not show.
 - No audio has been compared with a real machine or an emulator, and none
   has been listened to: the shell's sound has only gone to SDL's dummy
   device.
+- No key has been pressed on a keyboard. The game's key handler is compared
+  with the original's, and the shell's path from an SDL key event to an
+  Apple II key code has been run on events the test pushed into SDL's
+  queue; what a real keyboard and window system deliver (layouts, key
+  repeat, focus) has not been seen.
+- What the Apple IIe keyboard does beyond what the code shows (the
+  any-key-down flag, the arrow keys' codes) is taken from memory of that
+  machine, not from the repository (unknowns E7).
 - The shell on a display: window, keys, pace (port/shell.md §7).
 - The colours (port/presentation.md): a model, looked at, not compared.
 - Real frame timing beyond cycle counts in this project's simulator

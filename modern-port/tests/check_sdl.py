@@ -16,7 +16,15 @@ shown or heard.  What can be checked that way:
     machine may be busy);
   - with --images and a set of placeholder pictures, its picture is again
     pop_headless's, and is not the original's; a directory without a
-    PROVENANCE.txt is refused.
+    PROVENANCE.txt is refused;
+  - keys reach the game's key handler: Escape freezes the game, and with
+    no key to follow the shell gives up and leaves, saying so; with a key
+    to follow the game goes on and its picture is the unfrozen game's;
+    ctrl-R ends the game and the demo begins; SKIP typed leads to level 2.
+    The dummy driver has no keyboard, so the keys are given in two ways:
+    as Apple II codes (--type), and as key events pushed into SDL's queue
+    by name (--press), which then take the shell's own path from an SDL
+    key event to an Apple II code.
 
 What it cannot check is everything a person would: that the window looks
 right, that the keys feel right, that the sound is right.  Those are
@@ -111,6 +119,51 @@ def main(argv):
             print("with --images the shell's picture is not pop_headless's with --images, "
                   "or it is the original's")
             return 1
+        # keys: Escape at frame 10, and nothing after it
+        base = [shell, "--source", source, "--data", data, "--level", "1", "--no-wait", "--mute"]
+        out = subprocess.run(base + ["--frames", "40", "--type", "10:9B"],
+                             capture_output=True, text=True, env=env, timeout=300)
+        if out.returncode != 0 or not out.stdout.startswith("10 frames shown") \
+                or "frozen" not in out.stdout:
+            print("frozen for good: status %d, %s" % (out.returncode, out.stdout.strip()))
+            return 1
+        # Escape, Escape (one frame), space (go on): 40 frames as without keys
+        shot2 = os.path.join(work, "shot2.png")
+        for keys, target in (("10:9B,10:9B,10:A0", shot), ("99:A0", shot2)):
+            out = subprocess.run(base + ["--frames", "40", "--type", keys, "--screenshot", target],
+                                 capture_output=True, text=True, env=env, timeout=300)
+            if out.returncode != 0 or not out.stdout.startswith("40 frames shown") \
+                    or "frozen" in out.stdout:
+                print("keys %s: status %d, %s" % (keys, out.returncode, out.stdout.strip()))
+                return 1
+        if read_png(shot) != read_png(shot2):
+            print("freezing and releasing the game changed its picture")
+            return 1
+        # ctrl-R on level 1: the game ends, the demo (level 0) begins
+        out = subprocess.run(base + ["--frames", "30", "--type", "10:92"],
+                             capture_output=True, text=True, env=env, timeout=300)
+        if out.returncode != 0 or "level 0" not in out.stdout:
+            print("ctrl-R: status %d, %s" % (out.returncode, out.stdout.strip()))
+            return 1
+
+        # The same through SDL's event queue, as key events with names: this
+        # is the way a real keyboard's keys come in, short of the keyboard.
+        for presses, expect in (("10:Escape", "10 frames shown"),            # frozen for good
+                                ("10:Escape,10:Space", "40 frames shown"),   # and released
+                                ("10:R+c", "level 0"),                       # ctrl-R: game over
+                                ("5:S,6:K,7:I,8:P", "level 2"),              # the code word
+                                ("5:S+s,6:K+s,7:I+s,8:P+s", "level 2"),      # ... in capitals
+                                ("10:Q+c", "10 frames shown"),               # the shell's own: leave
+                                ("10:Up,11:F1,12:Left", "40 frames shown")): # not keys to the game
+            out = subprocess.run(base + ["--frames", "40", "--press", presses],
+                                 capture_output=True, text=True, env=env, timeout=300)
+            frozen = "frozen" in out.stdout
+            if out.returncode != 0 or expect not in out.stdout \
+                    or frozen != (presses == "10:Escape"):
+                print("key events %s: status %d, %s" % (presses, out.returncode,
+                                                        out.stdout.strip()))
+                return 1
+
         os.remove(os.path.join(placeholders, "PROVENANCE.txt"))
         out = subprocess.run([shell, "--source", source, "--data", data, "--frames", "1",
                               "--no-wait", "--mute", "--images", placeholders],
@@ -132,7 +185,8 @@ def main(argv):
     print("the SDL3 shell ran without a display: %d frames of the demo, %s sound samples "
           "queued, its last picture equal to pop_headless's; 60 timed frames took %.2f s "
           "(0.50 s by the clock, plus starting up); with placeholder pictures it shows "
-          "pop_headless's picture of them, and refuses them unlabelled"
+          "pop_headless's picture of them, and refuses them unlabelled; keys typed by the "
+          "test freeze the game, release it and end it"
           % (frames, words[3], elapsed))
     return 0
 

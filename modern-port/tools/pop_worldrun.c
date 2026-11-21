@@ -57,6 +57,7 @@
 #include "pop_loop.h"
 #include "pop_mover.h"
 #include "pop_objs.h"
+#include "pop_keys.h"
 #include "pop_top.h"
 #include "pop_world.h"
 
@@ -133,6 +134,31 @@ static void h_playback(void *ctx)             /* with the sounds about to be pla
 static void h_song(void *ctx, uint8_t song) { (void)ctx; log_hex('M', song); }
 static void h_tone(void *ctx) { (void)ctx; log_hook('g'); }
 static void h_strobe(void *ctx) { (void)ctx; log_hook('s'); }
+
+/* The keyboard and the controller as the tests model them (an I line):
+ * a latch whose high bit is the strobe, keys waiting to arrive (the next
+ * one arrives the moment the strobe is cleared), whether a key is held,
+ * the two paddles and the two buttons, and a saved game on disk. */
+static struct {
+    uint8_t latch, any, padx, pady, b0, b1;
+    uint8_t queue[16], saved[16];
+    size_t nqueue, at;
+} hw;
+static uint8_t h_keylatch(void *ctx, int waiting) { (void)ctx; (void)waiting; return hw.latch; }
+static uint8_t h_keystrobe(void *ctx)
+{
+    uint8_t v = (uint8_t)((hw.any ? 0x80 : 0) | (hw.latch & 0x7F));
+    (void)ctx;
+    hw.latch &= 0x7F;
+    if (hw.at < hw.nqueue) hw.latch = (uint8_t)(hw.queue[hw.at++] | 0x80);
+    return v;
+}
+static void h_paddles(void *ctx) { (void)ctx; g.joyX = hw.padx; g.joyY = hw.pady; }
+static void h_buttons(void *ctx) { (void)ctx; g.BTN0 = hw.b0; g.BTN1 = hw.b1; }
+static void h_savegame(void *ctx) { (void)ctx; log_hook('G'); }
+static void h_loadgame(void *ctx) { (void)ctx; memcpy(g.savedgame, hw.saved, sizeof g.savedgame); }
+static void h_version(void *ctx) { (void)ctx; log_hook('V'); }
+static void h_realstrobe(void *ctx) { (void)ctx; pop_strobe(&g); }
 static void h_cut(void *ctx, uint8_t cut) { (void)ctx; log_hook('x'); log_hook((char)('0' + cut)); }
 static void h_copycheck(void *ctx) { (void)ctx; log_hook('y'); }
 
@@ -197,6 +223,10 @@ static var vars[] = {
     { "invert", &g.invert }, { "redrawflg", &g.redrawflg }, { "msgtimer", &g.msgtimer },
     { "mirrx", &g.mirrx }, { "dmirr", &g.dmirr },
     { "timerequest", &g.timerequest },
+    { "SINGSTEP", &g.SINGSTEP }, { "develment", &g.develment }, { "keybufptr", &g.keybufptr },
+    { "musicon", &g.musicon }, { "jvert", &g.jvert }, { "jhoriz", &g.jhoriz },
+    { "jbtns", &g.jbtns }, { "jthres1x", &g.jthres[0] }, { "jthres1y", &g.jthres[1] },
+    { "jthres2x", &g.jthres[2] }, { "jthres2y", &g.jthres[3] },
     { "skipmessage", &g.skipmessage }, { "cutplan", &g.cutplan }, { "cutorder", &g.cutorder },
     { "message", &g.message }, { "MinLeft", &g.MinLeft }, { "SecLeft", &g.SecLeft },
     { "BTN0", &g.BTN0 }, { "BTN1", &g.BTN1 }, { "waitingtojump", &g.waitingtojump },
@@ -237,6 +267,7 @@ static buf bufs[] = {
     { "mobscrn", g.mobscrn, POP_MOBSPACE }, { "mobvel", g.mobvel, POP_MOBSPACE },
     { "mobtype", g.mobtype, POP_MOBSPACE }, { "moblevel", g.moblevel, POP_MOBSPACE },
     { "clrSEL", g.clrSEL, 5 }, { "clrDESEL", g.clrDESEL, 5 },
+    { "keybuf", g.keybuf, POP_KEYBUFLEN }, { "savedgame", g.savedgame, 16 },
     { "objINDX", g.objINDX, POP_MAXOBJ }, { "objX", g.objX, POP_MAXOBJ },
     { "objOFF", g.objOFF, POP_MAXOBJ }, { "objY", g.objY, POP_MAXOBJ },
     { "objIMG", g.objIMG, POP_MAXOBJ }, { "objFACE", g.objFACE, POP_MAXOBJ },
@@ -469,6 +500,22 @@ static int run(const char *r, uint8_t a, uint8_t x, uint8_t y, int *out)
     if (!strcmp(r, "initinput"))    DO(pop_initinput(&g));
     if (!strcmp(r, "clearjoy"))     DO(pop_clearjoy(&g));
     if (!strcmp(r, "demokeys"))     RET(pop_demokeys(&g));
+    /* keys and the controller */
+    if ((a & 1) && (!strcmp(r, "keys") || !strcmp(r, "legitkeys") || !strcmp(r, "strobe"))) {
+        pop_g_addsound(&g, 5);                 /* odd A: with a sound waiting to be played */
+    }
+    if (!strcmp(r, "keys"))         DO(pop_keys(&g));
+    if (!strcmp(r, "legitkeys"))    DO(pop_legitkeys(&g));
+    if (!strcmp(r, "develkeys"))    DO(pop_develkeys(&g));
+    if (!strcmp(r, "checkcodes"))   DO(pop_checkcodes(&g));
+    if (!strcmp(r, "addkey"))       DO(pop_addkey(&g, a));
+    if (!strcmp(r, "jread"))        DO(pop_jread(&g));
+    if (!strcmp(r, "bread"))        DO(pop_bread(&g));
+    if (!strcmp(r, "controller"))   DO(pop_controller(&g));
+    if (!strcmp(r, "setcenter"))    DO(pop_setcenter(&g));
+    if (!strcmp(r, "strobe"))       DO(pop_strobe(&g));
+    if (!strcmp(r, "dosavegame"))   DO(pop_dosavegame(&g));
+    if (!strcmp(r, "startresume"))  DO(pop_startresume(&g));
     if (!strcmp(r, "keeptime"))     DO(pop_keeptime(&g));
     if (!strcmp(r, "getminleft"))   DO(pop_getminleft(&g));
     if (!strcmp(r, "shortentime"))  DO(pop_shortentime(&g));
@@ -485,6 +532,13 @@ static int run(const char *r, uint8_t a, uint8_t x, uint8_t y, int *out)
     if (!strcmp(r, "loadnextlevel")) DO(pop_loadnextlevel(&g));
     if (!strcmp(r, "loadnext1"))    DO(pop_loadnext1(&g));
     if (!strcmp(r, "mainloop"))     DO((void)pop_mainloop(&g));
+    if (!strcmp(r, "mainloopk")) {             /* ... with the port's own STROBE */
+        g.hooks.strobe = h_realstrobe;
+        (void)pop_mainloop(&g);
+        g.hooks.strobe = h_strobe;
+        *out = -1;
+        return 1;
+    }
     if (!strcmp(r, "markfloor"))    { int c = x & 1; g.ry = y; pop_markfloor(&g, a, &c); RET(c); }
     if (!strcmp(r, "markhalf"))     { int c = x & 1; g.ry = y; pop_markhalf(&g, a, &c); RET(c); }
     if (!strcmp(r, "addfcharx"))    DO(pop_addfcharx(&g, a));
@@ -580,6 +634,13 @@ int main(int argc, char **argv)
     g.hooks.play_song = h_song;
     g.hooks.tone = h_tone;
     g.hooks.strobe = h_strobe;
+    g.hooks.key_latch = h_keylatch;
+    g.hooks.key_strobe = h_keystrobe;
+    g.hooks.read_paddles = h_paddles;
+    g.hooks.read_buttons = h_buttons;
+    g.hooks.save_game = h_savegame;
+    g.hooks.load_game = h_loadgame;
+    g.hooks.show_version = h_version;
     g.hooks.princess_cut = h_cut;
     g.hooks.copy_check = h_copycheck;
 
@@ -667,6 +728,28 @@ int main(int argc, char **argv)
                 if (lo < 0) { fprintf(stderr, "bad H line\n"); return 2; }
                 bufs[b].p[i] = (uint8_t)(hi * 16 + lo);
             }
+        } else if (line[0] == 'I') {           /* the keyboard, the controller, the disk */
+            unsigned latch, any, padx, pady, b0, b1;
+            char queue[40], saved[40];
+            size_t n;
+            if (sscanf(line + 1, "%u %u %u %u %u %u %39s %39s", &latch, &any, &padx, &pady, &b0,
+                       &b1, queue, saved) != 8) {
+                fprintf(stderr, "bad I line\n");
+                return 2;
+            }
+            memset(&hw, 0, sizeof hw);
+            hw.latch = (uint8_t)latch; hw.any = (uint8_t)any;
+            hw.padx = (uint8_t)padx; hw.pady = (uint8_t)pady;
+            hw.b0 = (uint8_t)b0; hw.b1 = (uint8_t)b1;
+            for (n = 0; n < sizeof hw.queue && hexval(queue[2 * n]) >= 0
+                        && hexval(queue[2 * n + 1]) >= 0; n++) {
+                hw.queue[n] = (uint8_t)(hexval(queue[2 * n]) * 16 + hexval(queue[2 * n + 1]));
+            }
+            hw.nqueue = n;
+            for (n = 0; n < sizeof hw.saved && hexval(saved[2 * n]) >= 0
+                        && hexval(saved[2 * n + 1]) >= 0; n++) {
+                hw.saved[n] = (uint8_t)(hexval(saved[2 * n]) * 16 + hexval(saved[2 * n + 1]));
+            }
         } else if (line[0] == 'S') {
             char *tok = strtok(line + 1, " \n");
             while (tok) {
@@ -703,7 +786,8 @@ int main(int argc, char **argv)
             if (g.sq.count == 0) printf("-");
             for (i = 0; i < g.sq.count; i++) printf("%02x", (unsigned)g.sq.items[i]);
             hooklog[nhooks] = '\0';
-            printf(" hooks:%s lvl:", nhooks ? hooklog : "-");
+            printf(" hooks:%s kbd:%02x.%u lvl:", nhooks ? hooklog : "-", (unsigned)hw.latch,
+                   (unsigned)hw.at);
             for (i = 0; i < POP_LEVEL_SIZE; i++) {
                 if (g.blueprint[i] != pristine[i]) {
                     printf("%s%u.%u", any ? "," : "", (unsigned)i, (unsigned)g.blueprint[i]);

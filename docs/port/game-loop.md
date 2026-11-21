@@ -72,12 +72,14 @@ Per frame, for the device in use:
 `clearjoy` zeroes the four direction flags of the selected device (not the
 button's) after a song, during which the game stood still.
 
-Reading the hardware (`KEYS`, `CONTROLLER`, `PREAD`, `BREAD`: the keyboard
-latch, the paddle timers, the button inputs) is not ported. The shell sets
-`keypress`, `keydown`, `joyX`, `joyY`, `BTN0`, `BTN1` in the `strobe` hook.
-The special keys (pause, sound, restart …; `LegitKeys` `SPECIALK.S:265-352`)
-are the shell's too; of them only "show time" changes game state
-(`timerequest = 3`).
+Reading the devices (`KEYS`, `CONTROLLER`, `BREAD`) and the special keys
+(`LegitKeys`, `SPECIALK.S:265-352`) were left to the shell when this was
+written: it set `keypress`, `keydown`, `joyX`, `joyY`, `BTN0`, `BTN1` in
+the `strobe` hook. They are ported since milestone 13 (keys.md); only the
+keyboard latch, the paddle timers and the button inputs themselves remain
+hooks. The comparisons of this document still give the main loop those
+six variables directly; keys.md §11 has the comparisons with the
+original's own `STROBE`.
 
 ## 3. The clock
 
@@ -278,25 +280,14 @@ after the original's jump is executed in the port either. The shell then
 does what the jump target does: load a level and call `pop_restart_level`,
 or go to its title screen.
 
-## 9. Not ported
+## 9. Not ported here
 
-- The hardware side of input and all special keys (section 2).
-- Saving and resuming a game (`DoSaveGame`, `ResumeGame`): `SavLevel`,
-  `SavStrength`, `SavTimer`, `SavNextMsg`. Resuming restores `origstrength`,
-  `FrameCount`, `NextTimeMsg` and sets `timerequest = 1`
-  (`TOPCTRL.S:166-213`); a shell can do that directly.
-- Development keys and typed codes (`DevelKeys`, `TempDevel`, `checkcodes`,
-  and the codes in `KEYS`). Which of them exist depends on two switches
-  that this checkout sets inconsistently: `SPECIALK.S:3-4` has
-  `FinalDisk = 0` ("removes all cheat keys" when 1) and `DebugKeys = 0`,
-  while `TOPCTRL.S:4` and `MASTER.S:3` have `FinalDisk = 1`. As the files
-  stand, the single-key development commands (`DebugKeys`) are out; the
-  typed codes are assembled in: "POP" turns on the development flag
-  (`SPECIALK.S:222-228`), and "SKIP" moves on a level, up to level 4, or
-  up to 12 with that flag, shortening the clock (`234-247`). Whether the
-  released disk was built with these settings is **not yet verified**
-  (next step: try the codes in an emulator with a disk image; unknowns.md
-  E24).
+- The special keys, the typed code words, the controller, and saving and
+  resuming a game were left out of this milestone and are ported since
+  milestone 13: `pop_keys.c`, keys.md. The main loop still calls a
+  `strobe` hook; a shell with a keyboard points it at `pop_strobe`.
+- `TempDevel`, the development keys inside `do DebugKeys`, which this
+  checkout does not assemble (keys.md §5).
 - The title sequence, the princess scenes, the ending.
 
 ## 10. Findings

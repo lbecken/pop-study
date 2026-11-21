@@ -4,7 +4,7 @@
 New code for the pop-study project.  Not part of CTest (it takes minutes).
 
 Each entry below is one small deliberate error in pop_control.c,
-pop_collide.c, pop_mover.c, pop_auto.c, pop_top.c or pop_loop.c: a threshold off by one, a comparison changed, a statement
+pop_collide.c, pop_mover.c, pop_auto.c, pop_top.c, pop_loop.c, pop_objs.c or pop_keys.c: a threshold off by one, a comparison changed, a statement
 removed.  The script builds the
 runner with that one change and runs fuzz_control.py, which must then report
 a mismatch.  A change the comparison does not notice is either a gap in the
@@ -326,6 +326,7 @@ AUTO_MUTANTS = [
 
 # The same for pop_top.c.
 TOP_MUTANTS = [
+    ("    g->SINGSTEP = 0;\n    g->vibes = 0;", "    g->vibes = 0;", None),
     ("return (posn == 185 || posn == 177 || posn == 178) ? 0 : 1;",
      "return (posn == 185 || posn == 177) ? 0 : 1;", None),
     ("posn == 229 || posn == 109 || posn == 171", "posn == 229 || posn == 110 || posn == 171", None),
@@ -454,6 +455,7 @@ TOP_MUTANTS = [
 
 # The same for pop_loop.c.
 LOOP_MUTANTS = [
+    ("    g->SINGSTEP = 0;\n    g->ManCtrl = 0;", "    g->ManCtrl = 0;", None),
     ("        if (!NEG(g->keydown)) return;          /* nothing held", "        /*", None),
     ("        a |= 0x80;                             /* an old press", "        /*", None),
     ("    if (a == KEY_LEFT || a == KEY_LEFT - KEY_SHIFT) {", "    if (a == KEY_LEFT) {", None),
@@ -815,6 +817,182 @@ ADDMOBS_MUTANTS = [
     ("        if (MOBTYPE == 0) atm(g);\n        x = g->tempnt;", "        atm(g);\n        x = g->tempnt;", None),
 ]
 
+# --- the special keys, the controller, saved games (pop_keys.c) ---
+LETTERS = "all the code words are capital letters, so the test for a letter never fails"
+KEYS_MUTANTS = [
+    # the key buffer and the code words
+    ("uint8_t x = (uint8_t)(g->keybufptr + 1);", "uint8_t x = (uint8_t)(g->keybufptr + 2);", None),
+    ("if (x >= POP_KEYBUFLEN) x = 0;                         /* wrap", "if (x > POP_KEYBUFLEN) x = 0;  /*", None),
+    ("    g->keybufptr = x;\n    g->keybuf[x] = key;", "    g->keybuf[x] = key;", None),
+    ("    g->keybufptr = x;\n    g->keybuf[x] = key;", "    g->keybufptr = x;", None),
+    ("uint8_t c = (uint8_t)((uint8_t)word[--n] | 0x80);", "uint8_t c = (uint8_t)word[--n];", None),
+    ("if (c < 0xC1 || c >= 0xDB) return 0xFF;        /* not a letter */", "/* any character */", LETTERS),
+    ("if ((uint8_t)(c | 0x20) != g->keybuf[x]) return 0xFF;      /* nor typed small */",
+     "return 0xFF;", None),
+    ("if ((uint8_t)(c | 0x20) != g->keybuf[x]) return 0xFF;      /* nor typed small */",
+     "if ((uint8_t)(c | 0x40) != g->keybuf[x]) return 0xFF;", None),
+    ("        x--;\n        if (NEG(x)) x = POP_KEYBUFLEN - 1;", "        x--;\n        if (NEG(x)) x = POP_KEYBUFLEN - 2;", None),
+    ("        x--;\n        if (NEG(x)) x = POP_KEYBUFLEN - 1;", "        if (x == 0) x = POP_KEYBUFLEN; x--; x--; x++;\n        if (x == POP_KEYBUFLEN - 1) return 0xFF;", None),
+    ("        if (x >= POP_KEYBUFLEN) {                          /* keybuf,x beyond the buffer */\n            g->unmodelled = 1;\n            return 0xFF;\n        }",
+     "        if (x >= POP_KEYBUFLEN) return 0xFF;", "unit:test_keys.c"),
+    ('if (pop_checkcode(g, "BOOST") == 0) {', 'if (pop_checkcode(g, "BOAST") == 0) {', None),
+    ("        pop_boostmeter(g);\n        g->origstrength = g->MaxKidStr;", "        pop_boostmeter(g);", None),
+    ("        pop_boostmeter(g);\n        g->origstrength = g->MaxKidStr;", "        pop_rechargemeter(g);\n        g->origstrength = g->MaxKidStr;", None),
+    ('} else if (pop_checkcode(g, "R") == 0) {', '} else if (pop_checkcode(g, "S") == 0) {', None),
+    ('} else if (pop_checkcode(g, "ZAP") == 0) {             /* the', '} else if (pop_checkcode(g, "ZIP") == 0) {  /*', None),
+    ("g->ChgOppStr = (uint8_t)(0 - g->OppStrength);", "g->ChgOppStr = (uint8_t)(1 - g->OppStrength);", None),
+    ('} else if (pop_checkcode(g, "Z") == 0) {               /* ...', '} else if (pop_checkcode(g, "X") == 0) {  /*', None),
+    ("g->ChgOppStr = (uint8_t)(1 - g->OppStrength);", "g->ChgOppStr = (uint8_t)(2 - g->OppStrength);", None),
+    ('} else if (pop_checkcode(g, "TINA") == 0) {', '} else if (pop_checkcode(g, "TINY") == 0) {', None),
+    ("        g->NextLevel = 14;\n        pop_shortentime(g);", "        g->NextLevel = 13;\n        pop_shortentime(g);", None),
+    ("        g->NextLevel = 14;\n        pop_shortentime(g);", "        g->NextLevel = 14;", None),
+    # the order of the words: R before ZAP and Z, BOOST before the rest
+    ('    if (pop_checkcode(g, "BOOST") == 0) {\n        pop_boostmeter(g);\n        g->origstrength = g->MaxKidStr;\n    } else if (pop_checkcode(g, "R") == 0) {\n        pop_rechargemeter(g);\n    } else if',
+     '    if (pop_checkcode(g, "R") == 0) {\n        pop_rechargemeter(g);\n    } else if (pop_checkcode(g, "BOOST") == 0) {\n        pop_boostmeter(g);\n        g->origstrength = g->MaxKidStr;\n    } else if',
+     "no word ends in another: BOOST ends in T, R is one letter, so the two never both match"),
+    # KEYS
+    ("    g->keypress = key;\n    g->keydown = strobe(g);", "    g->keypress = key;\n    g->keydown = 0; (void)strobe(g);", None),
+    ("    g->keydown = strobe(g);                                /* (clears the keyboard strobe) */\n    pop_kread(g);",
+     "    g->keydown = strobe(g);", None),
+    ("    return NEG(g->keypress);", "    return g->keypress != 0;", None),
+    ("    if (a == POP_KEY_ESC) {\n        g->SINGSTEP = 1;\n        (void)strobe(g);\n        g->keypress = 1;",
+     "    if (a == POP_KEY_ESC) {\n        g->SINGSTEP = 2;\n        (void)strobe(g);\n        g->keypress = 1;", None),
+    ("    if (a == POP_KEY_ESC) {\n        g->SINGSTEP = 1;\n        (void)strobe(g);\n        g->keypress = 1;",
+     "    if (a == POP_KEY_ESC) {\n        g->SINGSTEP = 1;\n        g->keypress = 1;", None),
+    ("    if (a == POP_KEY_ESC) {\n        g->SINGSTEP = 1;\n        (void)strobe(g);\n        g->keypress = 1;",
+     "    if (a == POP_KEY_ESC) {\n        g->SINGSTEP = 1;\n        (void)strobe(g);\n        g->keypress = 0;", None),
+    ("    g->SINGSTEP = 0;\n    (void)keys2(g, 0);", "    (void)keys2(g, 0);", None),
+    ("    g->SINGSTEP = 0;\n    (void)keys2(g, 0);", "    g->SINGSTEP = 0;\n    (void)keys2(g, a);", None),
+    ("    g->SINGSTEP = 0;\n    (void)keys2(g, 0);", "    g->SINGSTEP = 0;\n    g->keypress = 0;", None),
+    ("        if (g->SINGSTEP == 0) g->SINGSTEP = 1;\n        g->leave = POP_LEAVE_FROZEN;", "        g->leave = POP_LEAVE_FROZEN;", "unit:test_keys.c"),
+    ("        if (g->SINGSTEP == 0) g->SINGSTEP = 1;\n        g->leave = POP_LEAVE_FROZEN;", "        g->SINGSTEP = 1;", "unit:test_keys.c"),
+    ("    if (g->SINGSTEP != 0) {\n        freeze(g);                                         /* frozen since an earlier pass */\n        return;\n    }",
+     "    if (g->SINGSTEP == 1) {\n        freeze(g);\n        return;\n    }", None),
+    ("    if (g->SINGSTEP != 0) {\n        freeze(g);                                         /* frozen since an earlier pass */\n        return;\n    }",
+     "    if (g->SINGSTEP != 0) {\n        freeze(g);\n    }", None),
+    ("    if (!keys2(g, key)) return;\n    pop_addkey(g, g->keypress);", "    (void)keys2(g, key);\n    pop_addkey(g, g->keypress);", None),
+    ("    if (!keys2(g, key)) return;\n    pop_addkey(g, g->keypress);", "    if (!keys2(g, key)) return;", None),
+    ('    if (pop_checkcode(g, "POP") == 0) {                    /* development mode on */\n        g->develment = 1;\n        HOOK(tone);\n        return;',
+     '    if (pop_checkcode(g, "POP") == 0) {\n        g->develment = 1;\n        return;', None),
+    ('    if (pop_checkcode(g, "POP") == 0) {                    /* development mode on */\n        g->develment = 1;\n        HOOK(tone);\n        return;',
+     '    if (pop_checkcode(g, "POP") == 0) {\n        g->develment = 1;\n        HOOK(tone);',
+     "nothing after it reacts to a P, or to keys ending in POP: no special key, no other code word"),
+    ('    if (pop_checkcode(g, "POP") == 0) {                    /* development mode on */\n        g->develment = 1;',
+     '    if (pop_checkcode(g, "POP") == 0) {\n        g->develment = 0xFF;', None),
+    ('    if (pop_checkcode(g, "POP") == 0) {                    /* dev', '    if (pop_checkcode(g, "PUP") == 0) {  /*', None),
+    ('    if (pop_checkcode(g, "SKIP") == 0) {', '    if (pop_checkcode(g, "SLIP") == 0) {', None),
+    ("uint8_t limit = g->develment != 0 ? 11 : 3;", "uint8_t limit = g->develment != 0 ? 12 : 3;", None),
+    ("uint8_t limit = g->develment != 0 ? 11 : 3;", "uint8_t limit = g->develment != 0 ? 11 : 4;", None),
+    ("uint8_t limit = g->develment != 0 ? 11 : 3;", "uint8_t limit = g->develment == 1 ? 11 : 3;", None),
+    ("        if (limit >= g->level) {\n            g->NextLevel++;\n            pop_shortentime(g);",
+     "        if (limit > g->level) {\n            g->NextLevel++;\n            pop_shortentime(g);", None),
+    ("        if (limit >= g->level) {\n            g->NextLevel++;\n            pop_shortentime(g);",
+     "        if (limit >= g->level) {\n            g->NextLevel = (uint8_t)(g->level + 1);\n            pop_shortentime(g);", None),
+    ("        if (limit >= g->level) {\n            g->NextLevel++;\n            pop_shortentime(g);",
+     "        if (limit >= g->level) {\n            g->NextLevel++;", None),
+    ("    pop_legitkeys(g);\n    if (g->leave != 0) return;                             /* (jumped away, or still frozen) */\n    pop_develkeys(g);",
+     "    pop_legitkeys(g);\n    pop_develkeys(g);",
+     "the keys that leave the level (ctrl-R, ctrl-A) end no code word and are not Return"),
+    ("    pop_legitkeys(g);\n    if (g->leave != 0) return;                             /* (jumped away, or still frozen) */\n    pop_develkeys(g);",
+     "    pop_develkeys(g);\n    if (g->leave != 0) return;\n    pop_legitkeys(g);",
+     "no key is both a special key and the end of a code word or Return, so the two never both act"),
+    ("    pop_legitkeys(g);\n    if (g->leave != 0) return;                             /* (jumped away, or still frozen) */\n    pop_develkeys(g);",
+     "    pop_legitkeys(g);", None),
+    # LegitKeys
+    ("    if (a == POP_KEY_ESC) { freeze(g); return; }", "    if (a == POP_KEY_ESC) { return; }", None),
+    ("    if (a == POP_KEY_RESTART) { g->leave = POP_LEAVE_ATTRACT; HOOK(go_attract); return; }",
+     "    if (a == POP_KEY_RESTART) { g->leave = POP_LEAVE_RESTART; HOOK(restart); return; }", None),
+    ("    if (a == POP_KEY_ABORT) { g->leave = POP_LEAVE_RESTART; HOOK(restart); return; }",
+     "    if (a == POP_KEY_ABORT) { g->leave = POP_LEAVE_ATTRACT; HOOK(go_attract); return; }", None),
+    ("    if (a == POP_KEY_SETKBD) { g->joyon = 0; HOOK(tone); return; }", "    if (a == POP_KEY_SETKBD) { g->joyon = 0; return; }", None),
+    ("    if (a == POP_KEY_SETKBD) { g->joyon = 0; HOOK(tone); return; }", "    if (a == POP_KEY_SETKBD) { HOOK(tone); return; }", None),
+    ("    if (a == POP_KEY_SETJSTK) { pop_setcenter(g); HOOK(tone); return; }", "    if (a == POP_KEY_SETJSTK) { g->joyon = 0xFF; HOOK(tone); return; }", None),
+    ("    if (a == POP_KEY_SETJSTK) { pop_setcenter(g); HOOK(tone); return; }", "    if (a == POP_KEY_SETJSTK) { pop_setcenter(g); return; }", None),
+    ("        a = g->jhoriz ^= 1;\n        if (!NEG(a)) { HOOK(tone); return; }", "        a = g->jhoriz ^= 1;\n        HOOK(tone); return;", None),
+    ("        a = g->jhoriz ^= 1;\n        if (!NEG(a)) { HOOK(tone); return; }", "        g->jhoriz ^= 1;\n        if (!NEG(g->jhoriz)) { HOOK(tone); return; }", None),
+    ("        a = g->jhoriz ^= 1;", "        a = g->jhoriz = !g->jhoriz;", None),
+    ("        a = g->jvert ^= 1;\n        if (!NEG(a)) { HOOK(tone); return; }", "        a = g->jvert ^= 1;\n        HOOK(tone); return;", None),
+    ("        a = g->jvert ^= 1;\n        if (!NEG(a)) { HOOK(tone); return; }", "        g->jvert ^= 1;\n        if (!NEG(g->jvert)) { HOOK(tone); return; }", None),
+    ("        a = g->jvert ^= 1;", "        a = g->jhoriz ^= 1;", None),
+    ("        pop_zerosound(&g->sq);\n        g->soundon ^= 1;", "        g->soundon ^= 1;", None),
+    ("        g->soundon ^= 1;\n        if (g->soundon != 0) HOOK(tone);", "        g->soundon ^= 1;\n        HOOK(tone);", None),
+    ("        g->soundon ^= 1;\n        if (g->soundon != 0) HOOK(tone);", "        g->soundon = !g->soundon;\n        if (g->soundon != 0) HOOK(tone);", None),
+    ("        g->musicon ^= 1;\n        if (g->musicon != 0) HOOK(tone);", "        g->musicon ^= 1;\n        if (g->musicon == 0) HOOK(tone);", None),
+    ("        g->musicon ^= 1;\n        if (g->musicon != 0) HOOK(tone);", "        g->soundon ^= 1;\n        if (g->musicon != 0) HOOK(tone);", None),
+    ("    if (a == POP_KEY_VERSION) { HOOK(show_version); return; }", "    if (a == POP_KEY_VERSION) { return; }", None),
+    ("        g->savedgame[POP_SAV_LEVEL] = g->level;\n        pop_dosavegame(g);", "        pop_dosavegame(g);", None),
+    ("        g->savedgame[POP_SAV_LEVEL] = g->level;\n        pop_dosavegame(g);", "        g->savedgame[POP_SAV_LEVEL] = g->level;", None),
+    ("    if (a == POP_KEY_SHOWTIME) g->timerequest = 3;", "    if (a == POP_KEY_SHOWTIME) g->timerequest = 2;", None),
+    ("    if (a == POP_KEY_SHOWTIME) g->timerequest = 3;", "    if (g->keypress == POP_KEY_SHOWTIME) g->timerequest = 3;", None),
+    # the key codes
+    ("    if (a == POP_KEY_ESC) { freeze(g); return; }", "    if (a == POP_KEY_ESC - 1) { freeze(g); return; }", None),
+    ("    if (a == POP_KEY_ESC) {\n        g->SINGSTEP = 1;", "    if (a == POP_KEY_ESC + 1) {\n        g->SINGSTEP = 1;", None),
+    ("    if (a == POP_KEY_RESTART) {", "    if (a == POP_KEY_RESTART + 1) {", None),
+    ("    if (a == POP_KEY_FLIPX) {", "    if (g->keypress == POP_KEY_FLIPX) {", "the key is still in A here"),
+    ("    if (a == POP_KEY_FLIPY) {", "    if (g->keypress == POP_KEY_FLIPY) {", None),
+    ("    if (a == POP_KEY_SOUND) {", "    if (g->keypress == POP_KEY_SOUND) {", None),
+    ("    if (a == POP_KEY_MUSIC) {", "    if (g->keypress == POP_KEY_MUSIC) {", None),
+    ("    if (a == POP_KEY_VERSION) {", "    if (g->keypress == POP_KEY_VERSION) {", None),
+    ("    if (a == POP_KEY_SAVEGAME) {", "    if (g->keypress == POP_KEY_SAVEGAME) {", None),
+    # DevelKeys
+    ("    if (g->develment == 0) return;\n    pop_checkcodes(g);", "    pop_checkcodes(g);", None),
+    ("    if (g->keypress == POP_KEY_CLEAN) g->develment = 0;", "    if (g->keypress == POP_KEY_CLEAN) g->develment = 1;", None),
+    ("    pop_checkcodes(g);\n    if (g->keypress == POP_KEY_CLEAN) g->develment = 0;", "    if (g->keypress == POP_KEY_CLEAN) g->develment = 0;\n    else pop_checkcodes(g);",
+     "Return ends no code word, so with Return as the key no word matches anyway"),
+    # the controller
+    ("    if (*raw < g->jthres[axis]) *raw = 0xFF;", "    if (*raw <= g->jthres[axis]) *raw = 0xFF;", None),
+    ("    else if (*raw < g->jthres[2 + axis]) *raw = 0;", "    else if (*raw <= g->jthres[2 + axis]) *raw = 0;", None),
+    ("    else if (*raw < g->jthres[2 + axis]) *raw = 0;", "    else if (*raw < g->jthres[3 - axis]) *raw = 0;", None),
+    ("    if (g->joyon == 0) return;\n    HOOK(read_paddles);\n    cvtpdl(g, &g->joyX, 0);", "    HOOK(read_paddles);\n    cvtpdl(g, &g->joyX, 0);", None),
+    ("    cvtpdl(g, &g->joyY, 1);", "    cvtpdl(g, &g->joyY, 0);", None),
+    ("    if (g->jvert != 0) g->joyY = (uint8_t)(0 - g->joyY);", "    if (g->jvert == 1) g->joyY = (uint8_t)(0 - g->joyY);", None),
+    ("    if (g->jhoriz != 0) g->joyX = (uint8_t)(0 - g->joyX);", "    if (g->jhoriz != 0) g->joyX = (uint8_t)(~g->joyX);", None),
+    ("    if (g->jhoriz != 0) g->joyX = (uint8_t)(0 - g->joyX);", "    if (g->jvert != 0) g->joyX = (uint8_t)(0 - g->joyX);", None),
+    ("    pop_jread(g);\n    pop_bread(g);", "    pop_jread(g);", None),
+    ("    pop_jread(g);\n    pop_bread(g);", "    pop_bread(g);", None),
+    ("    g->joyon = 0xFF;\n    g->jvert = g->jhoriz = g->jbtns = 0;", "    g->joyon = 1;\n    g->jvert = g->jhoriz = g->jbtns = 0;", None),
+    ("    g->jvert = g->jhoriz = g->jbtns = 0;", "    g->jvert = g->jhoriz = 0;", None),
+    ("    g->jvert = g->jhoriz = g->jbtns = 0;", "    g->jvert = g->jbtns = 0;", None),
+    ("    if (NEG(g->joyX | g->joyY)) {                          /* no", "    if (NEG(g->joyX & g->joyY)) {  /*", None),
+    ("        g->joyon = 0;\n        return;\n    }\n    g->jthres[0]", "        g->joyon = 0;\n    }\n    g->jthres[0]", None),
+    ("g->jthres[0] = (uint8_t)(g->joyX - POP_CWIDTHX);", "g->jthres[0] = (uint8_t)(g->joyX - POP_CWIDTHY);", None),
+    ("g->jthres[2] = (uint8_t)(g->joyX + POP_CWIDTHX);", "g->jthres[2] = (uint8_t)(g->joyX - POP_CWIDTHX);", None),
+    ("g->jthres[1] = (uint8_t)(g->joyY - POP_CWIDTHY);", "g->jthres[1] = (uint8_t)(g->joyX - POP_CWIDTHY);", None),
+    ("g->jthres[3] = (uint8_t)(g->joyY + POP_CWIDTHY);", "g->jthres[3] = (uint8_t)(g->joyY + POP_CWIDTHX);", None),
+    ("    pop_keys(g);\n    if (g->leave != 0) return;                             /* KEYS did not come back */\n    pop_controller(g);",
+     "    pop_keys(g);\n    pop_controller(g);", None),
+    ("    pop_keys(g);\n    if (g->leave != 0) return;                             /* KEYS did not come back */\n    pop_controller(g);",
+     "    pop_controller(g);\n    pop_keys(g);", None),
+    # saved games
+    ("    if (g->level < POP_FIRST_SIDE_B) {", "    if (g->level <= POP_FIRST_SIDE_B) {", None),
+    ("        pop_g_addsound(g, POP_SND_SPLAT);\n        return;", "        return;", None),
+    ("        pop_g_addsound(g, POP_SND_SPLAT);\n        return;", "        pop_g_addsound(g, POP_SND_SPLAT);", None),
+    ("    g->savedgame[POP_SAV_STRENGTH] = g->origstrength;", "    g->savedgame[POP_SAV_STRENGTH] = g->MaxKidStr;", None),
+    ("    g->savedgame[POP_SAV_TIMER] = g->FrameCount[0];\n    g->savedgame[POP_SAV_TIMER + 1] = g->FrameCount[1];",
+     "    g->savedgame[POP_SAV_TIMER] = g->FrameCount[1];\n    g->savedgame[POP_SAV_TIMER + 1] = g->FrameCount[0];", None),
+    ("    g->savedgame[POP_SAV_NEXTMSG] = g->NextTimeMsg;\n    HOOK(save_game);", "    g->savedgame[POP_SAV_NEXTMSG] = g->NextTimeMsg;", None),
+    ("    g->savedgame[POP_SAV_NEXTMSG] = g->NextTimeMsg;\n    HOOK(save_game);", "    HOOK(save_game);", None),
+    ("    g->savedgame[POP_SAV_NEXTMSG] = g->NextTimeMsg;", "    g->savedgame[POP_SAV_NEXTMSG - 1] = g->NextTimeMsg;", None),
+    ("    pop_startgame(g, 4);                                   /* \"arbitrary value >1\" */", "    pop_startgame(g, 1);", None),
+    ("    pop_startgame(g, 4);                                   /* \"arbitrary value >1\" */\n    HOOK(load_game);", "    pop_startgame(g, 4);", None),
+    ("    if (NEG(g->savedgame[POP_SAV_LEVEL])) {                /* no", "    if (g->savedgame[POP_SAV_LEVEL] == 0xFF) {  /*", None),
+    ("        g->level = g->NextLevel = 1;\n    } else {", "        g->level = 1;\n    } else {", None),
+    ("        g->origstrength = g->savedgame[POP_SAV_STRENGTH];", "        g->MaxKidStr = g->savedgame[POP_SAV_STRENGTH];", None),
+    ("        g->FrameCount[1] = g->savedgame[POP_SAV_TIMER + 1];\n        g->FrameCount[0] = g->savedgame[POP_SAV_TIMER];",
+     "        g->FrameCount[1] = g->savedgame[POP_SAV_TIMER];\n        g->FrameCount[0] = g->savedgame[POP_SAV_TIMER + 1];", None),
+    ("        g->NextTimeMsg = g->savedgame[POP_SAV_NEXTMSG];", "        g->NextTimeMsg = 0;", None),
+    ("        g->timerequest = 1;                                /* show", "        g->timerequest = 2;  /*", None),
+    ("        g->yellowflag = 0x80;                              /* \"pass", "        g->yellowflag = 0x40;  /* \"", None),
+    ("        g->level = g->NextLevel = g->savedgame[POP_SAV_LEVEL];", "        g->level = g->savedgame[POP_SAV_LEVEL];", None),
+    ("    g->leave = POP_LEAVE_RESTART;\n    HOOK(restart);\n}\n", "    g->leave = POP_LEAVE_RESTART;\n}\n", None),
+]
+
+# the keyboard in the loop: seen by the passes that run the real STROBE
+LOOP_KEYS_MUTANTS = [
+    ("    if (g->hooks.key_strobe) (void)g->hooks.key_strobe(g->hooks.ctx);\n    g->SongCue = 0;",
+     "    g->SongCue = 0;", None),
+]
+
 # file, its deliberate errors, and the group of routines whose comparison
 # should notice them (running only that group keeps the check short)
 FILES = (("pop_control.c", MUTANTS, "@control"),
@@ -824,7 +1002,9 @@ FILES = (("pop_control.c", MUTANTS, "@control"),
          ("pop_top.c", TOP_MUTANTS, "@top"),
          ("pop_loop.c", LOOP_MUTANTS, "@loop"),
          ("pop_objs.c", OBJS_MUTANTS, "@objs"),
-         ("pop_mover.c", ADDMOBS_MUTANTS, "@objs"))
+         ("pop_mover.c", ADDMOBS_MUTANTS, "@objs"),
+         ("pop_keys.c", KEYS_MUTANTS, "@keys"),
+         ("pop_loop.c", LOOP_KEYS_MUTANTS, "@keys"))
 
 
 def main(argv):
@@ -836,7 +1016,7 @@ def main(argv):
     seed = argv[4] if len(argv) > 4 else "1989"
     only = argv[5].split(",") if len(argv) > 5 else None
     core = ("pop_control.c", "pop_collide.c", "pop_mover.c", "pop_auto.c", "pop_top.c",
-            "pop_loop.c", "pop_objs.c", "pop_seq.c", "pop_sound.c", "pop_world.c")
+            "pop_loop.c", "pop_objs.c", "pop_keys.c", "pop_seq.c", "pop_sound.c", "pop_world.c")
     others = [os.path.join(PORT, *p) for p in (
         ("src", "assets", "pop_assets.c"), ("src", "assets", "pop_gfxfiles.c"),
         ("src", "audio", "pop_sfx.c"), ("src", "video", "pop_hires.c"),

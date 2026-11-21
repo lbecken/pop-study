@@ -349,6 +349,7 @@ void pop_restart_level(pop_game *g)
     pop_setinitials(g);
     pop_initialguards(g);
 
+    g->SINGSTEP = 0;
     g->vibes = 0;
     g->AMtimer = 0;
     g->VisScrn = 0;

@@ -10,14 +10,16 @@ Sources, all new code:
 
 | File | What it is |
 | --- | --- |
-| `modern-port/src/app/pop_app.h`, `pop_app.c` | The game as one object: state, drawing, data files, input, sound samples. No SDL, no clock |
+| `modern-port/src/app/pop_app.h`, `pop_app.c` | The game as one object: state, drawing, data files, sound samples; the keyboard, joystick and disk the game's key handler asks for. No SDL, no clock |
 | `modern-port/tools/pop_headless.c` | The same game without a window: prints what each frame left, writes PNG frames and a WAV file |
 | `modern-port/src/sdl/pop_sdl_main.c` | The SDL3 shell: window, keys, audio stream, timing. Built only when SDL3 is found |
 
 Nothing in these files is a port of original code. What the original does
-in the corresponding places (`STROBE` and `KEYS` in `SPECIALK.S`, `PLAYBACK`
-in `SOUND.S`, the loader in `MASTER.S`, the attract loop in `TOPCTRL.S`) is
-replaced, and each replacement is listed below as a deviation.
+in the corresponding places (`PLAYBACK` in `SOUND.S`, the loader in
+`MASTER.S`, the attract loop in `TOPCTRL.S`) is replaced, and each
+replacement is listed below as a deviation. Since milestone 13 the keys
+are the exception: `STROBE`, `KEYS` and the controller are ported
+(keys.md), and the shell only supplies the keyboard and a joystick.
 
 ## 1. Building and running
 
@@ -35,8 +37,9 @@ itself at run time. Without SDL3 everything else still builds, and
 
 Options: `--level n` (0, the default, is the self-running demo; a key
 turns it into a game on level 1), `--scale n`, `--mono`, `--rate n`
-(frames per minute), `--stretch`, `--mute`, `--images dir` (section 6), and
-for tests `--frames n`, `--no-wait`, `--screenshot file`.
+(frames per minute), `--stretch`, `--mute`, `--images dir` (section 6),
+`--save-file f` and `--resume` (saved games, section 2), and for tests
+`--frames n`, `--no-wait`, `--screenshot file`, `--type list`.
 
 ## 2. Keys
 
@@ -45,30 +48,49 @@ for tests `--frames n`, `--no-wait`, `--screenshot file`.
 | arrows, or J L I K | left, right, up, down |
 | U, O | up-left, up-right |
 | Shift | the button (pick up, careful step, strike) |
-| P | pause |
+| Escape | freeze the game; Escape again: one frame; any other key: go on |
+| space | show the time left |
+| ctrl-S, ctrl-N | sound, music off and on |
+| ctrl-A | start the level again |
+| ctrl-R | end the game (here: back to the demo) |
+| ctrl-G | save the game (from level 3 on); `--resume` starts from it |
+| ctrl-K, ctrl-J | steer by the keyboard alone, or by the "joystick" again |
+| ctrl-X, ctrl-Y | reverse the joystick's axes |
 | F1 | colour / monochrome |
-| Ctrl-A | start the level again |
-| Ctrl-R | start the game again on level 1 |
-| Escape | leave |
+| ctrl-Q, or closing the window | leave |
 
-J L I K U O and the button are the original's player keys
-(`SPECIALK.S:73-98`). The rest are the shell's.
+All but the last two are the original's keys, handled by the original's
+key handler as ported (`pop_keys.c`; keys.md has what each does exactly,
+and the typed code words). F1 and ctrl-Q are the shell's.
 
-**Deviation: the keys reach the game as a joystick.** The Apple II
-keyboard delivers one key at a time, and the original's keyboard routine
-turns the last key into a direction (`KREAD`, ported and tested in
-`pop_loop.c`). The shell does not go through it: it sets the joystick
-position and both buttons each frame (`joyon`, `joyX`, `joyY`, `BTN0`,
-`BTN1`) and lets the game read them through its joystick path
-(`getselect`). The difference a player would notice: two arrow keys held
-together give a diagonal, which the original keyboard could only do with U
-and O. Everything downstream of the device (which presses count as new,
-`clrjstk` and the per-device flags) is the ported code.
+Every key typed is given to the game as the Apple II's code for it:
+letters, digits and punctuation with bit 7 set, a control key as its
+letter's code less `$60`, Return, Escape, space. The game sees them one per
+frame, in the order typed.
 
-**Not ported: the special keys** (`KEYS`, `SPECIALK.S`): pause, sound on and
-off, restart, saving and loading a game, and the development keys. Pause
-and the two restarts above are the shell's own and simpler: a restart is a
-cold start (full strength, the hour from its beginning).
+**Deviation: the directions are a joystick.** The Apple II keyboard
+delivers one key at a time, and in the original a player without a
+joystick steers with single keys (`KREAD`). The shell instead presents the
+arrows and J L I K U O, held in any combination, as a joystick that is
+plugged in and centred, and Shift as its two buttons; the game reads them
+through its own controller code (`JREAD`, `cvtpdl`, `BREAD`; keys.md §6)
+and finds, as it does at start-up on a real machine, that a joystick is
+there. The difference a player would notice: two arrow keys held together
+give a diagonal, which the Apple II keyboard could only do with U and O.
+ctrl-K switches to the original's keyboard steering, where J L I K U O
+work one at a time and the arrows do nothing; ctrl-J switches back.
+
+The arrow keys type nothing. On an Apple IIe they would: up and down have
+the codes of ctrl-K and ctrl-J (keys.md §3).
+
+**Saved games** are a file of 16 bytes, the original's record (keys.md §8):
+`pop-saved-game.bin` in the current directory unless `--save-file` names
+another. As in the original what is saved is the start of the level, with
+the strength it was begun with and the time.
+
+**Not ported:** the version line of ctrl-V (it is drawn with the Apple II's
+text screen), and the keys that work while a song plays, there being no
+songs.
 
 ## 3. Time
 
@@ -103,9 +125,12 @@ The frame's effects are rendered from the toggle lists that
 - **No music** (decision D4): the song data is not in the repository. Where
   the original plays a song the port goes straight on, without the pause
   the song makes.
-- The beep that goes with "Press button to continue" (`gtone`) and the
-  click of the collision code (`COLL.S:403`) are hooks that the shell does
-  not connect.
+- The beep that confirms a special key (`gtone`; also heard with "Press
+  button to continue" when the sound is off) is rendered from the two
+  numbers `GTONE` passes to `tone` (keys.md §7). The click of the
+  collision code (`COLL.S:403`) is a hook that the shell does not connect.
+- ctrl-S works as in the original: with the sound off no effect is played
+  (`PLAYBACK` returns at once, `SOUND.S:100-102`).
 
 ## 5. What happens where the port ends
 
@@ -113,6 +138,8 @@ The frame's effects are rendered from the toggle lists that
 | --- | --- |
 | Title sequence and attract loop | not ported: the demo level starts at once, and starts again when it ends |
 | A key during the demo starts a game | ported (`demokeys`): level 1 |
+| ctrl-R: back to the title | the demo |
+| ctrl-L at the title resumes the saved game | `--resume` on the command line |
 | The kid dies and the button is not pressed in time: back to the title | the demo |
 | The hour runs out: the princess scene, then the title | a line on standard error, then the demo |
 | The game is won: the final scenes | a line on standard error, then the demo |
@@ -142,8 +169,9 @@ such set that exists is the generated placeholder set
 
 | Check | Shows |
 | --- | --- |
-| `tests/check_app.py` (`app_matches_runner`) | The game through `pop_app` (the demo, and levels 1–14 with random keys, 3,025 frames) leaves the same bytes in both hi-res pages and touches the same display switches as the same games through `pop_worldrun`, the runner that `replay_frames.py` compares with the original. So the shell's game is the tested game |
-| `tests/check_sdl.py` (`sdl_shell_headless`) | With SDL's dummy drivers: the shell starts, plays 150 frames of the demo, queues sound, leaves with status 0; its last picture is `pop_headless`'s picture of that frame; 60 timed frames take the time they should |
+| `tests/check_app.py` (`app_matches_runner`) | The game through `pop_app` (the demo, and levels 1–14 with random keys, 3,208 frames, through 19 restarts of a level by ctrl-A or by the kid's death) leaves the same bytes in both hi-res pages and touches the same display switches as the same games through `pop_worldrun`, the runner that `replay_frames.py` compares with the original. So the shell's game is the tested game |
+| `tests/check_keys.py` (`app_keys`) | Keys typed at `pop_app` reach the ported key handler and have their effect: freeze and single step, the time message, sound off and on, restart, end of game, code words, keyboard steering, saving and resuming |
+| `tests/check_sdl.py` (`sdl_shell_headless`) | With SDL's dummy drivers: the shell starts, plays 150 frames of the demo, queues sound, leaves with status 0; its last picture is `pop_headless`'s picture of that frame; 60 timed frames take the time they should; keys given with `--type` (the dummy driver has no keyboard) freeze the game, release it and end it |
 | `tests/check_images.py` (`images_option`) | `--images`: copies of the original tables give the same frames as the checkout; placeholder pictures give the same game state after every frame and other pictures; unlabelled, incomplete and wrongly sized directories are refused |
 | by eye | Frames written by `pop_headless` (level 1's first room) look like the game; with the placeholder set, like the game's boxes |
 
@@ -152,8 +180,11 @@ such set that exists is the generated placeholder set
 - that the window appears, scales and repaints properly on any system;
 - that the keys feel right (response, diagonals, the button);
 - that the sound is audible, in time and at a sensible volume;
-- pause, the restarts and F1 (the event paths were not exercised: the
-  dummy driver delivers no key events);
+- that a key pressed on a real keyboard arrives as the right code: the
+  mapping from SDL's key events (`apple_code`) has never seen an event,
+  because the dummy driver delivers none; the tests type through `--type`,
+  which enters after that mapping. The same goes for F1, ctrl-Q, and for
+  the window staying alive while the game is frozen;
 - the pace: whether 725 frames a minute feels like the game.
 
 The next step for all of these is to run `pop_sdl` on a machine with a

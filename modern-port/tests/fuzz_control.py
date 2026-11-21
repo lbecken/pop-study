@@ -76,7 +76,11 @@ LOOP_VARS = ["keypress", "keydown", "kbdX", "kbdY", "joyX", "joyY", "joyon", "Ne
              "soundon", "FrameCount", "FrameCountH"]
 # the object list (its own random stream)
 OBJ_VARS = ["FCharIndex", "doortop"]
-BYTES = fw.BYTES + EXTRA + COLL_VARS + MOVER_VARS + AUTO_VARS + TOP_VARS + LOOP_VARS + OBJ_VARS
+# keys and the controller (their own random stream)
+KEY_VARS = ["SINGSTEP", "develment", "keybufptr", "musicon", "jvert", "jhoriz", "jbtns",
+            "jthres1x", "jthres1y", "jthres2x", "jthres2y"]
+BYTES = fw.BYTES + EXTRA + COLL_VARS + MOVER_VARS + AUTO_VARS + TOP_VARS + LOOP_VARS + OBJ_VARS \
+    + KEY_VARS
 WORDS = fw.WORDS + ["FCharX"]
 CD_BUFFERS = (("CDthisframe", 16), ("CDlastframe", 16), ("CDbelow", 16), ("CDabove", 16))
 SN_BUFFERS = (("SNthisframe", 16), ("SNlastframe", 16), ("SNbelow", 16), ("SNabove", 10))
@@ -94,7 +98,8 @@ SCRIPT_AT = 0x9000
 OBJ_LISTS = tuple((n, 20) for n in ("objINDX", "objX", "objOFF", "objY", "objIMG", "objFACE",
                                     "objTYP", "objCU", "objCD", "objCL", "objCR", "objTAB"))
 BUFFERS = BASE_BUFFERS + CD_BUFFERS + SN_BUFFERS + OTHER_REDRAW + TROB_LISTS + MOB_LISTS \
-    + (("script", 32), ("clrSEL", 5), ("clrDESEL", 5)) + OBJ_LISTS
+    + (("script", 32), ("clrSEL", 5), ("clrDESEL", 5)) + OBJ_LISTS \
+    + (("keybuf", 10), ("savedgame", 16))
 DEAD_SEQS = []       # sequence addresses one frame before a "dead" frame; set by Harness
 STAND_SEQS = []      # the same for the standing frame
 FDY = {}             # Fdy of a few of the kid's frames; set by Harness
@@ -248,6 +253,22 @@ OBJS = {
     "addchars": ("TOPCTRL", "addchars", ""), "addmobs": ("MOVER", "ADDMOBS", ""),
 }
 ROUTINES.update(OBJS)
+KEYGROUP = {
+    # the keyboard's special keys and code words, the controller, saved games
+    "keys": ("SPECIALK", "KEYS", ""), "legitkeys": ("SPECIALK", "LegitKeys", ""),
+    "develkeys": ("SPECIALK", "DevelKeys", ""), "checkcodes": ("SPECIALK", "checkcodes", ""),
+    "addkey": ("SPECIALK", "addkey", ""), "strobe": ("SPECIALK", "STROBE", ""),
+    "jread": ("GRAFIX", "JREAD", ""), "bread": ("GRAFIX", "BREAD", ""),
+    "controller": ("GRAFIX", "CONTROLLER", ""), "setcenter": ("GRAFIX", "SETCENTER", ""),
+    "dosavegame": ("MISC", "DOSAVEGAME", ""), "startresume": ("TOPCTRL", "STARTRESUME", ""),
+    # one pass of MainLoop with its STROBE: the keyboard and the controller
+    # as hardware, where "mainloop" has the variables they leave
+    "mainloopk": ("TOPCTRL", None, ""),
+}
+ROUTINES.update(KEYGROUP)
+# the special keys (SPECIALK.S 91-108), and keys that are none
+SPECIAL_KEYS = (0x9B, 0x92, 0x81, 0x93, 0x8E, 0x8B, 0x8A, 0x87, 0x96, 0xA0, 0x98, 0x99, 0x8D)
+CODE_WORDS = ("SKIP", "POP", "BOOST", "R", "ZAP", "Z", "TINA")
 # these work on a character as SETUPCHAR and GETEDGES leave it
 OBJ_CHAINED = ("indexchar", "quickfloor", "quickfg", "cropchar", "setupsword", "setupcomix")
 FIGHT_FRAMES = (15, 150, 151, 152, 153, 154, 157, 158, 158, 161, 162, 165, 166, 167, 168, 169,
@@ -1449,6 +1470,122 @@ def objs_state(rng, s, pokes, bufs, routine):
         s["_a_only"] = rng.choice((0, 1, 5, 127, 128, 129, 251, 255, rng.randrange(256)))
 
 
+def typed(word, rng):
+    """A word as key codes, in capitals or small letters."""
+    return [(ord(c) | 0x80) | (0x20 if rng.random() < 0.5 else 0) for c in word]
+
+
+def keys_state(rng, s, pokes, bufs, routine):
+    """The keyboard, the controller and the disk as hardware (bufs["_hw"]),
+    the variables of the key routines, and for those routines the
+    situations they have cases for."""
+    s["SINGSTEP"] = rng.choice((0,) * 6 + (1, 1, 0xFF))
+    s["develment"] = rng.choice((0, 0, 1, 1, 0xFF))
+    s["keybufptr"] = rng.choice((rng.randrange(10),) * 9 + (10, rng.randrange(256)))
+    s["musicon"] = rng.choice((0, 1, 1))
+    for n in ("jvert", "jhoriz", "jbtns"):
+        s[n] = rng.choice((0, 0, 0, 1))
+    cx, cy = rng.randrange(20, 50), rng.randrange(20, 50)
+    s.update(jthres1x=cx - 10, jthres2x=cx + 10, jthres1y=cy - 15, jthres2y=cy + 15)
+    keybuf = [rng.choice((0, rng.randrange(256))) for _ in range(10)]
+    saved = [rng.randrange(256) for _ in range(16)]
+    hw = {"latch": 0, "any": rng.randrange(2), "padx": rng.randrange(72),
+          "pady": rng.randrange(72), "b0": rng.choice((0, 0, 0x80, 0xFF, 0x7F)),
+          "b1": rng.choice((0, 0, 0x80, 0xFF, 0x7F)), "queue": [], "saved": list(saved)}
+    bufs["keybuf"], bufs["savedgame"], bufs["_hw"] = bytes(keybuf), bytes(saved), hw
+    if routine not in KEYGROUP:
+        return
+    r = rng.random()
+    if routine == "mainloopk":
+        # a frame's situation as the state has it, seen through the hardware:
+        # the buttons, and a stick that reads as the state's joystick
+        s["SINGSTEP"] = rng.choice((0,) * 8 + (1, 0xFF))
+        hw["b0"], hw["b1"] = s["BTN0"], s["BTN1"]
+        hw["padx"] = {0xFF: s["jthres1x"] - 1, 1: s["jthres2x"]}.get(s["joyX"], s["jthres1x"])
+        hw["pady"] = {0xFF: s["jthres1y"] - 1, 1: s["jthres2y"]}.get(s["joyY"], s["jthres1y"])
+        if rng.random() < 0.85:
+            s["jhoriz"] = s["jvert"] = 0
+    else:
+        s["level"] = rng.choice((1, 1, 2, 3, 3, 4, 5, 10, 11, 11, 12, 12, 13, 14, 0))
+        s["NextLevel"] = rng.choice((s["level"],) * 4 + (s["level"] + 1, 255))
+        s["joyon"] = rng.choice((0, 0xFF, 0xFF, 1))
+    if rng.random() < 0.5:
+        s["keybufptr"] = rng.randrange(10)
+    if rng.random() < 0.2:                           # flags that are not 0 or 1
+        s["jhoriz"] = rng.choice((0x98, 0x99, 0x92, 0x8F, 0x97, 0x86, 0xA1, 0x80, 2, 0xFF))
+        s["jvert"] = rng.choice((0x92, 0x93, 0x8F, 0x97, 0x86, 0xA1, 0x80, 2, 0xFF))
+    if routine == "mainloopk":
+        pass
+    elif rng.random() < 0.25:                        # a paddle with nothing connected, or far off
+        hw[rng.choice(("padx", "pady"))] = rng.choice((128, 200, 255, 127, 0, 70))
+    elif rng.random() < 0.3:                         # at the edges of the dead zone
+        hw["padx"] = (s[rng.choice(("jthres1x", "jthres2x"))] + rng.choice((-1, 0, 1))) & 0xFF
+        hw["pady"] = (s[rng.choice(("jthres1y", "jthres2y"))] + rng.choice((-1, 0, 1))) & 0xFF
+    if routine == "setcenter" and rng.random() < 0.3:
+        hw["padx"], hw["pady"] = rng.choice((0, 5, 9, 10, 11, 120, 127)), rng.choice((0, 14, 15, 16, 110, 127))
+    # a key: special, a player key, part of a code word, or none
+    key = rng.choice(SPECIAL_KEYS + SPECIAL_KEYS + KEYS + (0xD2, 0xF2, 0xDA, 0xFA, 0xB0, 0xB9, 0xC1,
+                                                           rng.randrange(128, 256)))
+    if routine == "mainloopk" and rng.random() < 0.55:
+        key = 0                                      # most frames, nothing is typed
+    if routine in ("keys", "strobe", "develkeys", "checkcodes") and r < 0.45 \
+            or routine == "mainloopk" and r < 0.15:
+        # the end of a code word, typed whole, or with one key wrong, or cut short
+        word = rng.choice(CODE_WORDS)
+        keys = typed(word, rng)
+        kind = rng.random()
+        if kind < 0.15 and len(keys) > 1:
+            keys[rng.randrange(len(keys))] ^= rng.choice((1, 0x80, 0x40, 2))
+        elif kind < 0.25:
+            keys = keys[1:] or keys
+        elif kind < 0.3:                             # a small letter where no letter is
+            keys[rng.randrange(len(keys))] |= 0x20
+        key = keys[-1]
+        # in the buffer up to the last key; KEYS adds that one itself
+        upto = keys if routine in ("develkeys", "checkcodes") else keys[:-1]
+        at = s["keybufptr"] = rng.randrange(10)
+        for i, k in enumerate(reversed(upto)):
+            keybuf[(at - i) % 10] = k
+        if routine in ("develkeys", "checkcodes") and rng.random() < 0.8:
+            s["develment"] = 1
+        if word == "SKIP" and routine != "mainloopk":    # the last levels it works from
+            s["level"] = rng.choice((1, 3, 3, 4, 4, 11, 11, 12, 12))
+            s["NextLevel"] = s["level"]
+            s["develment"] = rng.choice((0, 0, 1, 0xFF))
+        bufs["keybuf"] = bytes(keybuf)
+    if key in (0x98, 0x99) and rng.random() < 0.6:
+        # a reversal flag that is negative once flipped is taken for the
+        # key from there on: flags that turn into the keys that follow
+        flags = (0x98, 0x92, 0x8F, 0x97, 0x86, 0xA1) if key == 0x98 else (0x92, 0x8F, 0x97,
+                                                                          0x86, 0xA1)
+        s["jhoriz" if key == 0x98 else "jvert"] = rng.choice(flags)
+        s["level"] = rng.choice((s["level"], 5)) if routine != "mainloopk" else s["level"]
+    s["keypress"] = key if rng.random() < 0.9 else key & 0x7F
+    hw["latch"] = s["keypress"]
+    # what is typed next: arrives when the strobe is cleared
+    hw["queue"] = [rng.choice(SPECIAL_KEYS + (0xEA, 0xA0, 0x9B, 0x9B, 0x9B)) | 0x80
+                   for _ in range(rng.choice((0, 1, 1, 2, 3)))]
+    if routine in ("keys", "strobe", "mainloopk") and s["SINGSTEP"] and rng.random() < 0.8:
+        hw["latch"] = rng.choice((0x9B, 0x9B, 0xA0, 0xEA, key | 0x80))    # frozen, and a key comes
+    if s["keypress"] == 0x9B and rng.random() < 0.8 and not hw["queue"]:
+        hw["queue"] = [rng.choice((0x9B, 0x9B, 0xA0, 0x93, 0xEA))]        # ESC, then another key
+    if rng.random() < 0.3:
+        s["soundon"] = rng.choice((0, 1, 2, 0xFF))
+        s["musicon"] = rng.choice((0, 1, 2, 0xFF))
+    if routine == "mainloopk":
+        pass
+    elif rng.random() < 0.5:
+        s["OppStrength"] = rng.choice((0, 1, 2, 3, 5, 12))
+        s["MaxKidStr"] = rng.choice((3, 4, 9, 10, 11))
+        s["KidStrength"] = rng.choice((0, 1, 3, s["MaxKidStr"]))
+    if routine in ("dosavegame", "startresume") or rng.random() < 0.3:
+        saved[0] = rng.choice((1, 3, 7, 12, 14, 0xFF, 0x80, 0))
+        hw["saved"] = list(saved)
+        bufs["savedgame"] = bytes(rng.randrange(256) for _ in range(16))
+    if routine == "addkey":
+        s["_a_only"] = key
+
+
 def random_args(rng, routine, s):
     a, x, y = rng.randrange(256), rng.randrange(256), rng.randrange(30)
     if routine in ("checkledge", "pickitup"):
@@ -1513,6 +1650,39 @@ class Harness:
                 FHEIGHT[posn] = self.dims[table][(fimage & 0x7F) - 1][1]
             o.reset()
         cpu.on_read[0xC030] = lambda c: self.hooks.append("k")      # the speaker
+        # The keyboard: $C000 is the latch, with the strobe in its high bit;
+        # any access to $C010 clears the strobe, and reads the any-key-down
+        # flag with the low bits of the latch.  The model: the next key
+        # typed arrives the moment the strobe is cleared.  KEYS reads the
+        # latch once; when frozen it reads until a key is there, and with
+        # none coming the case is abandoned (CpuError).
+        self.hw, self.keyless, self.watch_latch = None, 0, False
+
+        def latch_read(c):
+            if self.watch_latch and c.mem[0xC000] < 0x80:
+                self.keyless += 1
+                if self.keyless > 2:
+                    raise CpuError("frozen, and no key comes")
+
+        def strobe_cleared(c):
+            hw = self.hw
+            latch = c.mem[0xC000] & 0x7F
+            if hw is not None and hw["queue"]:
+                latch = hw["queue"].pop(0) | 0x80
+            c.mem[0xC000] = latch
+            c.mem[0xC010] = (c.mem[0xC010] & 0x80) | (latch & 0x7F)
+        cpu.on_read[0xC000] = latch_read
+        cpu.on_read[0xC010] = strobe_cleared
+        cpu.on_write[0xC010] = strobe_cleared
+
+        def paddles(c):                              # PREAD: raw positions
+            self.oracle.poke("joyX", self.hw["padx"])
+            self.oracle.poke("joyY", self.hw["pady"])
+        cpu.traps[self.oracle.addr("PREAD", "GRAFIX")] = paddles
+        cpu.traps[self.oracle.addr("savegame")] = lambda c: self.hooks.append("G")
+        cpu.traps[self.oracle.addr("loadgame")] = lambda c: self.oracle.poke(
+            "SavLevel", bytes(self.hw["saved"]))
+        cpu.traps[self.oracle.addr("dispversion")] = lambda c: self.hooks.append("V")
         o = self.oracle
 
         def mark(text):
@@ -1613,8 +1783,18 @@ class Harness:
             # DEMOKEYS reads the buttons themselves, not the copies in BTN0/1
             o.cpu.mem[0xC061] = o.peek(self.addr["BTN0"])
             o.cpu.mem[0xC062] = o.peek(self.addr["BTN1"])
+            hw = bufs.get("_hw")
+            self.hw = dict(hw, queue=list(hw["queue"])) if hw else None
+            self.keyless, self.watch_latch = 0, routine in KEYGROUP
+            if routine in KEYGROUP:                  # the hardware as the case has it
+                o.cpu.mem[0xC000] = hw["latch"]
+                o.cpu.mem[0xC010] = (0x80 if hw["any"] else 0) | (hw["latch"] & 0x7F)
+                o.cpu.mem[0xC061], o.cpu.mem[0xC062] = hw["b0"], hw["b1"]
+            strobe_trap = None
+            if routine == "mainloopk":               # the original's own STROBE
+                strobe_trap = o.cpu.traps.pop(o.addr("strobe"))
             try:
-                if routine == "mainloop":
+                if routine in ("mainloop", "mainloopk"):
                     o.call("RND", module="GRAFIX")
                     o.cpu.a, o.cpu.x, o.cpu.y, o.cpu.sp = 0, 0, 0, 0xFF
                     o.cpu.call(self.mainloop + 3, 6_000_000)
@@ -1627,12 +1807,18 @@ class Harness:
                     o.cpu.call(self.restart_level, 3_000_000)
                     ra, rx, ry, rp = o.cpu.a, o.cpu.x, o.cpu.y, o.cpu.p
                 else:
+                    if routine in ("keys", "legitkeys", "strobe") and a & 1:
+                        o.poke(self.soundtable, 1)   # a sound waiting to be played
+                        o.poke(self.soundtable + 1, 5)
                     ra, rx, ry, rp = o.call(label, a, x, y, module=module,
                                             max_cycles=3_000_000)
             except Left:
                 ra, rx, ry, rp = o.cpu.a, o.cpu.x, o.cpu.y, o.cpu.p
             except CpuError:
                 return "error"                       # ran into data or never returned
+            finally:
+                if strobe_trap is not None:
+                    o.cpu.traps[o.addr("strobe")] = strobe_trap
             if self.stray:
                 return "stray"
         out = {n: o.peek(self.addr[n]) for n in BYTES}
@@ -1647,6 +1833,9 @@ class Harness:
             "vars": out, "a": ra, "x": rx, "y": ry, "c": rp & 1,
             "snd": bytes(o.peek(self.soundtable + 1, count)).hex() if count else "-",
             "hooks": "".join(self.hooks) or "-",
+            # the keyboard: what the latch holds, and how many keys have arrived
+            "kbd": "%02x.%d" % (o.cpu.mem[0xC000], len(bufs["_hw"]["queue"])
+                                - len(self.hw["queue"])) if self.hw else "-",
             "lvl": ",".join("%d.%d" % (i, now[i]) for i in range(len(level))
                             if now[i] != level[i]) or "-",
             "bufs": {n: bytes(o.peek(self.bufaddr[n], size)).hex() for n, size in BUFFERS},
@@ -1673,9 +1862,11 @@ def main(argv):
         only = list(LOOP)
     elif only == ["@objs"]:
         only = list(OBJS)
+    elif only == ["@keys"]:
+        only = list(KEYGROUP)
     elif only == ["@control"]:
         only = [n for n in ROUTINES if n not in COLLISION and n not in MOVER and n not in AUTO
-                and n not in TOP and n not in LOOP and n not in OBJS]
+                and n not in TOP and n not in LOOP and n not in OBJS and n not in KEYGROUP]
 
     h = Harness(source)
     levels = []
@@ -1697,7 +1888,9 @@ def main(argv):
             # routine's cases are made leaves the others' cases as they were
             rng = random.Random("%d/%d/%s" % (seed, round_no, routine))
             # a pass of the main loop gets the situations of a frame
-            like = "nextframe" if routine == "mainloop" else routine
+            # (a pass with the real STROBE is a pass like any other)
+            base = "mainloop" if routine == "mainloopk" else routine
+            like = "nextframe" if base == "mainloop" else routine
             s, pokes, bufs = random_state(rng, level, like)
             collision_state(random.Random("%d/%d/%s/coll" % (seed, round_no, routine)),
                             s, pokes, bufs, like)
@@ -1709,8 +1902,10 @@ def main(argv):
             top_state(random.Random("%d/%d/%s/top" % (seed, round_no, routine)),
                       s, pokes, bufs, like)
             loop_state(random.Random("%d/%d/%s/loop" % (seed, round_no, routine)),
-                       s, pokes, bufs, routine)
+                       s, pokes, bufs, base)
             objs_state(random.Random("%d/%d/%s/objs" % (seed, round_no, routine)),
+                       s, pokes, bufs, base)
+            keys_state(random.Random("%d/%d/%s/keys" % (seed, round_no, routine)),
                        s, pokes, bufs, routine)
             if s.pop("_fresh", 0):                           # a level as it is on disk
                 fresh = random.Random("%d/%d/%s/level" % (seed, round_no, routine))
@@ -1739,6 +1934,7 @@ def main(argv):
                     and (routine not in MOVER or routine in ("checkpress", "shakeloose",
                                                              "addslicers")) \
                     and routine not in AUTO and routine not in TOP and routine not in LOOP \
+                    and routine not in KEYGROUP \
                     and not noreread and rng.random() < 0.8:
                 steps.insert(0, ("rereadblocks", 0, 0, 0))   # a consistent CharBlockX
             if routine == "getedges":
@@ -1775,6 +1971,10 @@ def main(argv):
             commands.append("S " + " ".join("%s=%d" % kv for kv in s.items()))
             for name, _ in BUFFERS:
                 commands.append("H %s %s" % (name, bufs[name].hex()))
+            hw = bufs["_hw"]
+            commands.append("I %d %d %d %d %d %d %s %s" % (
+                hw["latch"], hw["any"], hw["padx"], hw["pady"], hw["b0"], hw["b1"],
+                bytes(hw["queue"]).hex() or "-", bytes(hw["saved"]).hex()))
             for st in (fixed or [(routine, a, x, 0)]):
                 commands.append("R %s %d %d %d" % st)
                 expected.append(None)
@@ -1845,7 +2045,7 @@ def main(argv):
             if got[n] != want["vars"][n]:
                 problems.append("%s: C %d, original %d (was %d)"
                                 % (n, got[n], want["vars"][n], before[n]))
-        for key in ("snd", "hooks", "lvl"):
+        for key in ("snd", "hooks", "lvl") + (("kbd",) if routine in KEYGROUP else ()):
             if extra[key] != want[key]:
                 problems.append("%s: C %s, original %s" % (key, extra[key], want[key]))
         for n, _ in BUFFERS:

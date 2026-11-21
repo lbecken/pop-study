@@ -118,18 +118,91 @@ static int load_level(pop_app *a, uint8_t level)
 
 /* --- hooks ---------------------------------------------------------------------------------------- */
 
+/* The keyboard as the game's key handler sees it (docs/port/keys.md): a
+ * latch holding the last key, with its high bit set until the game has
+ * read it.  Keys typed faster than the game reads them wait in a queue; on
+ * the Apple II a key typed before the last was read would replace it. */
+static void next_key(pop_app *a)
+{
+    if ((a->latch & 0x80) == 0 && a->nkeys != 0) {
+        a->latch = a->keys[0];
+        memmove(a->keys, a->keys + 1, --a->nkeys);
+    }
+}
+
+void pop_app_key(pop_app *a, uint8_t code)
+{
+    if ((code & 0x80) == 0 || a->nkeys >= sizeof a->keys) return;
+    a->keys[a->nkeys++] = code;
+    next_key(a);
+}
+
+static uint8_t h_keylatch(void *ctx, int waiting)
+{
+    pop_app *a = ctx;
+    next_key(a);
+    if (waiting && (a->latch & 0x80) == 0 && a->config.wait_key) {
+        uint8_t code = a->config.wait_key(a->config.wait_ctx);
+        if (code & 0x80) a->latch = code;
+    }
+    return a->latch;
+}
+
+static uint8_t h_keystrobe(void *ctx)
+{
+    pop_app *a = ctx;
+    uint8_t v = (uint8_t)((a->input.key_down ? 0x80 : 0) | (a->latch & 0x7F));
+    a->latch &= 0x7F;
+    next_key(a);
+    return v;
+}
+
+/* The directions as a joystick whose centre is PADDLE_CENTRE: a paddle
+ * reads about 0 to 70 (GRAFIX.S 1190), and SETCENTER puts the dead zone 10
+ * and 15 either side of where the stick stands when it is called. */
+enum { PADDLE_CENTRE = 35, PADDLE_THROW = 35 };
+
+static void h_paddles(void *ctx)
+{
+    pop_app *a = ctx;
+    a->g.joyX = (uint8_t)(PADDLE_CENTRE + PADDLE_THROW * (a->input.x > 0) - PADDLE_THROW * (a->input.x < 0));
+    a->g.joyY = (uint8_t)(PADDLE_CENTRE + PADDLE_THROW * (a->input.y > 0) - PADDLE_THROW * (a->input.y < 0));
+}
+
+static void h_buttons(void *ctx)
+{
+    pop_app *a = ctx;
+    a->g.BTN0 = a->g.BTN1 = a->input.button ? 0x80 : 0;
+}
+
 static void h_strobe(void *ctx)
 {
     pop_app *a = ctx;
-    pop_game *g = &a->g;
-    const pop_app_input *in = &a->input;
-    /* The keys are handed over as a joystick: positions and buttons. */
-    g->joyon = 0xFF;
-    g->joyX = in->x < 0 ? 0xFF : in->x > 0 ? 1 : 0;
-    g->joyY = in->y < 0 ? 0xFF : in->y > 0 ? 1 : 0;
-    g->BTN0 = g->BTN1 = in->button ? 0x80 : 0;
-    g->keypress = in->any_key ? 0x8D : 0;    /* "a key": Return, with the new-key bit */
-    g->keydown = (in->any_key || in->x || in->y || in->button) ? 0x80 : 0;
+    pop_strobe(&a->g);                       /* STROBE: KEYS, then CONTROLLER */
+}
+
+static void h_savegame(void *ctx)
+{
+    pop_app *a = ctx;
+    FILE *f = a->config.save_path ? fopen(a->config.save_path, "wb") : NULL;
+    a->saves++;
+    a->save_failed = 1;
+    if (!f) return;
+    if (fwrite(a->g.savedgame, 1, sizeof a->g.savedgame, f) == sizeof a->g.savedgame) {
+        a->save_failed = 0;
+    }
+    if (fclose(f) != 0) a->save_failed = 1;
+}
+
+static void h_loadgame(void *ctx)
+{
+    pop_app *a = ctx;
+    FILE *f = a->config.save_path ? fopen(a->config.save_path, "rb") : NULL;
+    uint8_t data[sizeof a->g.savedgame];
+    memset(a->g.savedgame, 0xFF, sizeof a->g.savedgame);     /* no game saved */
+    if (!f) return;
+    if (fread(data, 1, sizeof data, f) == sizeof data) memcpy(a->g.savedgame, data, sizeof data);
+    fclose(f);
 }
 
 static void append(pop_app *a, const pop_sfx *fx)
@@ -152,12 +225,34 @@ static void append(pop_app *a, const pop_sfx *fx)
     a->audio_len += pop_sfx_render(fx, &o, a->audio + a->audio_len, n, &a->speaker);
 }
 
+/* gtone: the beep that confirms a special key.  GTONE calls `tone` with
+ * pitch 15 and duration 50 (GRAFIX.S 1311-1317): 50 speaker accesses, the
+ * first 21 cycles in, the routine over 158 cycles after the last: 7,872
+ * cycles in all (counted in the simulator, tests/test_keys_original.py). */
+static void h_tone(void *ctx)
+{
+    enum { GTONE_PITCH = 15, GTONE_DURATION = 50, GTONE_LEAD = 21, GTONE_TAIL = 158 };
+    pop_app *a = ctx;
+    uint32_t toggles[GTONE_DURATION], i;
+    pop_sfx fx;
+    for (i = 0; i < GTONE_DURATION; i++) {
+        toggles[i] = GTONE_LEAD + i * pop_tone_half_period(GTONE_PITCH);
+    }
+    fx.toggles = toggles;
+    fx.count = GTONE_DURATION;
+    fx.total_cycles = toggles[GTONE_DURATION - 1] + GTONE_TAIL;
+    a->beeps++;
+    a->sound_cycles += fx.total_cycles;
+    if (a->config.audio_rate != 0 && a->have_sfx) append(a, &fx);
+}
+
 /* playback: the frame's effects, one after the other.  The original plays
  * them here and now, and the game waits; this only renders them. */
 static void h_playback(void *ctx)
 {
     pop_app *a = ctx;
     uint8_t i;
+    if (a->g.soundon == 0) return;           /* PLAYBACK: "sound switched off?", SOUND.S 100-102 */
     for (i = 0; i < a->g.sq.count; i++) {
         uint8_t n = a->g.sq.items[i];
         a->sound_count++;
@@ -186,6 +281,13 @@ static void set_hooks(pop_app *a)
     memset(h, 0, sizeof *h);                 /* the rest: nothing happens (not ported) */
     h->ctx = a;
     h->strobe = h_strobe;
+    h->key_latch = h_keylatch;
+    h->key_strobe = h_keystrobe;
+    h->read_paddles = h_paddles;
+    h->read_buttons = h_buttons;
+    h->save_game = h_savegame;
+    h->load_game = h_loadgame;
+    h->tone = h_tone;
     h->playback = h_playback;
     h->zero_lists = h_zerolists;
     h->draw_screen = h_drawscreen;
@@ -286,16 +388,22 @@ void pop_app_close(pop_app *a)
 
 static int begin_level(pop_app *a)
 {
+    (void)h_keystrobe(a);                    /* RESTART: "clr kbd strobe", TOPCTRL.S 258 */
     if (load_level(a, a->g.level) != 0) return -1;
+    a->g.leave = POP_LEAVE_NONE;             /* (what led here is done with: RESTART is a new start) */
     pop_restart_level(&a->g);
     return 0;
 }
 
-int pop_app_start(pop_app *a, uint8_t level, const char **err)
+/* A cold start: every variable zero, no opponent, the copy-protection
+ * check passed; then what the loader and INITSYSTEM leave behind: sound
+ * and music on (MASTER.S 225, 1040), the joystick selected and centred
+ * where it stands (TOPCTRL.S 121), development mode off (TOPCTRL.S
+ * 125-126, which is assembled with FinalDisk = 1). */
+static void cold_start(pop_app *a)
 {
     pop_game *g = &a->g;
-    /* A cold start: every variable zero (INITSYSTEM), no opponent, the
-     * copy-protection check passed. */
+    pop_app_input none;
     memset(g, 0, sizeof *g);
     g->frames = &a->frames.tab;
     g->seq = &a->seq.tab;
@@ -305,9 +413,32 @@ int pop_app_start(pop_app *a, uint8_t level, const char **err)
     g->yellowflag = 0x80;
     g->shad.face = 86;
     g->blue = 1;
+    g->soundon = g->musicon = 1;
+    memset(&none, 0, sizeof none);
+    a->input = none;
+    pop_setcenter(g);
+    g->joyX = g->joyY = 0;
+    g->develment = 0;
     a->audio_len = 0;
     a->sound_cycles = 0;
-    pop_startgame(g, level);
+    a->beeps = 0;
+}
+
+int pop_app_start(pop_app *a, uint8_t level, const char **err)
+{
+    cold_start(a);
+    pop_startgame(&a->g, level);
+    if (begin_level(a) != 0) {
+        *err = a->error;
+        return -1;
+    }
+    return 0;
+}
+
+int pop_app_resume(pop_app *a, const char **err)
+{
+    cold_start(a);
+    pop_startresume(&a->g);
     if (begin_level(a) != 0) {
         *err = a->error;
         return -1;
@@ -322,6 +453,7 @@ int pop_app_frame(pop_app *a, const pop_app_input *in)
     a->audio_len = 0;
     a->sound_cycles = 0;
     a->sound_count = 0;
+    a->beeps = 0;
     a->v.nswlog = 0;
     a->v.swlog[0] = 0;
     a->g.unmodelled = a->v.unmodelled = a->v.hr.unmodelled = 0;
